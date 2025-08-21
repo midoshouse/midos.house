@@ -543,8 +543,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             hostname: Cow::Borrowed(racetime_host()),
             ..racetime::HostInfo::default()
         })
-        .data::<ConfigRaceTime>(if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone())
-        .data::<StartggToken>(if Environment::default().is_dev() { config.startgg_dev } else { config.startgg_production })
+        .data::<ConfigRaceTime>(config.racetime_bot.clone())
+        .data::<StartggToken>(config.startgg)
         .data::<NewRoomLock>(new_room_lock)
         .data::<ExtraRoomTx>(extra_room_tx)
         .data::<CleanShutdown>(clean_shutdown)

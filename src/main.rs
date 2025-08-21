@@ -134,8 +134,8 @@ struct Args {
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
-    #[error(transparent)] Any(#[from] anyhow::Error),
     #[error(transparent)] Base64(#[from] base64::DecodeError),
+    #[error(transparent)] Config(#[from] config::Error),
     #[error(transparent)] Event(#[from] event::Error),
     #[cfg(unix)] #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] RaceTime(#[from] racetime_bot::MainError),
@@ -209,8 +209,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
             .use_rustls_tls()
             .hickory_dns(true)
             .build()?;
-        let discord_config = if Environment::default().is_dev() { &config.discord_dev } else { &config.discord_production };
-        let discord_builder = serenity_utils::builder(discord_config.bot_token.clone()).await?;
+        let discord_builder = serenity_utils::builder(config.discord.bot_token.clone()).await?;
         let db_pool = PgPoolOptions::default()
             .max_connections(16)
             .connect_with(PgConnectOptions::default()
@@ -234,18 +233,16 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
         let clean_shutdown = Arc::default();
         let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), Arc::clone(&new_room_lock), extra_room_tx.clone(), Arc::clone(&clean_shutdown), rocket.shutdown());
-        let racetime_config = if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
-        let startgg_token = if Environment::default().is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let (seed_cache_tx, seed_cache_rx) = watch::channel(());
         let global_state = Arc::new(racetime_bot::GlobalState::new(
             new_room_lock.clone(),
-            racetime_config,
+            config.racetime_bot.clone(),
             extra_room_tx,
             db_pool.clone(),
             http_client.clone(),
             insecure_http_client,
             config.league_api_key.clone(),
-            startgg_token.clone(),
+            config.startgg.clone(),
             ootr_api_client,
             discord_builder.ctx_fut.clone(),
             clean_shutdown.clone(),
