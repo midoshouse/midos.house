@@ -1232,7 +1232,7 @@ impl Event {
 
     pub(crate) async fn rooms_to_open(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client) -> Result<Vec<Self>, Error> {
         let mut events = Vec::default();
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE NOT ignored AND room IS NULL AND start IS NOT NULL AND start > NOW() AND (start <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND (series != 's' OR event != 'w') AND start <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE NOT ignored AND room IS NULL AND start IS NOT NULL AND start > NOW() AND (start <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND (series != 's' OR event != 'w' OR round LIKE '%Qualifier%') AND start <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             events.push(Self {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Normal,

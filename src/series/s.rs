@@ -7,6 +7,7 @@ use {
     crate::{
         event::{
             Data,
+            DataError,
             InfoError,
         },
         prelude::*,
@@ -193,64 +194,29 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
-pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::None;
+pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Short;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-w-8.3.26.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/scrubs/chests-7-8.3.30.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "S9 testing";
-fn long_weekly_settings() -> RawHtml<String> {
-    html! {
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "Scrubs";
+async fn long_weekly_settings(transaction: &mut Transaction<'_, Postgres>) -> Result<RawHtml<String>, DataError> {
+    Ok(html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
             : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 8, 16, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are as follows:";
-            ul {
-                li {
-                    a(href = uri!(event::info(Series::Standard, "8"))) : "S8";
-                    : " Base";
-                }
-                li {
-                    : "Randomizer version: ";
-                    a(href = "https://ootrandomizer.com/generatorDev") : "latest Dev";
-                }
-                li : "Treasure Chest Game Requires Lens";
-                li : "Key Appearance Matches Dungeon";
-                li {
-                    : "Path Priority Removed:";
-                    p {
-                        : "We've created custom goals to use with this change that will override the default goals. What does this mean exactly? With this change you will ";
-                        strong : "no longer see goal categories for the Rainbow Bridge, Evil's Bane, GCBK, or Path of the Hero";
-                        : ". Instead, all goal hints will be members of the same goal category labeled ";
-                        code : "medallions";
-                        : " which contains individual goals for each medallion needed to complete the seed. This means that the Light Arrows could potentially be on the path to medallion dungeons. This also means that you won't be able to game additional information out of a goal hint other than the hinted item being logically required for obtaining that medallion in some way.";
-                    }
-                    p {
-                        : "Example hint text: They say that the ";
-                        em : "Sacred Forest Meadow";
-                        : " is on the path to the ";
-                        em : "Shadow Medallion";
-                        : ".";
-                    }
-                }
-                li {
-                    : "Hint Distribution:";
-                    ul {
-                        li : "5 x 2 Always hints: Skull Mask, Biggoron, Frogs 2, Burning Kakariko & Ocarina of Time";
-                        li : "5 x 2 Goal (path) hints";
-                        li : "3 x 1 Barren (foolish) hints at Temple of Time";
-                        li : "1 x 1 Song hint at Temple of Time";
-                        li : "2 x 2 Dual hints";
-                        li : "6 x 2 Sometimes hints";
-                        li : "Skull hints (30/40/50) in the House of Skulltula";
-                    }
-                }
-            }
+            : format_datetime(Utc.with_ymd_and_hms(2025, 8, 30, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " are the settings for the ";
+            : Data::new(transaction, Series::Scrubs, "7").await?.expect("wrong hardcoded event");
+            : ". The Zora weekly on ";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 9, 6, 18, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " and the Gerudo weekly on ";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 9, 7, 13, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " will double as live qualifiers for that tournament.";
         }
-    }
+    })
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -298,7 +264,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             : ")";
                         }
                     }
-                    : long_weekly_settings();
+                    : long_weekly_settings(transaction).await?;
                 }
             })
         }
