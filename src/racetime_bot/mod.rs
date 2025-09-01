@@ -1785,7 +1785,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
         VersionedBranch::Custom { .. } => false,
     };
     let rando_path = match version {
-        VersionedBranch::Pinned { version } => {
+        VersionedBranch::Pinned { ref version } => {
             version.clone_repo(allow_riir).await?;
             version.dir(allow_riir)?
         }
@@ -1793,12 +1793,12 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
             branch.clone_repo(allow_riir).await?;
             branch.dir(allow_riir)?
         }
-        VersionedBranch::Custom { github_username, branch } => {
+        VersionedBranch::Custom { ref github_username, ref branch } => {
             let parent = {
-                #[cfg(unix)] { Path::new("/opt/git/github.com").join(&*github_username).join("OoT-Randomizer").join("branch") }
-                #[cfg(windows)] { UserDirs::new().ok_or(RollError::UserDirs)?.home_dir().join("git").join("github.com").join(&*github_username).join("OoT-Randomizer").join("branch") }
+                #[cfg(unix)] { Path::new("/opt/git/github.com").join(&**github_username).join("OoT-Randomizer").join("branch") }
+                #[cfg(windows)] { UserDirs::new().ok_or(RollError::UserDirs)?.home_dir().join("git").join("github.com").join(&**github_username).join("OoT-Randomizer").join("branch") }
             };
-            let dir = parent.join(&*branch);
+            let dir = parent.join(&**branch);
             if dir.exists() {
                 //TODO hard reset to remote instead?
                 //TODO use git2 or gix instead?
@@ -1809,7 +1809,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
                 command.arg("clone");
                 command.arg(format!("https://github.com/{github_username}/OoT-Randomizer.git"));
                 command.arg(format!("--branch={branch}"));
-                command.arg(&*branch);
+                command.arg(&**branch);
                 command.current_dir(parent);
                 command.check("git").await?;
             }
@@ -1855,7 +1855,14 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
         let mut rando_cmd;
         if use_rust_cli {
             rando_cmd = Command::new(rust_cli_path);
-            rando_cmd.arg("--no-log");
+            let creates_log_by_default = match version {
+                VersionedBranch::Pinned { ref version } => version.branch() != rando::Branch::DevFenhl || (version.base(), version.supplementary()) < (&Version::new(8, 3, 33), Some(1)),
+                VersionedBranch::Latest { branch } => branch != rando::Branch::DevFenhl,
+                VersionedBranch::Custom { .. } => false,
+            };
+            if creates_log_by_default {
+                rando_cmd.arg("--no-log");
+            }
         } else {
             rando_cmd = Command::new(PYTHON);
             rando_cmd.arg("OoTRandomizer.py");
