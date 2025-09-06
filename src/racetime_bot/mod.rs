@@ -2793,8 +2793,8 @@ impl RaceHandler<GlobalState> for Handler {
                         if let (true, Some((_, weekly_name, qualifier_number))) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| regex_captures!(r"^(.+) Weekly \(Scrubs Live Qualifier ([0-9]+)\)$", round))) {
                             format!(
                                 "Welcome to the {weekly_name} Weekly! This race doubles as the {} live qualifier for the Scrubs Tournament Season 7. See {} for details.",
-                                uri!(base_uri(), event::info(event.series, &*event.event)),
                                 lang::english_ordinal(qualifier_number.parse().to_racetime()?),
+                                uri!(base_uri(), event::info(event.series, &*event.event)),
                             )
                         } else if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
                             format!(
