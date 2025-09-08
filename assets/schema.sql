@@ -2,8 +2,10 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.13 (Debian 15.13-0+deb12u1)
--- Dumped by pg_dump version 15.13 (Debian 15.13-0+deb12u1)
+\restrict NSkHPci93sAFqHtSzSNGsBd7dCxhH7NpHe4WhC8jFzIipftC7A6hpgap0hCfbqM
+
+-- Dumped from database version 15.14 (Debian 15.14-0+deb12u1)
+-- Dumped by pg_dump version 15.14 (Debian 15.14-0+deb12u1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1215,4 +1217,6 @@ GRANT SELECT ON TABLE public.teams TO fenhl;
 --
 -- PostgreSQL database dump complete
 --
+
+\unrestrict NSkHPci93sAFqHtSzSNGsBd7dCxhH7NpHe4WhC8jFzIipftC7A6hpgap0hCfbqM
 

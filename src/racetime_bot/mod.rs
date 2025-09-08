@@ -3838,7 +3838,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 settings.insert(format!("password_lock"), json!(true));
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
                             },
-                            Goal::TriforceBlitz => this.roll_tfb_dev_seed(ctx, false, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
+                            Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
                         RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => {}
