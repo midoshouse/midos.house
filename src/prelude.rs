@@ -31,10 +31,16 @@ pub(crate) use {
             Pin,
             pin,
         },
+        process::Stdio,
         str::FromStr,
         sync::{
             Arc,
             LazyLock,
+            atomic::{
+                self,
+                AtomicBool,
+                AtomicUsize,
+            },
         },
         time::Duration,
     },
@@ -130,6 +136,7 @@ pub(crate) use {
         ToHtml,
         html,
     },
+    semver::Version,
     serde::{
         Deserialize,
         Deserializer,
@@ -156,7 +163,10 @@ pub(crate) use {
         Transaction,
     },
     tokio::{
-        io,
+        io::{
+            self,
+            AsyncWriteExt as _,
+        },
         process::Command,
         select,
         sync::{

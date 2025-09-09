@@ -1,13 +1,5 @@
 use {
-    std::{
-        io::prelude::*,
-        process::Stdio,
-        sync::atomic::{
-            self,
-            AtomicBool,
-            AtomicUsize,
-        },
-    },
+    std::io::prelude::*,
     kuchiki::{
         NodeRef,
         traits::TendrilSink as _,
@@ -28,16 +20,12 @@ use {
         SampleString as _,
     },
     reqwest::StatusCode,
-    semver::Version,
     serenity::all::{
         CreateAllowedMentions,
         CreateMessage,
     },
     smart_default::SmartDefault,
-    tokio::{
-        io::AsyncWriteExt as _,
-        time::timeout,
-    },
+    tokio::time::timeout,
     crate::{
         cal::Entrant,
         discord_bot::FENHL,
@@ -49,14 +37,12 @@ use {
 
 mod report;
 
-#[cfg(unix)] const PYTHON: &str = "python3";
-#[cfg(windows)] const PYTHON: &str = "py";
+#[cfg(unix)] pub(crate) const PYTHON: &str = "python3";
+#[cfg(windows)] pub(crate) const PYTHON: &str = "py";
 
 pub(crate) const CATEGORY: &str = "ootr";
 
 const OOTR_DISCORD_GUILD: GuildId = GuildId::new(274180765816848384);
-
-static RSL_SEQUENCE_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ParseUserError {
@@ -1107,7 +1093,7 @@ impl Goal {
                 [arg] if arg == "s8" => SeedCommandParseResult::Regular { settings: s::s8_settings(), plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "an", description: format!("S8 seed") },
                 [arg] if arg == "weekly" => {
                     let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                    let mut settings = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event").single_settings.expect("no settings configured for weeklies");
+                    let mut settings = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event").single_settings().await.to_racetime()?.expect("no settings configured for weeklies").into_owned();
                     transaction.commit().await.to_racetime()?;
                     settings.insert(format!("password_lock"), json!(true));
                     SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("weekly seed") }
@@ -1529,7 +1515,7 @@ impl GlobalState {
                 rsl_cmd.arg("--no_log_errors");
                 if supports_plando_filename_base {
                     // add a sequence ID to the names of temporary plando files to prevent name collisions
-                    rsl_cmd.arg(format!("--plando_filename_base=mh_{}", RSL_SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
+                    rsl_cmd.arg(format!("--plando_filename_base=mh_{}", rsl::SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
                 }
                 let mut input = None;
                 if !matches!(preset, rsl::VersionedPreset::Xopar { preset: rsl::Preset::League, .. }) {
@@ -3897,7 +3883,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), s::s8_settings(), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "an", format!("S8 seed")).await
                             } else {
                                 let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                                let mut settings = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event").single_settings.expect("no settings configured for weeklies");
+                                let mut settings = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event").single_settings().await.to_racetime()?.expect("no settings configured for weeklies").into_owned();
                                 transaction.commit().await.to_racetime()?;
                                 settings.insert(format!("password_lock"), json!(true));
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await

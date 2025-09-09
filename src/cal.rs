@@ -1051,8 +1051,8 @@ impl Race {
 
     pub(crate) async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<seed::Settings>, Error> {
         let event = self.event(transaction).await?;
-        Ok(if let Some(settings) = event.single_settings {
-            Some(settings)
+        Ok(if let Some(settings) = event.single_settings().await? {
+            Some(settings.into_owned())
         } else if let Some(draft) = &self.draft {
             let Some(draft_kind) = event.draft_kind() else { return Ok(None) };
             match draft.next_step(draft_kind, None, &mut draft::MessageContext::None).await?.kind {
@@ -1438,6 +1438,7 @@ pub(crate) enum Error {
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sheets(#[from] sheets::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -1473,6 +1474,7 @@ impl IsNetworkError for Error {
             Self::OotrWeb(e) => e.is_network_error(),
             Self::ParseInt(_) => false,
             Self::Reqwest(e) => e.is_network_error(),
+            Self::Roll(_) => false, //TODO
             Self::SeedData(e) => e.is_network_error(),
             Self::Sheets(e) => e.is_network_error(),
             Self::Sql(_) => false,
@@ -1999,7 +2001,7 @@ pub(crate) async fn race_table(
                     hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     hash_map::Entry::Vacant(entry) => entry.insert(race.event(&mut *transaction).await?),
                 };
-                if event.single_settings.is_none() && race.single_settings(&mut *transaction).await?.is_some() {
+                if !event.has_single_settings() && race.single_settings(&mut *transaction).await?.is_some() {
                     break 'has_seeds true
                 }
             }
@@ -2204,7 +2206,7 @@ pub(crate) async fn race_table(
                                 } else {
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
-                                    @if event.single_settings.is_none() && race.single_settings(&mut *transaction).await?.is_some() {
+                                    @if !event.has_single_settings() && race.single_settings(&mut *transaction).await?.is_some() {
                                         a(class = "button", href = uri!(practice_seed(event.series, &*event.event, race.id))) {
                                             : favicon(&Url::parse("https://ootrandomizer.com/").unwrap()); //TODO adjust based on seed host
                                             : "Practice";
@@ -2742,7 +2744,7 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqw
     transaction.commit().await?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     let web_version = ootr_api_client.can_roll_on_web(None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
+    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
     Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
 }
 

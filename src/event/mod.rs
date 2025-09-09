@@ -1,4 +1,5 @@
 use {
+    std::io::BufRead,
     serenity::all::{
         CreateMessage,
         EditMember,
@@ -170,7 +171,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_organizer_channel: Option<ChannelId>,
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
     pub(crate) rando_version: Option<VersionedBranch>,
-    pub(crate) single_settings: Option<seed::Settings>,
+    single_settings: Option<seed::Settings>,
     pub(crate) team_config: TeamConfig,
     enter_flow: Option<enter::Flow>,
     show_opt_out: bool,
@@ -259,11 +260,7 @@ impl<'a> Data<'a> {
                 discord_organizer_channel: row.discord_organizer_channel.map(|PgSnowflake(id)| id),
                 discord_scheduling_channel: row.discord_scheduling_channel.map(|PgSnowflake(id)| id),
                 rando_version: row.rando_version.map(|Json(rando_version)| rando_version),
-                single_settings: if series == Series::CopaDoBrasil && event == "1" {
-                    Some(br::s1_settings()) // support for randomized starting song
-                } else {
-                    row.single_settings.map(|Json(single_settings)| single_settings)
-                },
+                single_settings: row.single_settings.map(|Json(single_settings)| single_settings),
                 team_config: row.team_config,
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
                 show_opt_out: row.show_opt_out,
@@ -534,6 +531,75 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
+    pub(crate) async fn single_settings(&self) -> Result<Option<Cow<'_, seed::Settings>>, racetime_bot::RollError> {
+        Ok(match (self.series, &*self.event) {
+            (Series::CopaDoBrasil, "1") => Some(Cow::Owned(br::s1_settings())), // support for randomized starting song
+            (Series::PotsOfTime, "1") => {
+                #[derive(Deserialize)]
+                struct Plando {
+                    settings: seed::Settings,
+                }
+
+                let rsl_script_path = rsl::VersionedPreset::Xopar {
+                    version: None, //TODO freeze version after the tournament
+                    preset: rsl::Preset::League,
+                }.script_path().await?;
+                // check RSL script version
+                let rsl_version = Command::new(racetime_bot::PYTHON)
+                    .arg("-c")
+                    .arg("import rslversion; print(rslversion.__version__)")
+                    .current_dir(&rsl_script_path)
+                    .check(racetime_bot::PYTHON).await?
+                    .stdout;
+                let rsl_version = String::from_utf8(rsl_version)?;
+                let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
+                    (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
+                } else {
+                    rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                };
+                let mut rsl_cmd = Command::new(racetime_bot::PYTHON);
+                rsl_cmd.arg("RandomSettingsGenerator.py");
+                rsl_cmd.arg("--no_log_errors");
+                if supports_plando_filename_base {
+                    // add a sequence ID to the names of temporary plando files to prevent name collisions
+                    rsl_cmd.arg(format!("--plando_filename_base=mh_{}", rsl::SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
+                }
+                rsl_cmd.arg("--override=-");
+                rsl_cmd.stdin(Stdio::piped());
+                rsl_cmd.arg("--no_seed");
+                let mut rsl_process = rsl_cmd
+                    .current_dir(&rsl_script_path)
+                    .stdout(Stdio::piped())
+                    .spawn().at_command("RandomSettingsGenerator.py")?;
+                rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(include_bytes!("../../assets/event/pot/weights-1.json")).await.at_command("RandomSettingsGenerator.py")?;
+                let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
+                match output.status.code() {
+                    Some(0) => {}
+                    Some(2) => return Err(racetime_bot::RollError::Retries { num_retries: 1, last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()) }),
+                    _ => return Err(racetime_bot::RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
+                }
+                let plando_filename = BufRead::lines(&*output.stdout)
+                    .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
+                    .next().ok_or(racetime_bot::RollError::RslScriptOutput { regex: "^Plando File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
+                let plando_path = rsl_script_path.join("data").join(plando_filename);
+                let plando_file = fs::read_to_string(&plando_path).await?;
+                let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
+                fs::remove_file(plando_path).await?;
+                Some(Cow::Owned(settings))
+            }
+            (_, _) => self.single_settings.as_ref().map(Cow::Borrowed),
+        })
+    }
+
+    /// Invariant: matches `self.single_settings().await?.is_some()`
+    pub(crate) fn has_single_settings(&self) -> bool {
+        match (self.series, &*self.event) {
+            (Series::CopaDoBrasil, "1") => true,
+            (Series::PotsOfTime, "1") => true,
+            (_, _) => self.single_settings.is_some(),
+        }
+    }
+
     pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -630,7 +696,7 @@ impl<'a> Data<'a> {
                         let url = Url::parse("https://www.triforceblitz.com/generator")?;
                         Some((url.to_string(), Some(url)))
                     }
-                    (_, _) => self.single_settings.is_some().then(|| Ok::<_, Error>((uri!(practice_seed(self.series, &*self.event)).to_string(), Some(Url::parse("https://ootrandomizer.com/")?)))).transpose()?,
+                    (_, _) => self.has_single_settings().then(|| Ok::<_, Error>((uri!(practice_seed(self.series, &*self.event)).to_string(), Some(Url::parse("https://ootrandomizer.com/")?)))).transpose()?,
                 };
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
@@ -2206,11 +2272,11 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
         }
         Ok(Redirect::to(format!("/seed/{file_stem}")))
     } else {
-        let version = data.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
-        let settings = data.single_settings.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let version = data.rando_version.as_ref().ok_or(StatusOrError::Status(Status::NotFound))?;
+        let settings = data.single_settings().await?.ok_or(StatusOrError::Status(Status::NotFound))?;
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        let web_version = ootr_api_client.can_roll_on_web(None, &version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
-        let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
+        let web_version = ootr_api_client.can_roll_on_web(None, version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
         Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
     }
 }

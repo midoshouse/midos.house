@@ -20,10 +20,7 @@ use {
     mhstatus::PrepareStopUpdate,
     openssl as _, // `vendored` feature required to fix release build
     tokio::{
-        io::{
-            AsyncWriteExt as _,
-            stdout,
-        },
+        io::stdout,
         net::UnixStream,
     },
     crate::{

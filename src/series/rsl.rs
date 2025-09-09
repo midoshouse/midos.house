@@ -4,7 +4,6 @@ use {
         Repository,
         ResetType,
     },
-    semver::Version,
     serde_json::Value as Json,
     crate::{
         event::{
@@ -16,6 +15,7 @@ use {
 };
 
 static REPO_LOCK: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
+pub(crate) static SEQUENCE_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Default, Clone, Copy, Sequence, sqlx::Type)]
 #[sqlx(type_name = "rsl_preset", rename_all = "lowercase")]

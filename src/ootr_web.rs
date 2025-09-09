@@ -294,7 +294,7 @@ impl ApiClient {
         })
     }
 
-    pub(crate) async fn roll_practice_seed(self: Arc<Self>, version: ootr_utils::Version, random_settings: bool, mut settings: seed::Settings) -> Result<i64, Error> {
+    pub(crate) async fn roll_practice_seed(self: Arc<Self>, version: ootr_utils::Version, mut settings: seed::Settings) -> Result<i64, Error> {
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
         settings.remove("password_lock");
         settings.insert(format!("create_spoiler"), json!(true));
@@ -305,7 +305,7 @@ impl ApiClient {
         };
         let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
             ("key", &*self.api_key),
-            ("version", &*version.to_string_web(random_settings).ok_or(Error::RandomSettings)?),
+            ("version", &*version.to_string_web(false).ok_or(Error::RandomSettings)?), // always show generated settings for practice seeds
             ("locked", "false"),
             ("passwordLock", "false"),
         ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
