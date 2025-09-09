@@ -203,6 +203,7 @@ pub(crate) enum Goal {
     NineDaysOfSaws,
     Pic7,
     PicRs2,
+    PotsOfTime,
     Rsl,
     Sgl2023,
     Sgl2024,
@@ -251,6 +252,7 @@ impl Goal {
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
             Self::Pic7 => series == Series::Pictionary && event == "7",
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
+            Self::PotsOfTime => series == Series::PotsOfTime && event == "1",
             Self::Rsl => series == Series::Rsl,
             Self::Sgl2023 => series == Series::SpeedGaming && event.starts_with("2023"),
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
@@ -288,6 +290,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
+            | Self::PotsOfTime
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -319,6 +322,7 @@ impl Goal {
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::Pic7 => "7th Pictionary Spoiler Log Race",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
+            Self::PotsOfTime => "Pots Of Time",
             Self::Rsl => "Random settings league",
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
@@ -364,6 +368,7 @@ impl Goal {
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
                 => English, //TODO change to bilingual English/French
+            | Self::PotsOfTime
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
@@ -392,6 +397,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
+            | Self::PotsOfTime
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -426,6 +432,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
+            | Self::PotsOfTime
             | Self::Rsl
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
@@ -468,6 +475,7 @@ impl Goal {
                 | Self::MultiworldS4
                 | Self::MultiworldS5
                 | Self::NineDaysOfSaws
+                | Self::PotsOfTime
                 | Self::Rsl
                 | Self::Sgl2023
                 | Self::Sgl2024
@@ -528,7 +536,7 @@ impl Goal {
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::WeTryToBeBetterS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 0, 11) },
             Self::WeTryToBeBetterS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
-            Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
+            Self::PicRs2 | Self::PotsOfTime | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
 
@@ -549,6 +557,7 @@ impl Goal {
             Self::MultiworldS5 => None, // settings draft
             Self::NineDaysOfSaws => None, // per-event settings
             Self::Pic7 => Some(pic::race7_settings()),
+            Self::PotsOfTime => None, // random settings
             Self::PicRs2 => None, // random settings
             Self::Rsl => None, // random settings
             Self::Sgl2023 => Some(sgl::settings_2023()),
@@ -589,6 +598,8 @@ impl Goal {
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
                 => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
+            | Self::PotsOfTime
+                => ctx.say("!seed : Les poids utilisés pour le tournoi").await?,
             Self::Cc7 => {
                 ctx.say("!seed base: The tournament's base settings.").await?;
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
@@ -1010,6 +1021,14 @@ impl Goal {
                 version: Some((Version::new(2, 3, 8), 10)),
                 preset: rsl::DevFenhlPreset::Pictionary,
             }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
+            Self::PotsOfTime => {
+                let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?;
+                weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
+                SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::XoparCustom {
+                    version: None, //TODO freeze version after the tournament
+                    weights,
+                }, world_count: 1, unlock_spoiler_log, language: French, article: "une", description: format!("seed") }
+            }
             Self::Rsl => {
                 let (preset, world_count) = match args {
                     [] => (rsl::Preset::League, 1),
@@ -3219,6 +3238,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::PotsOfTime => ctx.send_message(
+                                "Bienvenue ! Ceci est une practice room pour le tournoi Pots Of Time. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/pot/1",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Roll une seed avec les poids utilisés pour le tournoi.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::Rsl => ctx.send_message(
                                 "Welcome to the OoTR Random Settings League! Learn more at https://rsl.one/",
                                 true,
@@ -3829,6 +3860,14 @@ impl RaceHandler<GlobalState> for Handler {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: rsl::DevFenhlPreset::Pictionary,
                             }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                            Goal::PotsOfTime => {
+                                let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?;
+                                weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
+                                this.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
+                                    version: None, //TODO freeze version after the tournament
+                                    weights,
+                                }, 1, goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await
+                            }
                             Goal::StandardRuleset => if let (Series::Standard, "8" | "8cc") = (event.series, &*event.event) {
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), s::s8_settings(), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "an", format!("S8 seed")).await
                             } else {
@@ -4533,6 +4572,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::MultiworldS4
                     | Goal::MultiworldS5
                     | Goal::NineDaysOfSaws
+                    | Goal::PotsOfTime
                     | Goal::Rsl
                     | Goal::Sgl2023
                     | Goal::Sgl2024

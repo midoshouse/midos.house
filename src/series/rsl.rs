@@ -229,7 +229,7 @@ pub(crate) struct Weights {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     options: HashMap<String, Json>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    conditionals: HashMap<String, Vec<Json>>,
+    pub(crate) conditionals: HashMap<String, Vec<Json>>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     multiselect: HashMap<String, u8>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
