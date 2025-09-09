@@ -7,7 +7,6 @@ use {
     crate::{
         event::{
             Data,
-            DataError,
             InfoError,
         },
         prelude::*,
@@ -196,27 +195,51 @@ impl WeeklyKind {
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Short;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/scrubs/chests-7-8.3.30.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-w-8.3.33.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "Scrubs";
-async fn long_weekly_settings(transaction: &mut Transaction<'_, Postgres>) -> Result<RawHtml<String>, DataError> {
-    Ok(html! {
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "variety";
+fn long_weekly_settings() -> RawHtml<String> {
+    html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
             : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 8, 30, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are the settings for the ";
-            : Data::new(transaction, Series::Scrubs, "7").await?.expect("wrong hardcoded event");
-            : ". The Zora weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 9, 6, 18, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " and the Gerudo weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 9, 7, 13, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " will double as live qualifiers for that tournament.";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 9, 13, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " are as follows:";
+            ul {
+                li {
+                    a(href = uri!(event::info(Series::Standard, "8"))) : "S8";
+                    : " Base";
+                }
+                li {
+                    : "Randomizer version: ";
+                    a(href = "https://ootrandomizer.com/generatorDev") : "latest Dev";
+                }
+                li : "Songs on Dungeon Rewards";
+                li : "2 Pre-Completed Dungeons";
+                li : "Vanilla BKs";
+                li : "Forest and Jabu Shortcuts on";
+                li : "ALR";
+                li : "Start with Prelude";
+                li : "Win-Con: AD Bridge, no GCBK";
+                li : "Spawns: Random Starting Age, Random Adult & Random Child Spawns";
+                li : "Speedups: 2 cuccos, BFA on, Free Scarecrow, Ruto on F1, Fast Shadow Boat";
+                li {
+                    : "Hint Distribution:";
+                    ul {
+                        li : "5 Path Hints (one hint per goal)";
+                        li : "3 Foolish";
+                        li : "2 Important Item Hints";
+                        li : "6 Always: Skull Mask, Biggoron, Frogs 2, Ice Cavern Song, GTG Final, BotW Deadhand";
+                        li : "4 Sometimes";
+                        li : "30/40/50 Skulls @ Skull House";
+                    }
+                }
+            }
         }
-    })
+    }
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -264,7 +287,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             : ")";
                         }
                     }
-                    : long_weekly_settings(transaction).await?;
+                    : long_weekly_settings();
                 }
             })
         }
