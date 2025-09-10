@@ -322,6 +322,7 @@ impl<'a> Data<'a> {
             (Series::Multiworld, "5") => from_file!("../../assets/event/mw/chests-5-8.2.63.json"),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+            (Series::PotsOfTime, "1") => from_file!("../../assets/event/pot/chests-1-50813f8.json"),
             (Series::Rsl, "1") => from_file!("../../assets/event/rsl/chests-1-4c526c2.json"),
             (Series::Rsl, "2") => from_file!("../../assets/event/rsl/chests-2-7028072.json"),
             (Series::Rsl, "3") => from_file!("../../assets/event/rsl/chests-3-a0f568b.json"),
