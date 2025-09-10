@@ -23,10 +23,7 @@ use {
         io::stdout,
         net::UnixStream,
     },
-    crate::{
-        racetime_bot::SeedRollUpdate,
-        unix_socket::ClientMessage as Subcommand,
-    },
+    crate::unix_socket::ClientMessage as Subcommand,
 };
 
 mod api;

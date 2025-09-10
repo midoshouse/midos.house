@@ -14,13 +14,7 @@ use {
         Semaphore,
         TryAcquireError,
     },
-    crate::{
-        prelude::*,
-        racetime_bot::{
-            SeedRollUpdate,
-            VersionedBranch,
-        },
-    },
+    crate::prelude::*,
 };
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API despite not being listed by the version endpoint since supplementary versions weren't tracked at the time.

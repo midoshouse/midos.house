@@ -12,10 +12,7 @@ use {
     crate::{
         notification::SimpleNotificationKind,
         prelude::*,
-        racetime_bot::{
-            VersionedBranch,
-            roll_seed_locally,
-        },
+        racetime_bot::roll_seed_locally,
     },
 };
 
@@ -532,9 +529,9 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
-    pub(crate) async fn single_settings(&self) -> Result<Option<Cow<'_, seed::Settings>>, racetime_bot::RollError> {
+    pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
         Ok(match (self.series, &*self.event) {
-            (Series::CopaDoBrasil, "1") => Some(Cow::Owned(br::s1_settings())), // support for randomized starting song
+            (Series::CopaDoBrasil, "1") => self.rando_version.clone().map(|rando_version| (rando_version, Cow::Owned(br::s1_settings()))), // support for randomized starting song
             (Series::PotsOfTime, "1") => {
                 #[derive(Deserialize)]
                 struct Plando {
@@ -558,6 +555,15 @@ impl<'a> Data<'a> {
                 } else {
                     rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
                 };
+                // check required randomizer version
+                let randomizer_version = Command::new(racetime_bot::PYTHON)
+                    .arg("-c")
+                    .arg("import rslversion; print(rslversion.randomizer_version)")
+                    .current_dir(&rsl_script_path)
+                    .check(racetime_bot::PYTHON).await?
+                    .stdout;
+                let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<ootr_utils::Version>()?;
+                // run the RSL script
                 let mut rsl_cmd = Command::new(racetime_bot::PYTHON);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
@@ -586,9 +592,9 @@ impl<'a> Data<'a> {
                 let plando_file = fs::read_to_string(&plando_path).await?;
                 let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
                 fs::remove_file(plando_path).await?;
-                Some(Cow::Owned(settings))
+                Some((VersionedBranch::Pinned { version: randomizer_version }, Cow::Owned(settings)))
             }
-            (_, _) => self.single_settings.as_ref().map(Cow::Borrowed),
+            (_, _) => self.rando_version.clone().and_then(|rando_version| Some((rando_version, Cow::Borrowed(self.single_settings.as_ref()?)))),
         })
     }
 
@@ -822,6 +828,7 @@ pub(crate) enum Error {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] RaceTime(#[from] racetime::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -849,6 +856,7 @@ impl IsNetworkError for Error {
             Self::Page(e) => e.is_network_error(),
             Self::RaceTime(e) => e.is_network_error(),
             Self::Reqwest(e) => e.is_network_error(),
+            Self::Roll(_) => false, //TODO
             Self::SeedData(e) => e.is_network_error(),
             Self::Serenity(_) => false,
             Self::Sql(_) => false,
@@ -2267,10 +2275,9 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
         }
         Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
     } else {
-        let Some(version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
-        let Some(settings) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
+        let Some((version, settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        let Some(web_version) = ootr_api_client.can_roll_on_web(None, version, world_count, false, UnlockSpoilerLog::Now).await else { println!("can't roll on web"); return Ok(None) };
+        let Some(web_version) = ootr_api_client.can_roll_on_web(None, &version, world_count, false, UnlockSpoilerLog::Now).await else { println!("can't roll on web"); return Ok(None) };
         let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
         Ok(Some(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}"))))
     }

@@ -1093,8 +1093,10 @@ impl Goal {
                 [arg] if arg == "s8" => SeedCommandParseResult::Regular { settings: s::s8_settings(), plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "an", description: format!("S8 seed") },
                 [arg] if arg == "weekly" => {
                     let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                    let mut settings = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event").single_settings().await.to_racetime()?.expect("no settings configured for weeklies").into_owned();
+                    let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
                     transaction.commit().await.to_racetime()?;
+                    let (_, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
+                    let mut settings = settings.into_owned();
                     settings.insert(format!("password_lock"), json!(true));
                     SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("weekly seed") }
                 }
@@ -1542,6 +1544,7 @@ impl GlobalState {
                 let mut rsl_process = rsl_cmd
                     .current_dir(&rsl_script_path)
                     .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
                     .spawn().at_command("RandomSettingsGenerator.py")?;
                 if let Some(input) = input {
                     rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(&input).await.at_command("RandomSettingsGenerator.py")?;
@@ -3883,10 +3886,12 @@ impl RaceHandler<GlobalState> for Handler {
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), s::s8_settings(), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "an", format!("S8 seed")).await
                             } else {
                                 let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                                let mut settings = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event").single_settings().await.to_racetime()?.expect("no settings configured for weeklies").into_owned();
+                                let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
+                                let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
                                 transaction.commit().await.to_racetime()?;
+                                let mut settings = settings.into_owned();
                                 settings.insert(format!("password_lock"), json!(true));
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
+                                this.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
                             },
                             Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
                         },
@@ -5064,7 +5069,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
             let event = race.event(&mut transaction).await?;
             if let Some(goal) = Goal::for_event(event.series, &*event.event) {
                 if let PrerollMode::Long = goal.preroll_seeds(Some((event.series, &*event.event))) {
-                    if let Some(settings) = race.single_settings(&mut transaction).await? {
+                    if let Some((version, settings)) = race.single_settings(&mut transaction).await? {
                         transaction.commit().await?;
                         if race.seed.files.is_none()
                         && race
@@ -5078,7 +5083,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                     PrerollMode::Long,
                                     false,
                                     None,
-                                    goal.rando_version(Some(&event)),
+                                    version.clone(),
                                     settings.clone(),
                                     serde_json::Map::default(),
                                     goal.unlock_spoiler_log(true, false),

@@ -4,7 +4,6 @@ use crate::{
         Tab,
     },
     prelude::*,
-    racetime_bot::VersionedBranch,
 };
 
 async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
@@ -28,9 +27,10 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
                         : "Short settings description (for race room welcome message): ";
                         : s::SHORT_WEEKLY_SETTINGS;
                     }
+                    @let (rando_version, single_settings) = event.single_settings().await?.expect("no settings configured for weeklies");
                     p {
                         : "Randomizer version: ";
-                        @match event.rando_version.as_ref().expect("no randomizer version configured for weeklies") {
+                        @match rando_version {
                             VersionedBranch::Pinned { version } => : version.to_string();
                             VersionedBranch::Latest { branch } => {
                                 : "latest ";
@@ -47,7 +47,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
                         }
                     }
                     p : "Settings:";
-                    pre : serde_json::to_string_pretty(event.single_settings.as_ref().expect("no settings configured for weeklies"))?;
+                    pre : serde_json::to_string_pretty(&single_settings)?;
                     p {
                         : "The data above is currently not editable for technical reasons. Please contact ";
                         : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?; // Fenhl

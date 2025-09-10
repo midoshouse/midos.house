@@ -19,8 +19,6 @@ use {
             PrerollMode,
             RollError,
             SeedCommandParseResult,
-            SeedRollUpdate,
-            VersionedBranch,
         },
     },
 };
