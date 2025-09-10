@@ -2251,33 +2251,27 @@ pub(crate) enum PracticeError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
-impl<E: Into<PracticeError>> From<E> for StatusOrError<PracticeError> {
-    fn from(e: E) -> Self {
-        Self::Err(e.into())
-    }
-}
-
-#[rocket::get("/event/<series>/<event>/practice")]
-pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Redirect, StatusOrError<PracticeError>> {
+#[rocket::get("/event/<series>/<event>/practice")] //TODO this should probably be POST, need to turn links pointing here into buttons to support that
+pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Option<Redirect>, PracticeError> {
     let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let Some(data) = Data::new(&mut transaction, series, event).await? else { println!("no such event"); return Ok(None) };
     transaction.commit().await?;
     if series == Series::CopaLatinoamerica && event == "2025" {
-        let rando_version = data.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
         let (settings, plando) = latam::settings_2025();
         let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
-        let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
+        let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
         if let Some(spoiler_log_path) = spoiler_log_path {
             fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
         }
-        Ok(Redirect::to(format!("/seed/{file_stem}")))
+        Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
     } else {
-        let version = data.rando_version.as_ref().ok_or(StatusOrError::Status(Status::NotFound))?;
-        let settings = data.single_settings().await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let Some(version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+        let Some(settings) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        let web_version = ootr_api_client.can_roll_on_web(None, version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let Some(web_version) = ootr_api_client.can_roll_on_web(None, version, world_count, false, UnlockSpoilerLog::Now).await else { println!("can't roll on web"); return Ok(None) };
         let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
-        Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+        Ok(Some(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}"))))
     }
 }
 

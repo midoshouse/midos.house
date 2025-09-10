@@ -2734,7 +2734,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
     }
 }
 
-#[rocket::get("/event/<series>/<event>/races/<id>/practice")] //TODO this should probably be POST, need to turn tab bar links pointing here into buttons to support that
+#[rocket::get("/event/<series>/<event>/races/<id>/practice")] //TODO this should probably be POST, need to turn links pointing here into buttons to support that
 pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str, id: Id<Races>) -> Result<Redirect, StatusOrError<Error>> {
     let _ = (series, event);
     let mut transaction = pool.begin().await?;
