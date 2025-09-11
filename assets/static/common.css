@@ -449,6 +449,12 @@ textarea {
     image-rendering: pixelated;
 }
 
+code,
+kbd,
+pre {
+    font-family: monospace, monospace; /* disable the browser-default special case which would render monospace smaller than surrounding text */
+}
+
 footer,
 .dimmed {
     color: gray;
