@@ -303,6 +303,7 @@ impl<'a> Data<'a> {
             (Series::League, "6") => from_file!("../../assets/event/league/chests-6-8.0.22.json"),
             (Series::League, "7") => from_file!("../../assets/event/league/chests-7-8.1.69.json"),
             (Series::League, "8") => from_file!("../../assets/event/league/chests-8-8.2.55.json"),
+            (Series::League, "9") => from_file!("../../assets/event/league/chests-9-8.3.json"),
             (Series::MixedPools, "1") => from_file!("../../assets/event/mp/chests-1-6.2.100-fenhl.4.json"),
             (Series::MixedPools, "2") => from_file!("../../assets/event/mp/chests-2-7.1.117-fenhl.17.json"),
             (Series::MixedPools, "3") => from_file!("../../assets/event/mp/chests-3-8.1.36-fenhl.6.riir.4.json"),
