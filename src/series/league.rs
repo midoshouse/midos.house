@@ -353,6 +353,7 @@ pub(crate) fn s9_settings() -> seed::Settings {
             "Eyedrops",
             "Claim Check",
         ]),
+        format!("shuffle_expensive_merchants") => json!(true),
         format!("shuffle_mapcompass") => json!("startwith"),
         format!("disabled_locations") => json!([
             "Deku Theater Mask of Truth",
@@ -399,6 +400,7 @@ pub(crate) fn s9_settings() -> seed::Settings {
         format!("free_scarecrow") => json!(true),
         format!("fast_bunny_hood") => json!(true),
         format!("ruto_already_f1_jabu") => json!(true),
+        format!("fast_shadow_boat") => json!(true),
         format!("chicken_count") => json!(3),
         format!("big_poe_count") => json!(1),
         format!("hint_dist_user") => json!({
@@ -517,6 +519,7 @@ pub(crate) fn s9_settings() -> seed::Settings {
             "30_skulltulas",
             "40_skulltulas",
             "50_skulltulas",
+            "unique_merchants",
         ]),
         format!("correct_chest_appearances") => json!("both"),
         format!("correct_potcrate_appearances") => json!("textures_content"),
