@@ -618,7 +618,7 @@
             "half": 3,
             "normal": 10,
             "double": 5,
-            "quadruple": 1,
+            "quadruple": 0,
             "ohko": 0
         },
         "deadly_bonks": {
