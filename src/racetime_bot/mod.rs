@@ -347,6 +347,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
+            | Self::PotsOfTime
             | Self::Rsl
             | Self::Sgl2023
             | Self::Sgl2024
@@ -359,7 +360,6 @@ impl Goal {
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
                 => English, //TODO change to bilingual English/French
-            | Self::PotsOfTime
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
@@ -592,11 +592,11 @@ impl Goal {
             | Self::Sgl2025
             | Self::SongsOfHope
                 => ctx.say("!seed: The settings used for the tournament").await?,
+            | Self::PotsOfTime
+                => ctx.say("!seed: The weights used for the tournament").await?,
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
                 => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
-            | Self::PotsOfTime
-                => ctx.say("!seed : Les poids utilisés pour le tournoi").await?,
             Self::Cc7 => {
                 ctx.say("!seed base: The tournament's base settings.").await?;
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
@@ -1025,7 +1025,7 @@ impl Goal {
                 SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::XoparCustom {
                     version: None, //TODO freeze version after the tournament
                     weights,
-                }, world_count: 1, unlock_spoiler_log, language: French, article: "une", description: format!("seed") }
+                }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") }
             }
             Self::Rsl => {
                 let (preset, world_count) = match args {
@@ -3252,12 +3252,12 @@ impl RaceHandler<GlobalState> for Handler {
                                 ],
                             ).await?,
                             Goal::PotsOfTime => ctx.send_message(
-                                "Bienvenue ! Ceci est une practice room pour le tournoi Pots Of Time. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/pot/1",
+                                "Welcome! This is a practice room for the Pots Of Time tournament. Learn more about the event at https://midos.house/event/pot/1",
                                 true,
                                 vec![
                                     ("Roll seed", ActionButton::Message {
                                         message: format!("!seed"),
-                                        help_text: Some(format!("Roll une seed avec les poids utilisés pour le tournoi.")),
+                                        help_text: Some(format!("Roll a seed with the weights used for the tournament.")),
                                         survey: None,
                                         submit: None,
                                     }),
@@ -3880,7 +3880,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 this.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
                                     version: None, //TODO freeze version after the tournament
                                     weights,
-                                }, 1, goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await
+                                }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                             }
                             Goal::StandardRuleset => if let (Series::Standard, "8" | "8cc") = (event.series, &*event.event) {
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), s::s8_settings(), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "an", format!("S8 seed")).await
