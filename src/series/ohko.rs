@@ -41,3 +41,19 @@ pub(crate) fn enter_form() -> RawHtml<String> {
         }
     }
 }
+
+pub(crate) fn s2_enter_form() -> RawHtml<String> {
+    html! {
+        article {
+            p {
+                : "To enter this tournament, request the ";
+                strong : "@battle royale";
+                : " role on ";
+                a(href = "https://discord.gg/ootrandomizer") : "the OoT Randomizer Discord server";
+                : ". See ";
+                a(href = "https://discord.com/channels/274180765816848384/1208046928504553483/1416697838007488572") : "this Discord message";
+                : " for details.";
+            }
+        }
+    }
+}
