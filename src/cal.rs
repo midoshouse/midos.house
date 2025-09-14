@@ -605,6 +605,7 @@ impl Race {
         match event.series {
             Series::BattleRoyale => match &*event.event {
                 "1" => {}
+                "2" => {} //TODO
                 _ => unimplemented!(),
             },
             Series::League => {} // this series is scheduled via the League website, which is auto-imported
