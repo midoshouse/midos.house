@@ -295,6 +295,7 @@ impl<'a> Data<'a> {
 
         Ok(match (self.series, &*self.event) {
             (Series::BattleRoyale, "1") => from_file!("../../assets/event/ohko/chests-1-8.0.json"), //TODO reroll with the plando
+            (Series::BattleRoyale, "2") => from_file!("../../assets/event/ohko/chests-2-8.3.json"),
             (Series::CoOp, "3") => ChestAppearances::VANILLA,
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaLatinoamerica, "2025") => from_file!("../../assets/event/latam/chests-2025-8.3.17-rob.1.json"),
