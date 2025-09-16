@@ -5307,13 +5307,17 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 }
                 eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                 if wait_time >= Duration::from_secs(16) {
-                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                    if let Environment::Production = Environment::default() {
+                        wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                    }
                 }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
             Err(e) => {
-                wheel::night_report(&format!("{}/error", night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await?;
+                if let Environment::Production = Environment::default() {
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await?;
+                }
                 break Err(e.into())
             }
         }
