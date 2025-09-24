@@ -337,7 +337,7 @@ pub(crate) fn s9_settings() -> seed::Settings {
         format!("shuffle_ganon_bosskey") => json!("medallions"),
         format!("open_forest") => json!("closed_deku"),
         format!("open_kakariko") => json!("open"),
-        format!("open_door_of_time") => json!(true),
+        format!("open_door_of_time") => json!("open"),
         format!("gerudo_fortress") => json!("fast"),
         format!("starting_age") => json!("random"),
         format!("spawn_positions") => json!([
@@ -346,7 +346,7 @@ pub(crate) fn s9_settings() -> seed::Settings {
         ]),
         format!("free_bombchu_drops") => json!(false),
         format!("shopsanity") => json!("4"),
-        format!("shopsanity_prices") => json!("random_adult"),
+        format!("special_deal_price_max") => json!(200),
         format!("adult_trade_start") => json!([
             "Prescription",
             "Eyeball Frog",
@@ -397,7 +397,7 @@ pub(crate) fn s9_settings() -> seed::Settings {
         format!("no_guard_stealth") => json!(true),
         format!("no_epona_race") => json!(true),
         format!("skip_some_minigame_phases") => json!(true),
-        format!("free_scarecrow") => json!(true),
+        format!("scarecrow_behavior") => json!("free"),
         format!("fast_bunny_hood") => json!(true),
         format!("ruto_already_f1_jabu") => json!(true),
         format!("fast_shadow_boat") => json!(true),
