@@ -413,11 +413,11 @@ impl Goal {
                 => PrerollMode::None,
             | Self::Cc7
             | Self::CoOpS3
+            | Self::LeagueS8
+            | Self::LeagueS9
                 => PrerollMode::Short,
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
-            | Self::LeagueS8
-            | Self::LeagueS9
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -2303,7 +2303,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
         unlisted: cal_event.is_private_async_part(),
         ranked: cal_event.is_private_async_part() || event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }), //HACK: private async parts must be marked as ranked so they don't immediately get published on finish/cancel
         require_even_teams: true,
-        start_delay: if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open { 30 } else { 15 },
+        start_delay: if cal_event.race.entrants == Entrants::Open && (event.series != Series::Standard || event.event != "w" || cal_event.race.round.as_ref().is_some_and(|round| round.contains("Qualifier"))) { 30 } else { 15 },
         time_limit: 24,
         time_limit_auto_complete: false,
         streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
@@ -2810,13 +2810,7 @@ impl RaceHandler<GlobalState> for Handler {
                             uri!(base_uri(), event::info(event.series, &*event.event)),
                         )
                     } else {
-                        if let (true, Some((_, weekly_name, qualifier_number))) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| regex_captures!(r"^(.+) Weekly \(Scrubs Live Qualifier ([0-9]+)\)$", round))) {
-                            format!(
-                                "Welcome to the {weekly_name} Weekly! This race doubles as the {} live qualifier for the Scrubs Tournament Season 7. See {} for details.",
-                                lang::english_ordinal(qualifier_number.parse().to_racetime()?),
-                                uri!(base_uri(), event::info(event.series, &*event.event)),
-                            )
-                        } else if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
+                        if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
                             format!(
                                 "Welcome to the {weekly_name} Weekly! Current settings: {}. See {} for details.",
                                 s::SHORT_WEEKLY_SETTINGS,
@@ -2899,8 +2893,7 @@ impl RaceHandler<GlobalState> for Handler {
                     let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
                     if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                         let ctx = ctx.clone();
-                        let game_audio_reminder = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase != "Qualifier")
-                            || event.series == Series::Standard && event.event == "w" && cal_event.race.round.as_ref().is_some_and(|round| round.contains("Qualifier"));
+                        let game_audio_reminder = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase != "Qualifier");
                         let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase != "Qualifier");
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
@@ -2919,7 +2912,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 if event.prevent_late_joins && data.status.value == RaceStatusValue::Open {
                                     ctx.set_invitational().await.expect("failed to make the room invitational");
                                 }
-                                if event.emulator_settings_reminder || game_audio_reminder { //HACK to dynamically enable emulator settings reminder for the weekly/Scrubs qualifier combo races
+                                if event.emulator_settings_reminder || game_audio_reminder {
                                     ctx.say(format!("@entrants Remember to show your emulator settings{}!",
                                         if game_audio_reminder { " and ensure you are streaming/recording game audio" } else { "" },
                                     )).await.expect("failed to send emulator settings notice");
