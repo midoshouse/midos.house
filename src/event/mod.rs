@@ -536,14 +536,23 @@ impl<'a> Data<'a> {
     pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
         Ok(match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => self.rando_version.clone().map(|rando_version| (rando_version, Cow::Owned(br::s1_settings()))), // support for randomized starting song
-            (Series::PotsOfTime, "1") => {
+            (Series::PotsOfTime, "1") | (Series::Rsl, "5" | "6") => {
                 #[derive(Deserialize)]
                 struct Plando {
                     settings: seed::Settings,
                 }
 
+                let (rsl_version, custom_override) = match (self.series, &*self.event) {
+                    (Series::PotsOfTime, "1") => (
+                        None, //TODO freeze version after the tournament
+                        Some(include_bytes!("../../assets/event/pot/weights-1.json")),
+                    ),
+                    (Series::Rsl, "5") => (Some(Version::new(2, 3, 8)), None),
+                    (Series::Rsl, "6") => (Some(Version::new(2, 5, 11)), None),
+                    (_, _) => unreachable!(), // checked by outer match
+                };
                 let rsl_script_path = rsl::VersionedPreset::Xopar {
-                    version: None, //TODO freeze version after the tournament
+                    version: rsl_version,
                     preset: rsl::Preset::League,
                 }.script_path().await?;
                 // check RSL script version
@@ -575,14 +584,18 @@ impl<'a> Data<'a> {
                     // add a sequence ID to the names of temporary plando files to prevent name collisions
                     rsl_cmd.arg(format!("--plando_filename_base=mh_{}", rsl::SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
                 }
-                rsl_cmd.arg("--override=-");
+                if custom_override.is_some() {
+                    rsl_cmd.arg("--override=-");
+                }
                 rsl_cmd.stdin(Stdio::piped());
                 rsl_cmd.arg("--no_seed");
                 let mut rsl_process = rsl_cmd
                     .current_dir(&rsl_script_path)
                     .stdout(Stdio::piped())
                     .spawn().at_command("RandomSettingsGenerator.py")?;
-                rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(include_bytes!("../../assets/event/pot/weights-1.json")).await.at_command("RandomSettingsGenerator.py")?;
+                if let Some(custom_override) = custom_override {
+                    rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(custom_override).await.at_command("RandomSettingsGenerator.py")?;
+                }
                 let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}
