@@ -497,7 +497,7 @@ impl Goal {
             Self::CopaDoBrasil => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 143) },
             Self::CopaLatinoamerica2025 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 3, 17, 1) },
             Self::LeagueS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 57) },
-            Self::LeagueS9 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 40) },
+            Self::LeagueS9 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 41) },
             Self::MixedPoolsS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17) },
             Self::MixedPoolsS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4) },
             Self::MixedPoolsS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 2, 76, 10) },
