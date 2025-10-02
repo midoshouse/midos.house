@@ -494,7 +494,11 @@ pub(crate) fn s9_settings() -> seed::Settings {
                     "HC (Storms Grotto)",
                     "HF (Cow Grotto)",
                 ]},
-                "junk":            {"order": 9, "weight": 0.0, "fixed": 2, "copies": 1,  "priority_stones": [
+                "important_check": {"order": 9, "weight": 0.0, "fixed": 3, "copies": 2,  "remove_stones": [
+                    "HC (Storms Grotto)",
+                    "HF (Cow Grotto)",
+                ]},
+                "junk":            {"order": 10, "weight": 0.0, "fixed": 2, "copies": 1,  "priority_stones": [
                     "HC (Storms Grotto)",
                     "HF (Cow Grotto)",
                 ]},
@@ -506,10 +510,6 @@ pub(crate) fn s9_settings() -> seed::Settings {
                 "named-item":      {"order": 0, "weight": 0.0, "fixed": 0, "copies": 2},
                 "woth":            {"order": 0, "weight": 0.0, "fixed": 0, "copies": 2},
                 "dual_always":     {"order": 0, "weight": 0.0, "fixed": 0, "copies": 0},
-                "important_check": {"order": 10, "weight": 0.0, "fixed": 3, "copies": 2,  "remove_stones": [
-                    "HC (Storms Grotto)",
-                    "HF (Cow Grotto)",
-                ]},
             },
         }),
         format!("misc_hints") => json!([
