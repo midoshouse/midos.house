@@ -84,6 +84,24 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     a(href = "https://discord.gg/hpHngEY") : "Join the Discord server";
                     : " for details.";
                 }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://scrubscentral.challonge.com/s7gM") : "Minuet brackets";
+                    }
+                    li {
+                        a(href = "https://scrubscentral.challonge.com/s7gB") : "Bolero brackets";
+                    }
+                    li {
+                        a(href = "https://scrubscentral.challonge.com/s7gS") : "Serenade brackets";
+                    }
+                    li {
+                        a(href = "https://scrubscentral.challonge.com/s7gN") : "Nocturne brackets";
+                    }
+                    li {
+                        a(href = "https://scrubscentral.challonge.com/s7gR") : "Requiem brackets";
+                    }
+                }
             }
         }),
         _ => None,
