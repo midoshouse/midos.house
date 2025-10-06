@@ -906,7 +906,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
         }
     } else {
         match (data.series, &*data.event) {
-            (Series::BattleRoyale, "1") => ohko::enter_form(),
+            (Series::BattleRoyale, "1") => ohko::s1_enter_form(),
             (Series::BattleRoyale, "2") => ohko::s2_enter_form(),
             (Series::Standard, "w") => s::weeklies_enter_form(me.as_ref()),
             _ => match data.team_config {

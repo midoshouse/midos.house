@@ -605,7 +605,37 @@ impl Race {
         match event.series {
             Series::BattleRoyale => match &*event.event {
                 "1" => {}
-                "2" => {} //TODO
+                "2" => {
+                    let schedule = RaceSchedule::Live { start: ohko::next_s2_race_after(now), end: None, room: None };
+                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
+                        let race = Race {
+                            id: Id::new(&mut *transaction).await?,
+                            series: event.series,
+                            event: event.event.to_string(),
+                            source: Source::Manual,
+                            entrants: Entrants::Open,
+                            phase: None,
+                            round: None,
+                            game: None,
+                            scheduling_thread: None,
+                            schedule_updated_at: None,
+                            fpa_invoked: false,
+                            breaks_used: false,
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            last_edited_by: None,
+                            last_edited_at: None,
+                            ignored: false,
+                            schedule_locked: false,
+                            notified: false,
+                            schedule,
+                        };
+                        race.save(&mut *transaction).await?;
+                        races.push(race);
+                    }
+                }
                 _ => unimplemented!(),
             },
             Series::League => {} // this series is scheduled via the League website, which is auto-imported
@@ -1580,6 +1610,7 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     let now = Utc::now();
+    let mut latest_instantiated_ohko_2_race = None;
     let mut latest_instantiated_weeklies = HashMap::new();
     for race in Race::for_event(transaction, http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
@@ -1677,15 +1708,26 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     cal_event.push(URL::new(uri!(base_uri(), event::info(event.series, &*event.event)).to_string()));
                 }
                 cal.add_event(cal_event);
-                if let (Series::Standard, "w", Some(round)) = (event.series, &*event.event, &race.round) {
-                    if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
+                match (event.series, &*event.event, &race.round) {
+                    (Series::BattleRoyale, "2", _) => latest_instantiated_ohko_2_race = Some(start),
+                    (Series::Standard, "w", Some(round)) => if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
                         if let Ok(kind) = kind.parse::<s::WeeklyKind>() {
                             latest_instantiated_weeklies.insert(kind, start);
                         }
-                    }
+                    },
+                    _ => {}
                 }
             }
         }
+    }
+    if let Some(start) = latest_instantiated_ohko_2_race {
+        let mut cal_event = ics::Event::new("ohko-2@midos.house", dtstamp(now));
+        cal_event.push(Summary::new("Battle Royale Season 2"));
+        let start = ohko::next_s2_race_after(start);
+        cal_event.push(dtstart(start));
+        cal_event.push(dtend(start + Series::BattleRoyale.default_race_duration()));
+        cal_event.push(RRule::new("FREQ=WEEKLY"));
+        cal.add_event(cal_event);
     }
     for (kind, start) in latest_instantiated_weeklies {
         let mut cal_event = ics::Event::new(format!("weekly-{}@midos.house", kind.cal_id_part()), dtstamp(now));

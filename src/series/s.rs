@@ -186,7 +186,7 @@ impl WeeklyKind {
                 Self::Kokiri => 18,
                 Self::Goron | Self::Zora => 14,
                 Self::Gerudo => 9,
-            }, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining weekly time");
+            }, 0, 0).unwrap().and_local_timezone(America::New_York).single().expect("error determining weekly time");
         }
         time
     }
