@@ -356,7 +356,7 @@ impl<'a> Data<'a> {
             (Series::WeTryToBeBetter, "2") => from_file!("../../assets/event/wttbb/chests-2-8.2.json"),
             (series, event) => {
                 if let Environment::Production = Environment::default() {
-                    wheel::night_report(&format!("{}/chestsError", night_path()), Some(&format!("no chest appearances specified for {}/{event}, using random chests", series.slug()))).await?;
+                    wheel::night_report(&format!("{}/chests/{}/{event}/error", night_path(), series.slug()), Some(&format!("no chest appearances specified for {}/{event}, using random chests", series.slug()))).await?;
                 }
                 ChestAppearances::random()
             }
