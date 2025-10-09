@@ -578,7 +578,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 
 pub(crate) fn async_rules(async_kind: AsyncKind) -> RawHtml<String> {
     match async_kind {
-        AsyncKind::Qualifier1 | AsyncKind::Qualifier2 | AsyncKind::Qualifier3 => unimplemented!(),
+        AsyncKind::Qualifier1 | AsyncKind::Qualifier2 | AsyncKind::Qualifier3 | AsyncKind::Seeding => unimplemented!(),
         AsyncKind::Tiebreaker1 => html! {
             p {
                 : "Welcome to the tie breaker for 4-1";
