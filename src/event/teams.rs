@@ -556,38 +556,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 qualified: bool,
             }
 
-            let teams = if let QualifierKind::Rank = qualifier_kind {
-                // teams are manually ranked so include ones that haven't submitted qualifier asyncs
-                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
-                    series = $1
-                    AND event = $2
-                    AND NOT resigned
-                    AND (
-                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                    )
-                "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
-                    .map_ok(|row| TeamRow {
-                        team: Team {
-                            id: row.id,
-                            series: data.series,
-                            event: data.event.to_string(),
-                            name: row.name,
-                            racetime_slug: row.racetime_slug,
-                            startgg_id: row.startgg_id,
-                            plural_name: row.plural_name,
-                            restream_consent: row.restream_consent,
-                            mw_impl: row.mw_impl,
-                            qualifier_rank: row.qualifier_rank,
-                        },
-                        hard_settings_ok: row.hard_settings_ok,
-                        mq_ok: row.mq_ok,
-                        lite_ok: row.lite_ok,
-                        pieces: None,
-                        qualified: false,
-                    })
-                    .try_collect::<Vec<_>>().await?
-            } else {
+            let teams = if let QualifierKind::Single { .. } = qualifier_kind {
                 sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
                     series = $1
                     AND event = $2
@@ -619,6 +588,38 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         qualified: row.qualified,
                     })
                     .try_collect().await?
+            } else {
+                // teams are manually ranked so include ones that haven't submitted qualifier asyncs
+                // also use for no qualifiers for now to avoid excluding teams that have submitted seeding asyncs (TODO display seeding async results like qual asyncs but with DNS below DNF instead of omitted)
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+                    series = $1
+                    AND event = $2
+                    AND NOT resigned
+                    AND (
+                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                    )
+                "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
+                    .map_ok(|row| TeamRow {
+                        team: Team {
+                            id: row.id,
+                            series: data.series,
+                            event: data.event.to_string(),
+                            name: row.name,
+                            racetime_slug: row.racetime_slug,
+                            startgg_id: row.startgg_id,
+                            plural_name: row.plural_name,
+                            restream_consent: row.restream_consent,
+                            mw_impl: row.mw_impl,
+                            qualifier_rank: row.qualifier_rank,
+                        },
+                        hard_settings_ok: row.hard_settings_ok,
+                        mq_ok: row.mq_ok,
+                        lite_ok: row.lite_ok,
+                        pieces: None,
+                        qualified: false,
+                    })
+                    .try_collect::<Vec<_>>().await?
             };
             let roles = data.team_config.roles();
             let mut signups = Vec::with_capacity(teams.len());
