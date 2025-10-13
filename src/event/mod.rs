@@ -701,7 +701,7 @@ impl<'a> Data<'a> {
                     }
                 }
                 @let practice_seed_url = match (self.series, &*self.event) {
-                    (Series::CopaLatinoamerica, "2025") => {
+                    (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025") => {
                         let url = uri!(practice_seed(self.series, &*self.event));
                         Some((url.to_string(), None))
                     }
@@ -2287,7 +2287,16 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
     let mut transaction = pool.begin().await?;
     let Some(data) = Data::new(&mut transaction, series, event).await? else { println!("no such event"); return Ok(None) };
     transaction.commit().await?;
-    if series == Series::CopaLatinoamerica && event == "2025" {
+    if series == Series::BattleRoyale && event == "2" {
+        let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
+        let (settings, plando) = ohko::s2_settings();
+        let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
+        let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+        if let Some(spoiler_log_path) = spoiler_log_path {
+            fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+        }
+        Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
+    } else if series == Series::CopaLatinoamerica && event == "2025" {
         let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
         let (settings, plando) = latam::settings_2025();
         let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;

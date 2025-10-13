@@ -27,7 +27,8 @@ CREATE TYPE public.async_kind AS ENUM (
     'qualifier2',
     'qualifier3',
     'tiebreaker1',
-    'tiebreaker2'
+    'tiebreaker2',
+    'seeding'
 );
 
 

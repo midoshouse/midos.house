@@ -174,6 +174,7 @@ pub(crate) enum UnlockSpoilerLog {
 #[derive(Clone, Copy, PartialEq, Eq, Sequence)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
+    BattleRoyaleS2,
     Cc7,
     CoOpS3,
     CopaDoBrasil,
@@ -224,6 +225,7 @@ impl Goal {
 
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
+            Self::BattleRoyaleS2 => series == Series::BattleRoyale && event == "2",
             Self::Cc7 => series == Series::Standard && event == "7cc",
             Self::CoOpS3 => series == Series::CoOp && event == "3",
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
@@ -263,6 +265,7 @@ impl Goal {
             | Self::StandardRuleset
             | Self::TriforceBlitz
                 => false,
+            | Self::BattleRoyaleS2
             | Self::Cc7
             | Self::CoOpS3
             | Self::CopaDoBrasil
@@ -296,6 +299,7 @@ impl Goal {
 
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
+            Self::BattleRoyaleS2 => "Battle Royale Season 2",
             Self::Cc7 => "Standard Tournament Season 7 Challenge Cup",
             Self::CoOpS3 => "Co-op Tournament Season 3",
             Self::CopaDoBrasil => "Copa do Brasil",
@@ -331,6 +335,7 @@ impl Goal {
 
     fn language(&self) -> Language {
         match self {
+            | Self::BattleRoyaleS2
             | Self::Cc7
             | Self::CoOpS3
             | Self::CopaDoBrasil
@@ -377,6 +382,7 @@ impl Goal {
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
             Self::TournoiFrancoS5 => Some(draft::Kind::TournoiFrancoS5),
+            | Self::BattleRoyaleS2
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
@@ -416,6 +422,7 @@ impl Goal {
             | Self::LeagueS8
             | Self::LeagueS9
                 => PrerollMode::Short,
+            | Self::BattleRoyaleS2
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
             | Self::Mq
@@ -457,6 +464,7 @@ impl Goal {
                     => UnlockSpoilerLog::Now,
                 | Self::TriforceBlitzProgressionSpoiler
                     => UnlockSpoilerLog::Progression,
+                | Self::BattleRoyaleS2
                 | Self::CopaDoBrasil
                 | Self::CopaLatinoamerica2025
                 | Self::LeagueS8
@@ -492,6 +500,7 @@ impl Goal {
 
     pub(crate) fn rando_version(&self, event: Option<&event::Data<'_>>) -> VersionedBranch {
         match self {
+            Self::BattleRoyaleS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::Cc7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::CoOpS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::CopaDoBrasil => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 143) },
@@ -538,6 +547,7 @@ impl Goal {
     /// Only returns a value for goals that only have one possible set of settings.
     pub(crate) fn single_settings(&self) -> Option<seed::Settings> {
         match self {
+            Self::BattleRoyaleS2 => None, // plando
             Self::Cc7 => None, // settings draft
             Self::CoOpS3 => Some(coop::s3_settings()),
             Self::CopaDoBrasil => Some(br::s1_settings()),
@@ -577,6 +587,7 @@ impl Goal {
                 => ctx.say("!seed: The settings used for the race").await?,
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
+            | Self::BattleRoyaleS2
             | Self::LeagueS8
             | Self::LeagueS9
                 => ctx.say("!seed: The settings used for the season").await?,
@@ -798,6 +809,15 @@ impl Goal {
                         SeedCommandParseResult::Regular { settings: self.single_settings().expect("goal has no single settings"), plando: serde_json::Map::default(), unlock_spoiler_log, language: self.language(), article, description }
                     }
                 }
+            Self::BattleRoyaleS2 => {
+                let (settings, plando) = ohko::s2_settings();
+                SeedCommandParseResult::Regular {
+                    language: English,
+                    article: "a",
+                    description: format!("seed"),
+                    settings, plando, unlock_spoiler_log,
+                }
+            }
             Self::Cc7 => {
                 let settings = match args {
                     [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
@@ -2992,6 +3012,18 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     match race_state {
                         RaceState::Init => match goal {
+                            Goal::BattleRoyaleS2 => ctx.send_message(
+                                "Welcome! This is a practice room for Battle Royale Season 2. Learn more about the tournament at https://midos.house/event/ohko/2",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the season.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::Cc7 => ctx.send_message(
                                 "Welcome! This is a practice room for the S7 Challenge Cup. Learn more about the tournament at https://midos.house/event/s/7cc",
                                 true,
@@ -3858,6 +3890,10 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::TournoiFrancoS4
                             | Goal::TournoiFrancoS5
                                 => unreachable!("should have draft state set"),
+                            Goal::BattleRoyaleS2 => {
+                                let (settings, plando) = ohko::s2_settings();
+                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                            }
                             Goal::CopaLatinoamerica2025 => {
                                 let (settings, plando) = latam::settings_2025();
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
@@ -4568,6 +4604,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
+                    | Goal::BattleRoyaleS2
                     | Goal::Cc7
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
