@@ -2289,7 +2289,8 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
     transaction.commit().await?;
     if series == Series::BattleRoyale && event == "2" {
         let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
-        let (settings, plando) = ohko::s2_settings();
+        let (mut settings, plando) = ohko::s2_settings();
+        settings.remove("password_lock");
         let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
         let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
         if let Some(spoiler_log_path) = spoiler_log_path {
@@ -2298,7 +2299,8 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
         Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
     } else if series == Series::CopaLatinoamerica && event == "2025" {
         let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
-        let (settings, plando) = latam::settings_2025();
+        let (mut settings, plando) = latam::settings_2025();
+        settings.remove("password_lock");
         let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
         let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
         if let Some(spoiler_log_path) = spoiler_log_path {
