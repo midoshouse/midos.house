@@ -4951,7 +4951,13 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             msg.push('>');
             msg.build()
         } else {
-            let ping_standard = event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD);
+            let ping_role = if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+                Some(RoleId::new(640750480246571014)) // @Standard
+            } else if event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+                Some(RoleId::new(1208091436608921730)) // @battle royale
+            } else {
+                None
+            };
             let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                 (Some(phase), None) => Some(phase.clone()),
@@ -4959,8 +4965,8 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 (None, None) => None,
             };
             let mut msg = MessageBuilder::default();
-            if ping_standard {
-                msg.mention(&RoleId::new(640750480246571014)); // @Standard
+            if let Some(ping_role) = ping_role {
+                msg.mention(&ping_role);
                 msg.push(' ');
             }
             msg.push("race starting ");
@@ -5062,11 +5068,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             match room_url {
                 Ok(room_url) => {
                     msg.push(' ');
-                    if !ping_standard {
+                    if ping_role.is_none() {
                         msg.push('<');
                     }
                     msg.push(room_url);
-                    if !ping_standard {
+                    if ping_role.is_none() {
                         msg.push('>');
                     }
                 }
