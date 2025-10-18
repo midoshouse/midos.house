@@ -726,10 +726,10 @@ impl Race {
                         scheduling_thread: None,
                         schedule: RaceSchedule::Live {
                             start: {
-                                // source timestamp is without year, guess the year by assuming all races in the event are between 2024-09-01 and 2025-08-31
-                                let start = NaiveDateTime::parse_from_str(&format!("2024 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?;
-                                if start < America::New_York.with_ymd_and_hms(2024, 9, 1, 0, 0, 0).single_ok()? {
-                                    NaiveDateTime::parse_from_str(&format!("2025 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?
+                                // source timestamp is without year, guess the year by assuming all races in the event are between 2025-09-01 and 2026-08-31
+                                let start = NaiveDateTime::parse_from_str(&format!("2025 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?;
+                                if start < America::New_York.with_ymd_and_hms(2025, 9, 1, 0, 0, 0).single_ok()? {
+                                    NaiveDateTime::parse_from_str(&format!("2026 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?
                                 } else {
                                     start
                                 }
