@@ -281,6 +281,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
                             }
+                            li {
+                                a(href = uri!(event::info(Series::SpeedGaming, "2023live"))) : "In-person event";
+                            }
                         }
                     }
                 }
@@ -307,6 +310,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
                             }
+                            li {
+                                a(href = uri!(event::info(Series::SpeedGaming, "2023onl"))) : "Online event";
+                            }
                         }
                     }
                 }
@@ -329,6 +335,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                             li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
+                            }
+                            li {
+                                a(href = uri!(event::info(Series::SpeedGaming, "2024live"))) : "In-person event";
                             }
                         }
                     }
@@ -356,6 +365,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
                             }
+                            li {
+                                a(href = uri!(event::info(Series::SpeedGaming, "2024onl"))) : "Online event";
+                            }
                         }
                     }
                 }
@@ -379,6 +391,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
                             }
+                            li {
+                                a(href = uri!(event::info(Series::SpeedGaming, "2025live"))) : "In-person event";
+                            }
                         }
                     }
                 }
@@ -394,6 +409,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         h2 : "See also";
                         ul {
                             li {
+                                a(href = "https://docs.google.com/document/d/1SFmkuknmCqfO9EmTwMVKmKdema5OQ1InUlbuy16zsy8/edit") : "Rules document";
+                            }
+                            li {
                                 a(href = "https://sglive.speedgaming.org/") : "Main SGL event page";
                             }
                             li {
@@ -401,6 +419,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                             li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
+                            }
+                            li {
+                                a(href = uri!(event::info(Series::SpeedGaming, "2025onl"))) : "Online event";
                             }
                         }
                     }
