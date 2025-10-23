@@ -12,7 +12,7 @@ use {
 pub(crate) fn next_s2_race_after(min_time: DateTime<impl TimeZone>) -> DateTime<Utc> {
     let mut time = Utc.with_ymd_and_hms(2025, 10, 18, 20, 0, 0).single().expect("wrong hardcoded datetime");
     while time <= min_time {
-        let date = time.date_naive().checked_add_days(Days::new(14)).unwrap();
+        let date = time.date_naive().checked_add_days(Days::new(7)).unwrap();
         time = date.and_hms_opt(20, 0, 0).unwrap().and_utc();
     }
     time
