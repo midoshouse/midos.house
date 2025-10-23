@@ -180,7 +180,8 @@ pub(crate) async fn add_or_update_race(transaction: &mut Transaction<'_, Postgre
         Source::Challonge { id } => if let Source::Challonge { id: iter_id } = &iter_race.source { iter_id == id } else { false },
         Source::League { id } => if let Source::League { id: iter_id } = &iter_race.source { iter_id == id } else { false },
         Source::StartGG { event, set } => if let Source::StartGG { event: iter_event, set: iter_set } = &iter_race.source { iter_event == event && iter_set == set } else { false },
-        Source::SpeedGaming { id } => if let Source::SpeedGaming { id: iter_id } = &iter_race.source { iter_id == id } else { false },
+        Source::SpeedGamingOnline { id } => if let Source::SpeedGamingOnline { id: iter_id } = &iter_race.source { iter_id == id } else { false },
+        Source::SpeedGamingInPerson { id } => if let Source::SpeedGamingInPerson { id: iter_id } = &iter_race.source { iter_id == id } else { false },
         Source::Sheet { .. } | Source::Manual =>
             matches!(iter_race.source, Source::Sheet { .. } | Source::Manual)
             && iter_race.series == race.series

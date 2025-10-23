@@ -9,11 +9,12 @@ use crate::{
 /// Rate limit once per minute according to DMs with tsigma6
 const RATE_LIMIT: Duration = Duration::from_secs(60);
 
-static CACHE: LazyLock<Mutex<(Instant, Schedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, Schedule::default())));
+static ONLINE_CACHE: LazyLock<Mutex<(Instant, OnlineSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, OnlineSchedule::default())));
+static IN_PERSON_CACHE: LazyLock<Mutex<(Instant, InPersonSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, InPersonSchedule::default())));
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct RestreamMatch {
-    players: Vec<Player>,
+    players: Vec<OnlinePlayer>,
     pub(crate) id: i64,
     title: String,
 }
@@ -76,11 +77,11 @@ struct RestreamChannel {
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Player {
+struct OnlinePlayer {
     streaming_from: String,
 }
 
-impl Player {
+impl OnlinePlayer {
     async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, entrant: &Entrant) -> Result<bool, cal::Error> {
         Ok(match entrant {
             Entrant::MidosHouseTeam(team) => if_chain! {
@@ -119,7 +120,7 @@ impl Restream {
             && !cal_event.race.has_any_room() // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
             && self.timezone.is_empty() // timezone is a freeform text field. When non-empty, the when_countdown timestamp is essentially meaningless (it is the timestamp entered by the user, reinterpreted as America/New_York and then converted to UTC). A tournament organizer will later fix the timestamp and clear the timezone field
         {
-            assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGaming { id }), cal::Source::Manual | cal::Source::SpeedGaming { id: _ }));
+            assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGamingOnline { id }), cal::Source::Manual | cal::Source::SpeedGamingOnline { id: _ }));
             let schedule_changed = match cal_event.race.schedule {
                 RaceSchedule::Live { start, .. } => (start != self.when_countdown).then_some(true),
                 _ => Some(false),
@@ -239,11 +240,11 @@ impl Restream {
     }
 }
 
-type Schedule = Vec<Restream>;
+type OnlineSchedule = Vec<Restream>;
 
-pub(crate) async fn schedule(http_client: &reqwest::Client, event_slug: &str) -> wheel::Result<Schedule> {
+pub(crate) async fn online_schedule(http_client: &reqwest::Client, event_slug: &str) -> wheel::Result<OnlineSchedule> {
     let now = Utc::now();
-    lock!(cache = CACHE; {
+    lock!(cache = ONLINE_CACHE; {
         let (ref mut next_request, ref mut cache) = *cache;
         if *next_request <= Instant::now() {
             *cache = http_client.get("https://speedgaming.org/api/schedule")
@@ -252,6 +253,165 @@ pub(crate) async fn schedule(http_client: &reqwest::Client, event_slug: &str) ->
                     ("from", &now.to_rfc3339()), // no need to look for races created in the past minute since filters by start time with stream delay
                     ("to", &(now + TimeDelta::days(365)).to_rfc3339()), // required because the default is some very short interval (less than 1 week)
                 ])
+                .send().await?
+                .detailed_error_for_status().await?
+                .json_with_text_in_error().await?;
+            *next_request = Instant::now() + RATE_LIMIT;
+        }
+        Ok(cache.clone())
+    })
+}
+
+#[derive(Clone, Deserialize)]
+pub(crate) struct InPersonMatch {
+    pub(crate) id: i64,
+    generated_seed: Option<GeneratedSeed>,
+    /// **Warning:** Incorrectly represented timestamp, claims to be in UTC but is actually in America/New_York, needs to be reinterpreted. Will be fixed for 2026 according to maintainer.
+    scheduled_at: DateTime<Utc>,
+    /// Appears to be correct unlike `scheduled_at`.
+    finished_at: Option<DateTime<Utc>>,
+    pub(crate) players: Vec<InPersonPlayer>,
+}
+
+impl InPersonMatch {
+    pub(crate) async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, race: &Race) -> Result<bool, cal::Error> {
+        Ok(match &race.entrants {
+            Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => false,
+            Entrants::Two(entrants) => {
+                if self.players.len() == 2 {
+                    'permutations: for players in self.players.iter().permutations(2) {
+                        for (entrant, player) in entrants.iter().zip_eq(players) {
+                            if !player.matches(&mut *transaction, entrant).await? {
+                                continue 'permutations
+                            }
+                        }
+                        return Ok(true)
+                    }
+                }
+                false
+            }
+            Entrants::Three(entrants) => {
+                if self.players.len() == 3 {
+                    'permutations: for players in self.players.iter().permutations(3) {
+                        for (entrant, player) in entrants.iter().zip_eq(players) {
+                            if !player.matches(&mut *transaction, entrant).await? {
+                                continue 'permutations
+                            }
+                        }
+                        return Ok(true)
+                    }
+                }
+                false
+            }
+        })
+    }
+
+    pub(crate) async fn update_race<'a>(&self, db_pool: &PgPool, mut transaction: Transaction<'a, Postgres>, discord_ctx: &DiscordCtx, event: &Data<'_>, cal_event: &mut cal::Event) -> Result<Transaction<'a, Postgres>, event::Error> {
+        if !cal_event.race.schedule_locked {
+            if let Some(finished_at) = self.finished_at {
+                if let Some(end) = cal_event.end_mut() {
+                    if end.is_none() {
+                        *end = Some(finished_at);
+                        cal_event.race.save(&mut transaction).await?;
+                        transaction.commit().await?;
+                        transaction = db_pool.begin().await?;
+                    }
+                }
+            }
+            if !cal_event.race.has_any_room() { // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
+                let scheduled_at = self.scheduled_at.naive_local().and_local_timezone(America::New_York).single_ok()?.to_utc();
+                assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGamingInPerson { id: self.id }), cal::Source::Manual | cal::Source::SpeedGamingInPerson { id: _ }));
+                let schedule_changed = match cal_event.race.schedule {
+                    RaceSchedule::Live { start, .. } => (start != scheduled_at).then_some(true),
+                    _ => Some(false),
+                };
+                cal_event.race.schedule.set_live_start(scheduled_at);
+                if let Some(was_scheduled) = schedule_changed {
+                    cal_event.race.save(&mut transaction).await?;
+                    transaction.commit().await?;
+                    transaction = db_pool.begin().await?;
+                    if let Some(thread) = cal_event.race.scheduling_thread {
+                        let msg = if_chain! {
+                            if let French = event.language;
+                            if cal_event.race.game.is_none();
+                            if scheduled_at - Utc::now() >= TimeDelta::minutes(30);
+                            then {
+                                MessageBuilder::default()
+                                    .push("Votre race a été planifiée pour le ")
+                                    .push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
+                                    .push('.')
+                                    .build()
+                            } else {
+                                let mut response_content = MessageBuilder::default();
+                                if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                                    for team in cal_event.active_teams() {
+                                        response_content.mention_team(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), team).await?;
+                                        response_content.push(' ');
+                                    }
+                                }
+                                response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                response_content.push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
+                                response_content.push('.');
+                                if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                                    response_content.push(" Please get your equipment and report to the tournament room.");
+                                }
+                                response_content.build()
+                            }
+                        };
+                        thread.say(discord_ctx, msg).await?;
+                    }
+                }
+            }
+            if let Some(GeneratedSeed { seed_url }) = &self.generated_seed {
+                let _ = seed_url; //TODO backup seed and associate with race
+            }
+        }
+        Ok(transaction)
+    }
+}
+
+#[derive(Clone, Deserialize)]
+struct GeneratedSeed {
+    seed_url: Url,
+}
+
+#[derive(Clone, Deserialize)]
+pub(crate) struct InPersonPlayer {
+    pub(crate) user: User,
+}
+
+impl InPersonPlayer {
+    async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, entrant: &Entrant) -> Result<bool, cal::Error> {
+        Ok(match entrant {
+            Entrant::MidosHouseTeam(team) => if_chain! {
+                if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one();
+                if let Some(ref discord) = member.discord;
+                then {
+                    discord.id == self.user.discord_id
+                } else {
+                    false
+                }
+            },
+            Entrant::Discord { id, .. } => *id == self.user.discord_id,
+            Entrant::Named { .. } => false,
+        })
+    }
+}
+
+#[derive(Clone, Deserialize)]
+pub(crate) struct User {
+    pub(crate) discord_id: UserId,
+}
+
+type InPersonSchedule = Vec<InPersonMatch>;
+
+pub(crate) async fn in_person_schedule(http_client: &reqwest::Client, tournament_id: i64) -> wheel::Result<InPersonSchedule> {
+    lock!(cache = IN_PERSON_CACHE; {
+        let (ref mut next_request, ref mut cache) = *cache;
+        if *next_request <= Instant::now() {
+            *cache = http_client.get("https://onsite.speedgaming.org/api/matches")
+                .query(&[("tournament_id", tournament_id)])
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;

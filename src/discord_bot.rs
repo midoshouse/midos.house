@@ -1267,7 +1267,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     }
                                     Ok(Some(race)) => {
                                         let race = Race {
-                                            source: if let cal::Source::SpeedGaming { id: _ } = race.source {
+                                            source: if let cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } = race.source {
                                                 if reset_schedule { cal::Source::Manual } else { race.source }
                                             } else {
                                                 race.source
@@ -1352,6 +1352,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     let response_content = if was_scheduled {
                                         format!("Please contact a tournament organizer to reschedule this race.")
                                     } else {
+                                        //TODO different message if an onsite tournament ID is configured and the race was attempted to be scheduled for after the event start
                                         MessageBuilder::default()
                                             .push("Please use <https://speedgaming.org/")
                                             .push(speedgaming_slug)
@@ -1506,6 +1507,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     let response_content = if was_scheduled {
                                         format!("Please contact a tournament organizer to reschedule this race.")
                                     } else {
+                                        //TODO different message if an onsite tournament ID is configured and the race was attempted to be scheduled for after the event start
                                         MessageBuilder::default()
                                             .push("Please use <https://speedgaming.org/")
                                             .push(speedgaming_slug)
@@ -2167,9 +2169,29 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &http_client, race_id).await?, kind: cal::EventKind::Normal };
                         let event = cal_event.race.event(&mut transaction).await?;
                         let Some(ref speedgaming_slug) = event.speedgaming_slug else { panic!("sgdisambig interaction for race from non-SpeedGaming event") };
-                        let schedule = sgl::schedule(&http_client, speedgaming_slug).await?;
+                        let schedule = sgl::online_schedule(&http_client, speedgaming_slug).await?;
                         let restream = schedule.into_iter().find(|restream| restream.matches().any(|restream_match| restream_match.id == speedgaming_id)).expect("no such SpeedGaming match ID");
                         transaction = restream.update_race(&db_pool, transaction, ctx, &event, &mut cal_event, speedgaming_id).await?;
+                        cal_event.race.save(&mut transaction).await?;
+                        transaction.commit().await?;
+                    } else if let Some(speedgaming_id) = custom_id.strip_prefix("sgonsitedisambig_") {
+                        let (db_pool, http_client) = {
+                            let data = ctx.data.read().await;
+                            (
+                                data.get::<DbPool>().expect("database connection pool missing from Discord context").clone(),
+                                data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                            )
+                        };
+                        let mut transaction = db_pool.begin().await?;
+                        let speedgaming_id = speedgaming_id.parse::<i64>()?;
+                        let ComponentInteractionDataKind::StringSelect { ref values } = interaction.data.kind else { panic!("sgonsitedisambig interaction with unexpected payload") };
+                        let race_id = values.iter().exactly_one().expect("sgonsitedisambig interaction with unexpected payload").parse()?;
+                        let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &http_client, race_id).await?, kind: cal::EventKind::Normal };
+                        let event = cal_event.race.event(&mut transaction).await?;
+                        let Some(speedgaming_in_person_id) = event.speedgaming_in_person_id else { panic!("sgonsitedisambig interaction for race from non-SpeedGaming-on-site event") };
+                        let schedule = sgl::in_person_schedule(&http_client, speedgaming_in_person_id).await?;
+                        let schedule_match = schedule.into_iter().find(|schedule_match| schedule_match.id == speedgaming_id).expect("no such SpeedGaming on-site match ID");
+                        transaction = schedule_match.update_race(&db_pool, transaction, ctx, &event, &mut cal_event).await?;
                         cal_event.race.save(&mut transaction).await?;
                         transaction.commit().await?;
                     } else {
@@ -2305,6 +2327,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
                 } else {
                     content.push("/submit> to schedule your race.");
                 }
+                //TODO include in-person scheduling link (or only show that link if event has started)
             } else {
                 content.mention_command(command_ids.schedule, "schedule");
                 if event.asyncs_allowed() {

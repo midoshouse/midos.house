@@ -280,7 +280,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
         match cal_event.race.source {
-            cal::Source::Manual | cal::Source::Sheet { .. } => {}
+            cal::Source::Manual | cal::Source::Sheet { .. } | cal::Source::SpeedGamingOnline { .. } | cal::Source::SpeedGamingInPerson { .. } => {}
             cal::Source::Challonge { .. } => {} //TODO
             cal::Source::League { id } => if let (Some(winner), Some(loser), Some(winning_time), Some(losing_time)) = (
                 match &winner {
@@ -330,7 +330,6 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     }
                 }
             },
-            cal::Source::SpeedGaming { .. } => {} //TODO
         }
         if_chain! {
             if let Entrant::MidosHouseTeam(winner) = winner;

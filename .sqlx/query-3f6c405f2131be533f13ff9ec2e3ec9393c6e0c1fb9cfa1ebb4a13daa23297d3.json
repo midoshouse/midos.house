@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            series AS \"series: Series\",\n            event,\n            challonge_match,\n            league_id,\n            sheet_timestamp,\n            startgg_event,\n            startgg_set AS \"startgg_set: startgg::ID\",\n            speedgaming_id,\n            game,\n            team1 AS \"team1: Id<Teams>\",\n            team2 AS \"team2: Id<Teams>\",\n            team3 AS \"team3: Id<Teams>\",\n            p1,\n            p2,\n            p3,\n            p1_discord AS \"p1_discord: PgSnowflake<UserId>\",\n            p2_discord AS \"p2_discord: PgSnowflake<UserId>\",\n            p1_racetime,\n            p2_racetime,\n            p1_twitch,\n            p2_twitch,\n            total,\n            finished,\n            phase,\n            round,\n            scheduling_thread AS \"scheduling_thread: PgSnowflake<ChannelId>\",\n            draft_state AS \"draft_state: Json<Draft>\",\n            start,\n            async_start1,\n            async_start2,\n            async_start3,\n            end_time,\n            async_end1,\n            async_end2,\n            async_end3,\n            room,\n            async_room1,\n            async_room2,\n            async_room3,\n            schedule_updated_at,\n            fpa_invoked,\n            breaks_used,\n            file_stem,\n            locked_spoiler_log_path,\n            web_id,\n            web_gen_time,\n            is_tfb_dev,\n            tfb_uuid,\n            hash1 AS \"hash1: HashIcon\",\n            hash2 AS \"hash2: HashIcon\",\n            hash3 AS \"hash3: HashIcon\",\n            hash4 AS \"hash4: HashIcon\",\n            hash5 AS \"hash5: HashIcon\",\n            seed_password,\n            video_url,\n            restreamer,\n            video_url_fr,\n            restreamer_fr,\n            video_url_de,\n            restreamer_de,\n            video_url_pt,\n            restreamer_pt,\n            video_url_es,\n            restreamer_es,\n            last_edited_by AS \"last_edited_by: Id<Users>\",\n            last_edited_at,\n            ignored,\n            schedule_locked,\n            notified\n        FROM races WHERE id = $1",
+  "query": "SELECT\n            series AS \"series: Series\",\n            event,\n            challonge_match,\n            league_id,\n            sheet_timestamp,\n            startgg_event,\n            startgg_set AS \"startgg_set: startgg::ID\",\n            speedgaming_id,\n            speedgaming_onsite_id,\n            game,\n            team1 AS \"team1: Id<Teams>\",\n            team2 AS \"team2: Id<Teams>\",\n            team3 AS \"team3: Id<Teams>\",\n            p1,\n            p2,\n            p3,\n            p1_discord AS \"p1_discord: PgSnowflake<UserId>\",\n            p2_discord AS \"p2_discord: PgSnowflake<UserId>\",\n            p1_racetime,\n            p2_racetime,\n            p1_twitch,\n            p2_twitch,\n            total,\n            finished,\n            phase,\n            round,\n            scheduling_thread AS \"scheduling_thread: PgSnowflake<ChannelId>\",\n            draft_state AS \"draft_state: Json<Draft>\",\n            start,\n            async_start1,\n            async_start2,\n            async_start3,\n            end_time,\n            async_end1,\n            async_end2,\n            async_end3,\n            room,\n            async_room1,\n            async_room2,\n            async_room3,\n            schedule_updated_at,\n            fpa_invoked,\n            breaks_used,\n            file_stem,\n            locked_spoiler_log_path,\n            web_id,\n            web_gen_time,\n            is_tfb_dev,\n            tfb_uuid,\n            hash1 AS \"hash1: HashIcon\",\n            hash2 AS \"hash2: HashIcon\",\n            hash3 AS \"hash3: HashIcon\",\n            hash4 AS \"hash4: HashIcon\",\n            hash5 AS \"hash5: HashIcon\",\n            seed_password,\n            video_url,\n            restreamer,\n            video_url_fr,\n            restreamer_fr,\n            video_url_de,\n            restreamer_de,\n            video_url_pt,\n            restreamer_pt,\n            video_url_es,\n            restreamer_es,\n            last_edited_by AS \"last_edited_by: Id<Users>\",\n            last_edited_at,\n            ignored,\n            schedule_locked,\n            notified\n        FROM races WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -45,206 +45,211 @@
       },
       {
         "ordinal": 8,
+        "name": "speedgaming_onsite_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
         "name": "game",
         "type_info": "Int2"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "team1: Id<Teams>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "team2: Id<Teams>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "team3: Id<Teams>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "p1",
         "type_info": "Text"
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "p2",
         "type_info": "Text"
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "p3",
         "type_info": "Text"
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "p1_discord: PgSnowflake<UserId>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "p2_discord: PgSnowflake<UserId>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "p1_racetime",
         "type_info": "Text"
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "p2_racetime",
         "type_info": "Text"
       },
       {
-        "ordinal": 19,
+        "ordinal": 20,
         "name": "p1_twitch",
         "type_info": "Text"
       },
       {
-        "ordinal": 20,
+        "ordinal": 21,
         "name": "p2_twitch",
         "type_info": "Text"
       },
       {
-        "ordinal": 21,
+        "ordinal": 22,
         "name": "total",
         "type_info": "Int4"
       },
       {
-        "ordinal": 22,
+        "ordinal": 23,
         "name": "finished",
         "type_info": "Int4"
       },
       {
-        "ordinal": 23,
+        "ordinal": 24,
         "name": "phase",
         "type_info": "Text"
       },
       {
-        "ordinal": 24,
+        "ordinal": 25,
         "name": "round",
         "type_info": "Text"
       },
       {
-        "ordinal": 25,
+        "ordinal": 26,
         "name": "scheduling_thread: PgSnowflake<ChannelId>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 26,
+        "ordinal": 27,
         "name": "draft_state: Json<Draft>",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 27,
+        "ordinal": 28,
         "name": "start",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 28,
+        "ordinal": 29,
         "name": "async_start1",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 29,
+        "ordinal": 30,
         "name": "async_start2",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 30,
+        "ordinal": 31,
         "name": "async_start3",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 31,
+        "ordinal": 32,
         "name": "end_time",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 32,
+        "ordinal": 33,
         "name": "async_end1",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 33,
+        "ordinal": 34,
         "name": "async_end2",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 34,
+        "ordinal": 35,
         "name": "async_end3",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 35,
+        "ordinal": 36,
         "name": "room",
         "type_info": "Text"
       },
       {
-        "ordinal": 36,
+        "ordinal": 37,
         "name": "async_room1",
         "type_info": "Text"
       },
       {
-        "ordinal": 37,
+        "ordinal": 38,
         "name": "async_room2",
         "type_info": "Text"
       },
       {
-        "ordinal": 38,
+        "ordinal": 39,
         "name": "async_room3",
         "type_info": "Text"
       },
       {
-        "ordinal": 39,
+        "ordinal": 40,
         "name": "schedule_updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 40,
+        "ordinal": 41,
         "name": "fpa_invoked",
         "type_info": "Bool"
       },
       {
-        "ordinal": 41,
+        "ordinal": 42,
         "name": "breaks_used",
         "type_info": "Bool"
       },
       {
-        "ordinal": 42,
+        "ordinal": 43,
         "name": "file_stem",
         "type_info": "Text"
       },
       {
-        "ordinal": 43,
+        "ordinal": 44,
         "name": "locked_spoiler_log_path",
         "type_info": "Text"
       },
       {
-        "ordinal": 44,
+        "ordinal": 45,
         "name": "web_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 45,
+        "ordinal": 46,
         "name": "web_gen_time",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 46,
+        "ordinal": 47,
         "name": "is_tfb_dev",
         "type_info": "Bool"
       },
       {
-        "ordinal": 47,
+        "ordinal": 48,
         "name": "tfb_uuid",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 48,
+        "ordinal": 49,
         "name": "hash1: HashIcon",
         "type_info": {
           "Custom": {
@@ -289,7 +294,7 @@
         }
       },
       {
-        "ordinal": 49,
+        "ordinal": 50,
         "name": "hash2: HashIcon",
         "type_info": {
           "Custom": {
@@ -334,7 +339,7 @@
         }
       },
       {
-        "ordinal": 50,
+        "ordinal": 51,
         "name": "hash3: HashIcon",
         "type_info": {
           "Custom": {
@@ -379,7 +384,7 @@
         }
       },
       {
-        "ordinal": 51,
+        "ordinal": 52,
         "name": "hash4: HashIcon",
         "type_info": {
           "Custom": {
@@ -424,7 +429,7 @@
         }
       },
       {
-        "ordinal": 52,
+        "ordinal": 53,
         "name": "hash5: HashIcon",
         "type_info": {
           "Custom": {
@@ -469,82 +474,82 @@
         }
       },
       {
-        "ordinal": 53,
+        "ordinal": 54,
         "name": "seed_password",
         "type_info": "Bpchar"
       },
       {
-        "ordinal": 54,
+        "ordinal": 55,
         "name": "video_url",
         "type_info": "Text"
       },
       {
-        "ordinal": 55,
+        "ordinal": 56,
         "name": "restreamer",
         "type_info": "Text"
       },
       {
-        "ordinal": 56,
+        "ordinal": 57,
         "name": "video_url_fr",
         "type_info": "Text"
       },
       {
-        "ordinal": 57,
+        "ordinal": 58,
         "name": "restreamer_fr",
         "type_info": "Text"
       },
       {
-        "ordinal": 58,
+        "ordinal": 59,
         "name": "video_url_de",
         "type_info": "Text"
       },
       {
-        "ordinal": 59,
+        "ordinal": 60,
         "name": "restreamer_de",
         "type_info": "Text"
       },
       {
-        "ordinal": 60,
+        "ordinal": 61,
         "name": "video_url_pt",
         "type_info": "Text"
       },
       {
-        "ordinal": 61,
+        "ordinal": 62,
         "name": "restreamer_pt",
         "type_info": "Text"
       },
       {
-        "ordinal": 62,
+        "ordinal": 63,
         "name": "video_url_es",
         "type_info": "Text"
       },
       {
-        "ordinal": 63,
+        "ordinal": 64,
         "name": "restreamer_es",
         "type_info": "Text"
       },
       {
-        "ordinal": 64,
+        "ordinal": 65,
         "name": "last_edited_by: Id<Users>",
         "type_info": "Int8"
       },
       {
-        "ordinal": 65,
+        "ordinal": 66,
         "name": "last_edited_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 66,
+        "ordinal": 67,
         "name": "ignored",
         "type_info": "Bool"
       },
       {
-        "ordinal": 67,
+        "ordinal": 68,
         "name": "schedule_locked",
         "type_info": "Bool"
       },
       {
-        "ordinal": 68,
+        "ordinal": 69,
         "name": "notified",
         "type_info": "Bool"
       }
@@ -557,6 +562,7 @@
     "nullable": [
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -626,5 +632,5 @@
       false
     ]
   },
-  "hash": "b32d3acff0894cc8a34bada3b280a9733225d66a2e0076c80928733b9de0c43a"
+  "hash": "3f6c405f2131be533f13ff9ec2e3ec9393c6e0c1fb9cfa1ebb4a13daa23297d3"
 }

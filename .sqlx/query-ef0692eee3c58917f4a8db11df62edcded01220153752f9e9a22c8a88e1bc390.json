@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO speedgaming_onsite_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ef0692eee3c58917f4a8db11df62edcded01220153752f9e9a22c8a88e1bc390"
+}
