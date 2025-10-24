@@ -1508,7 +1508,7 @@ impl Event {
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
         Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).is_some() {
             if_chain! {
-                if self.race.series == Series::SpeedGaming && self.race.event.ends_with("live");
+                if self.race.series == Series::SpeedGaming && event.speedgaming_in_person_id.is_some();
                 if let Some(race_start) = self.start();
                 if event.start(transaction).await?.is_some_and(|event_start| event_start <= race_start);
                 then {
@@ -3054,7 +3054,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                 fieldset {
                     label : "To edit restream data, please use the League website.";
                 }
-            } else if event.speedgaming_slug.is_some() && !race.has_any_room() {
+            } else if event.speedgaming_slug.is_some() && !race.has_any_room() && (event.speedgaming_in_person_id.is_none() || !event.is_started(&mut transaction).await?) {
                 // restream data entered here would be automatically overwritten
                 fieldset {
                     label : "To edit restream data, please use the SpeedGaming website.";

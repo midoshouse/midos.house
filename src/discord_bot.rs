@@ -23,7 +23,10 @@ use {
         Encode,
         types::Json,
     },
-    crate::prelude::*,
+    crate::{
+        event::SchedulingBackend,
+        prelude::*,
+    },
 };
 
 pub(crate) const FENHL: UserId = UserId::new(86841168427495424);
@@ -1348,150 +1351,164 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
                                 let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
-                                if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                                    let response_content = if was_scheduled {
-                                        format!("Please contact a tournament organizer to reschedule this race.")
-                                    } else {
-                                        //TODO different message if an onsite tournament ID is configured and the race was attempted to be scheduled for after the event start
-                                        MessageBuilder::default()
-                                            .push("Please use <https://speedgaming.org/")
-                                            .push(speedgaming_slug)
-                                            .push("/submit> to schedule races for this event.")
-                                            .build()
-                                    };
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(response_content)
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                } else if team.is_some() || is_organizer {
-                                    let start = match interaction.data.options[0].value {
-                                        CommandDataOptionValue::String(ref start) => start,
-                                        _ => panic!("unexpected slash command option type"),
-                                    };
-                                    if let Some(start) = parse_timestamp(start) {
-                                        if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                match event.scheduling_backend(&mut transaction).await? {
+                                    SchedulingBackend::MidosHouse => if team.is_some() || is_organizer {
+                                        let start = match interaction.data.options[0].value {
+                                            CommandDataOptionValue::String(ref start) => start,
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        if let Some(start) = parse_timestamp(start) {
+                                            if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content(if event.min_schedule_notice <= Duration::default() {
+                                                        if let French = event.language {
+                                                            format!("Désolé mais cette date est dans le passé.")
+                                                        } else {
+                                                            format!("Sorry, that timestamp is in the past.")
+                                                        }
+                                                    } else {
+                                                        if let French = event.language {
+                                                            format!("Désolé, les races doivent être planifiées au moins {} en avance.", French.format_duration(event.min_schedule_notice, true))
+                                                        } else {
+                                                            format!("Sorry, races must be scheduled at least {} in advance.", English.format_duration(event.min_schedule_notice, true))
+                                                        }
+                                                    })
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                            } else {
+                                                race.schedule.set_live_start(start);
+                                                race.schedule_updated_at = Some(Utc::now());
+                                                let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                                if start - Utc::now() < TimeDelta::minutes(30) {
+                                                    let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
+                                                        let data = ctx.data.read().await;
+                                                        (
+                                                            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                                                            data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                                                            data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
+                                                            data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                                                            data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
+                                                            data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
+                                                        )
+                                                    };
+                                                    lock!(new_room_lock = new_room_lock; {
+                                                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
+                                                            if let Some(channel) = event.discord_race_room_channel {
+                                                                channel.say(ctx, &msg).await?;
+                                                            }
+                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                                .ephemeral(false)
+                                                                .content(msg)
+                                                            )).await?;
+                                                        } else {
+                                                            let mut response_content = MessageBuilder::default();
+                                                            response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                            let response_content = response_content
+                                                                .push(". The race room will be opened momentarily.")
+                                                                .build();
+                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                                .ephemeral(false)
+                                                                .content(response_content)
+                                                            )).await?;
+                                                        }
+                                                        cal_event.race.save(&mut transaction).await?;
+                                                        transaction.commit().await?;
+                                                    })
+                                                } else {
+                                                    cal_event.race.save(&mut transaction).await?;
+                                                    let overlapping_maintenance_windows = if let RaceHandleMode::RaceTime = cal_event.should_create_room(&mut transaction, &event).await? {
+                                                        sqlx::query_as!(Range::<DateTime<Utc>>, r#"SELECT start, end_time AS "end" FROM racetime_maintenance WHERE start < $1 AND end_time > $2"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30)).fetch_all(&mut *transaction).await?
+                                                    } else {
+                                                        Vec::default()
+                                                    };
+                                                    transaction.commit().await?;
+                                                    let response_content = if_chain! {
+                                                        if let French = event.language;
+                                                        if cal_event.race.game.is_none();
+                                                        if overlapping_maintenance_windows.is_empty();
+                                                        then {
+                                                            MessageBuilder::default()
+                                                                .push("Votre race a été planifiée pour le ")
+                                                                .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                                .push('.')
+                                                                .build()
+                                                        } else {
+                                                            let mut response_content = MessageBuilder::default();
+                                                            response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                            response_content.push('.');
+                                                            for window in overlapping_maintenance_windows {
+                                                                response_content.push_line("");
+                                                                response_content.push_bold("Warning:");
+                                                                response_content.push(" this race may overlap with racetime.gg maintenance planned for ");
+                                                                response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                                response_content.push(" until ");
+                                                                response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                                response_content.push('.');
+                                                            }
+                                                            response_content.build()
+                                                        }
+                                                    };
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(response_content)
+                                                    )).await?;
+                                                }
+                                            }
+                                        } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content(if event.min_schedule_notice <= Duration::default() {
-                                                    if let French = event.language {
-                                                        format!("Désolé mais cette date est dans le passé.")
-                                                    } else {
-                                                        format!("Sorry, that timestamp is in the past.")
-                                                    }
+                                                .content(if let French = event.language {
+                                                    "Désolé, cela n'est pas un timestamp au format de Discord. Vous pouvez utiliser <https://hammertime.cyou/> pour en générer un."
                                                 } else {
-                                                    if let French = event.language {
-                                                        format!("Désolé, les races doivent être planifiées au moins {} en avance.", French.format_duration(event.min_schedule_notice, true))
-                                                    } else {
-                                                        format!("Sorry, races must be scheduled at least {} in advance.", English.format_duration(event.min_schedule_notice, true))
-                                                    }
+                                                    "Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one."
                                                 })
                                             )).await?;
                                             transaction.rollback().await?;
-                                        } else {
-                                            race.schedule.set_live_start(start);
-                                            race.schedule_updated_at = Some(Utc::now());
-                                            let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
-                                            if start - Utc::now() < TimeDelta::minutes(30) {
-                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
-                                                    let data = ctx.data.read().await;
-                                                    (
-                                                        data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                                        data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
-                                                        data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
-                                                        data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                                                        data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
-                                                        data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
-                                                    )
-                                                };
-                                                lock!(new_room_lock = new_room_lock; {
-                                                    if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
-                                                        if let Some(channel) = event.discord_race_room_channel {
-                                                            channel.say(ctx, &msg).await?;
-                                                        }
-                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(false)
-                                                            .content(msg)
-                                                        )).await?;
-                                                    } else {
-                                                        let mut response_content = MessageBuilder::default();
-                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                        let response_content = response_content
-                                                            .push(". The race room will be opened momentarily.")
-                                                            .build();
-                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(false)
-                                                            .content(response_content)
-                                                        )).await?;
-                                                    }
-                                                    cal_event.race.save(&mut transaction).await?;
-                                                    transaction.commit().await?;
-                                                })
-                                            } else {
-                                                cal_event.race.save(&mut transaction).await?;
-                                                let overlapping_maintenance_windows = if let RaceHandleMode::RaceTime = cal_event.should_create_room(&mut transaction, &event).await? {
-                                                    sqlx::query_as!(Range::<DateTime<Utc>>, r#"SELECT start, end_time AS "end" FROM racetime_maintenance WHERE start < $1 AND end_time > $2"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30)).fetch_all(&mut *transaction).await?
-                                                } else {
-                                                    Vec::default()
-                                                };
-                                                transaction.commit().await?;
-                                                let response_content = if_chain! {
-                                                    if let French = event.language;
-                                                    if cal_event.race.game.is_none();
-                                                    if overlapping_maintenance_windows.is_empty();
-                                                    then {
-                                                        MessageBuilder::default()
-                                                            .push("Votre race a été planifiée pour le ")
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                            .push('.')
-                                                            .build()
-                                                    } else {
-                                                        let mut response_content = MessageBuilder::default();
-                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                        response_content.push('.');
-                                                        for window in overlapping_maintenance_windows {
-                                                            response_content.push_line("");
-                                                            response_content.push_bold("Warning:");
-                                                            response_content.push(" this race may overlap with racetime.gg maintenance planned for ");
-                                                            response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                            response_content.push(" until ");
-                                                            response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                            response_content.push('.');
-                                                        }
-                                                        response_content.build()
-                                                    }
-                                                };
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(response_content)
-                                                )).await?;
-                                            }
                                         }
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
                                             .content(if let French = event.language {
-                                                "Désolé, cela n'est pas un timestamp au format de Discord. Vous pouvez utiliser <https://hammertime.cyou/> pour en générer un."
+                                                "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
                                             } else {
-                                                "Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one."
+                                                "Sorry, only participants in this race and organizers can use this command."
                                             })
                                         )).await?;
                                         transaction.rollback().await?;
-                                    }
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(if let French = event.language {
-                                            "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                    },
+                                    SchedulingBackend::SpeedGamingOnline(speedgaming_slug) => {
+                                        let response_content = if was_scheduled {
+                                            format!("Please contact a tournament organizer to reschedule this race.")
                                         } else {
-                                            "Sorry, only participants in this race and organizers can use this command."
-                                        })
-                                    )).await?;
-                                    transaction.rollback().await?;
+                                            MessageBuilder::default()
+                                                .push("Please use <https://speedgaming.org/")
+                                                .push(speedgaming_slug)
+                                                .push("/submit> to schedule races for this event.")
+                                                .build()
+                                        };
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(response_content)
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    }
+                                    SchedulingBackend::SpeedGamingInPerson => {
+                                        let response_content = if was_scheduled {
+                                            format!("Please contact a tournament organizer to reschedule this race.")
+                                        } else {
+                                            format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
+                                        };
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(response_content)
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    }
                                 }
                             }
                         } else if interaction.data.id == command_ids.schedule_async {
@@ -1503,218 +1520,232 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
                                 let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
-                                if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                                    let response_content = if was_scheduled {
-                                        format!("Please contact a tournament organizer to reschedule this race.")
-                                    } else {
-                                        //TODO different message if an onsite tournament ID is configured and the race was attempted to be scheduled for after the event start
-                                        MessageBuilder::default()
-                                            .push("Please use <https://speedgaming.org/")
-                                            .push(speedgaming_slug)
-                                            .push("/submit> to schedule races for this event.")
-                                            .build()
-                                    };
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(response_content)
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                } else if team.is_some() && event.asyncs_allowed() || is_organizer {
-                                    let start = match interaction.data.options[0].value {
-                                        CommandDataOptionValue::String(ref start) => start,
-                                        _ => panic!("unexpected slash command option type"),
-                                    };
-                                    if let Some(start) = parse_timestamp(start) {
-                                        if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                match event.scheduling_backend(&mut transaction).await? {
+                                    SchedulingBackend::MidosHouse => if team.is_some() && event.asyncs_allowed() || is_organizer {
+                                        let start = match interaction.data.options[0].value {
+                                            CommandDataOptionValue::String(ref start) => start,
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        if let Some(start) = parse_timestamp(start) {
+                                            if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content(if event.min_schedule_notice <= Duration::default() {
+                                                        if let French = event.language {
+                                                            format!("Désolé mais cette date est dans le passé.")
+                                                        } else {
+                                                            format!("Sorry, that timestamp is in the past.")
+                                                        }
+                                                    } else {
+                                                        if let French = event.language {
+                                                            format!("Désolé, les races doivent être planifiées au moins {} en avance.", French.format_duration(event.min_schedule_notice, true))
+                                                        } else {
+                                                            format!("Sorry, races must be scheduled at least {} in advance.", English.format_duration(event.min_schedule_notice, true))
+                                                        }
+                                                    })
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                            } else {
+                                                let (kind, was_scheduled) = match race.entrants {
+                                                    Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
+                                                        if team.as_ref().is_some_and(|team| team1 == team) {
+                                                            let was_scheduled = race.schedule.set_async_start1(start).is_some();
+                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            (cal::EventKind::Async1, was_scheduled)
+                                                        } else if team.as_ref().is_some_and(|team| team2 == team) {
+                                                            let was_scheduled = race.schedule.set_async_start2(start).is_some();
+                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            (cal::EventKind::Async2, was_scheduled)
+                                                        } else {
+                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                                .ephemeral(true)
+                                                                .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async (with team parameter)
+                                                            )).await?;
+                                                            transaction.rollback().await?;
+                                                            return Ok(())
+                                                        }
+                                                    }
+                                                    Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
+                                                        if team.as_ref().is_some_and(|team| team1 == team) {
+                                                            let was_scheduled = race.schedule.set_async_start1(start).is_some();
+                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            (cal::EventKind::Async1, was_scheduled)
+                                                        } else if team.as_ref().is_some_and(|team| team2 == team) {
+                                                            let was_scheduled = race.schedule.set_async_start2(start).is_some();
+                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            (cal::EventKind::Async2, was_scheduled)
+                                                        } else if team.as_ref().is_some_and(|team| team3 == team) {
+                                                            let was_scheduled = race.schedule.set_async_start3(start).is_some();
+                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            (cal::EventKind::Async3, was_scheduled)
+                                                        } else {
+                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                                .ephemeral(true)
+                                                                .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async (with team parameter)
+                                                            )).await?;
+                                                            transaction.rollback().await?;
+                                                            return Ok(())
+                                                        }
+                                                    }
+                                                    _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
+                                                };
+                                                let mut cal_event = cal::Event { race, kind };
+                                                if start - Utc::now() < TimeDelta::minutes(30) {
+                                                    let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
+                                                        let data = ctx.data.read().await;
+                                                        (
+                                                            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                                                            data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                                                            data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
+                                                            data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                                                            data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
+                                                            data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
+                                                        )
+                                                    };
+                                                    lock!(new_room_lock = new_room_lock; {
+                                                        let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
+                                                            if is_room_url && cal_event.is_private_async_part() {
+                                                                msg = match cal_event.race.entrants {
+                                                                    Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
+                                                                    Entrants::Three(_) => format!("unlisted room for first/second async part: {msg}"),
+                                                                    _ => format!("unlisted room for async part: {msg}"),
+                                                                };
+                                                                if let Some(channel) = event.discord_organizer_channel {
+                                                                    channel.say(ctx, &msg).await?;
+                                                                } else {
+                                                                    FENHL.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
+                                                                }
+                                                            } else {
+                                                                if let Some(channel) = event.discord_race_room_channel {
+                                                                    channel.send_message(ctx, CreateMessage::default().content(&msg).allowed_mentions(CreateAllowedMentions::default())).await?;
+                                                                }
+                                                            }
+                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                                .ephemeral(cal_event.is_private_async_part()) //TODO create public response without room link
+                                                                .content(msg)
+                                                            )).await?;
+                                                            cal_event.is_private_async_part()
+                                                        } else {
+                                                            true
+                                                        };
+                                                        if should_post_regular_response {
+                                                            let mut response_content = MessageBuilder::default();
+                                                            response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
+                                                            response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
+                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                            let response_content = response_content
+                                                                .push(". The race room will be opened momentarily.")
+                                                                .build();
+                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                                .ephemeral(false)
+                                                                .content(response_content)
+                                                            )).await?;
+                                                        }
+                                                        cal_event.race.save(&mut transaction).await?;
+                                                        transaction.commit().await?;
+                                                    });
+                                                } else {
+                                                    cal_event.race.save(&mut transaction).await?;
+                                                    let overlapping_maintenance_windows = if let RaceHandleMode::RaceTime = cal_event.should_create_room(&mut transaction, &event).await? {
+                                                        sqlx::query_as!(Range::<DateTime<Utc>>, r#"SELECT start, end_time AS "end" FROM racetime_maintenance WHERE start < $1 AND end_time > $2"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30)).fetch_all(&mut *transaction).await?
+                                                    } else {
+                                                        Vec::default()
+                                                    };
+                                                    transaction.commit().await?;
+                                                    let response_content = if_chain! {
+                                                        if let French = event.language;
+                                                        if cal_event.race.game.is_none();
+                                                        if overlapping_maintenance_windows.is_empty();
+                                                        then {
+                                                            MessageBuilder::default()
+                                                                .push("La partie de votre async a été planifiée pour le ")
+                                                                .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                                .push('.')
+                                                                .build()
+                                                        } else {
+                                                            let mut response_content = MessageBuilder::default();
+                                                            response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
+                                                            response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
+                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                            response_content.push('.');
+                                                            for window in overlapping_maintenance_windows {
+                                                                response_content.push_line("");
+                                                                response_content.push_bold("Warning:");
+                                                                if let Entrants::Two(_) = cal_event.race.entrants {
+                                                                    response_content.push(" this async half may overlap with racetime.gg maintenance planned for ");
+                                                                } else {
+                                                                    response_content.push(" this async part may overlap with racetime.gg maintenance planned for ");
+                                                                }
+                                                                response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                                response_content.push(" until ");
+                                                                response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                                response_content.push('.');
+                                                            }
+                                                            response_content.build()
+                                                        }
+                                                    };
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(response_content)
+                                                    )).await?;
+                                                }
+                                            }
+                                        } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content(if event.min_schedule_notice <= Duration::default() {
-                                                    if let French = event.language {
-                                                        format!("Désolé mais cette date est dans le passé.")
-                                                    } else {
-                                                        format!("Sorry, that timestamp is in the past.")
-                                                    }
+                                                .content(if let French = event.language {
+                                                    "Désolé, cela n'est pas un timestamp au format de Discord. Vous pouvez utiliser <https://hammertime.cyou/> pour en générer un."
                                                 } else {
-                                                    if let French = event.language {
-                                                        format!("Désolé, les races doivent être planifiées au moins {} en avance.", French.format_duration(event.min_schedule_notice, true))
-                                                    } else {
-                                                        format!("Sorry, races must be scheduled at least {} in advance.", English.format_duration(event.min_schedule_notice, true))
-                                                    }
+                                                    "Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one."
                                                 })
                                             )).await?;
                                             transaction.rollback().await?;
-                                        } else {
-                                            let (kind, was_scheduled) = match race.entrants {
-                                                Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                                    if team.as_ref().is_some_and(|team| team1 == team) {
-                                                        let was_scheduled = race.schedule.set_async_start1(start).is_some();
-                                                        race.schedule_updated_at = Some(Utc::now());
-                                                        (cal::EventKind::Async1, was_scheduled)
-                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
-                                                        let was_scheduled = race.schedule.set_async_start2(start).is_some();
-                                                        race.schedule_updated_at = Some(Utc::now());
-                                                        (cal::EventKind::Async2, was_scheduled)
-                                                    } else {
-                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(true)
-                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async (with team parameter)
-                                                        )).await?;
-                                                        transaction.rollback().await?;
-                                                        return Ok(())
-                                                    }
-                                                }
-                                                Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
-                                                    if team.as_ref().is_some_and(|team| team1 == team) {
-                                                        let was_scheduled = race.schedule.set_async_start1(start).is_some();
-                                                        race.schedule_updated_at = Some(Utc::now());
-                                                        (cal::EventKind::Async1, was_scheduled)
-                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
-                                                        let was_scheduled = race.schedule.set_async_start2(start).is_some();
-                                                        race.schedule_updated_at = Some(Utc::now());
-                                                        (cal::EventKind::Async2, was_scheduled)
-                                                    } else if team.as_ref().is_some_and(|team| team3 == team) {
-                                                        let was_scheduled = race.schedule.set_async_start3(start).is_some();
-                                                        race.schedule_updated_at = Some(Utc::now());
-                                                        (cal::EventKind::Async3, was_scheduled)
-                                                    } else {
-                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(true)
-                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async (with team parameter)
-                                                        )).await?;
-                                                        transaction.rollback().await?;
-                                                        return Ok(())
-                                                    }
-                                                }
-                                                _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
-                                            };
-                                            let mut cal_event = cal::Event { race, kind };
-                                            if start - Utc::now() < TimeDelta::minutes(30) {
-                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
-                                                    let data = ctx.data.read().await;
-                                                    (
-                                                        data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                                        data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
-                                                        data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
-                                                        data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                                                        data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
-                                                        data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
-                                                    )
-                                                };
-                                                lock!(new_room_lock = new_room_lock; {
-                                                    let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
-                                                        if is_room_url && cal_event.is_private_async_part() {
-                                                            msg = match cal_event.race.entrants {
-                                                                Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
-                                                                Entrants::Three(_) => format!("unlisted room for first/second async part: {msg}"),
-                                                                _ => format!("unlisted room for async part: {msg}"),
-                                                            };
-                                                            if let Some(channel) = event.discord_organizer_channel {
-                                                                channel.say(ctx, &msg).await?;
-                                                            } else {
-                                                                FENHL.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
-                                                            }
-                                                        } else {
-                                                            if let Some(channel) = event.discord_race_room_channel {
-                                                                channel.send_message(ctx, CreateMessage::default().content(&msg).allowed_mentions(CreateAllowedMentions::default())).await?;
-                                                            }
-                                                        }
-                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(cal_event.is_private_async_part()) //TODO create public response without room link
-                                                            .content(msg)
-                                                        )).await?;
-                                                        cal_event.is_private_async_part()
-                                                    } else {
-                                                        true
-                                                    };
-                                                    if should_post_regular_response {
-                                                        let mut response_content = MessageBuilder::default();
-                                                        response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
-                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                        let response_content = response_content
-                                                            .push(". The race room will be opened momentarily.")
-                                                            .build();
-                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(false)
-                                                            .content(response_content)
-                                                        )).await?;
-                                                    }
-                                                    cal_event.race.save(&mut transaction).await?;
-                                                    transaction.commit().await?;
-                                                });
-                                            } else {
-                                                cal_event.race.save(&mut transaction).await?;
-                                                let overlapping_maintenance_windows = if let RaceHandleMode::RaceTime = cal_event.should_create_room(&mut transaction, &event).await? {
-                                                    sqlx::query_as!(Range::<DateTime<Utc>>, r#"SELECT start, end_time AS "end" FROM racetime_maintenance WHERE start < $1 AND end_time > $2"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30)).fetch_all(&mut *transaction).await?
-                                                } else {
-                                                    Vec::default()
-                                                };
-                                                transaction.commit().await?;
-                                                let response_content = if_chain! {
-                                                    if let French = event.language;
-                                                    if cal_event.race.game.is_none();
-                                                    if overlapping_maintenance_windows.is_empty();
-                                                    then {
-                                                        MessageBuilder::default()
-                                                            .push("La partie de votre async a été planifiée pour le ")
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                            .push('.')
-                                                            .build()
-                                                    } else {
-                                                        let mut response_content = MessageBuilder::default();
-                                                        response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
-                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                        response_content.push('.');
-                                                        for window in overlapping_maintenance_windows {
-                                                            response_content.push_line("");
-                                                            response_content.push_bold("Warning:");
-                                                            if let Entrants::Two(_) = cal_event.race.entrants {
-                                                                response_content.push(" this async half may overlap with racetime.gg maintenance planned for ");
-                                                            } else {
-                                                                response_content.push(" this async part may overlap with racetime.gg maintenance planned for ");
-                                                            }
-                                                            response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                            response_content.push(" until ");
-                                                            response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                            response_content.push('.');
-                                                        }
-                                                        response_content.build()
-                                                    }
-                                                };
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(response_content)
-                                                )).await?;
-                                            }
                                         }
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content(if let French = event.language {
-                                                "Désolé, cela n'est pas un timestamp au format de Discord. Vous pouvez utiliser <https://hammertime.cyou/> pour en générer un."
+                                            .content(if event.asyncs_allowed() {
+                                                if let French = event.language {
+                                                    "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                                } else {
+                                                    "Sorry, only participants in this race and organizers can use this command."
+                                                }
                                             } else {
-                                                "Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one."
+                                                "Sorry, asyncing races is not allowed for this event."
                                             })
                                         )).await?;
                                         transaction.rollback().await?;
-                                    }
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(if event.asyncs_allowed() {
-                                            if let French = event.language {
-                                                "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
-                                            } else {
-                                                "Sorry, only participants in this race and organizers can use this command."
-                                            }
+                                    },
+                                    SchedulingBackend::SpeedGamingOnline(speedgaming_slug) => {
+                                        let response_content = if was_scheduled {
+                                            format!("Please contact a tournament organizer to reschedule this race.")
                                         } else {
-                                            "Sorry, asyncing races is not allowed for this event."
-                                        })
-                                    )).await?;
-                                    transaction.rollback().await?;
+                                            MessageBuilder::default()
+                                                .push("Please use <https://speedgaming.org/")
+                                                .push(speedgaming_slug)
+                                                .push("/submit> to schedule races for this event.")
+                                                .build()
+                                        };
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(response_content)
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    }
+                                    SchedulingBackend::SpeedGamingInPerson => {
+                                        let response_content = if was_scheduled {
+                                            format!("Please contact a tournament organizer to reschedule this race.")
+                                        } else {
+                                            format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
+                                        };
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(response_content)
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    }
                                 }
                             }
                         } else if interaction.data.id == command_ids.schedule_remove {
@@ -1725,103 +1756,106 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game, true, None).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
-                                if event.speedgaming_slug.is_some() {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Please contact a tournament organizer to reschedule this race.")
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                } else if team.is_some() || is_organizer {
-                                    match race.schedule {
-                                        RaceSchedule::Unscheduled => {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content(if let French = event.language {
-                                                    "Désolé, cette race n'a pas de date de début prévue."
-                                                } else {
-                                                    "Sorry, this race already doesn't have a starting time."
-                                                })
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        }
-                                        RaceSchedule::Live { .. } => {
-                                            sqlx::query!("UPDATE races SET start = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                            transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(if let Some(game) = race.game {
-                                                    format!("Game {game}'s starting time has been removed from the schedule.")
-                                                } else {
-                                                    if let French = event.language {
-                                                        format!("L'horaire pour cette race ou cette async a été correctement retirée.")
+                                match event.scheduling_backend(&mut transaction).await? {
+                                    SchedulingBackend::MidosHouse => if team.is_some() || is_organizer {
+                                        match race.schedule {
+                                            RaceSchedule::Unscheduled => {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content(if let French = event.language {
+                                                        "Désolé, cette race n'a pas de date de début prévue."
                                                     } else {
-                                                        format!("This race's starting time has been removed from the schedule.")
+                                                        "Sorry, this race already doesn't have a starting time."
+                                                    })
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                            }
+                                            RaceSchedule::Live { .. } => {
+                                                sqlx::query!("UPDATE races SET start = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                transaction.commit().await?;
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(false)
+                                                    .content(if let Some(game) = race.game {
+                                                        format!("Game {game}'s starting time has been removed from the schedule.")
+                                                    } else {
+                                                        if let French = event.language {
+                                                            format!("L'horaire pour cette race ou cette async a été correctement retirée.")
+                                                        } else {
+                                                            format!("This race's starting time has been removed from the schedule.")
+                                                        }
+                                                    })
+                                                )).await?;
+                                            }
+                                            RaceSchedule::Async { .. } => match race.entrants {
+                                                Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
+                                                    if team.as_ref().is_some_and(|team| team1 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else {
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(true)
+                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to edit asynced schedules (with team parameter)
+                                                        )).await?;
+                                                        transaction.rollback().await?;
+                                                        return Ok(())
                                                     }
-                                                })
-                                            )).await?;
+                                                    transaction.commit().await?;
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(if let Some(game) = race.game {
+                                                            format!("The starting time for your half of game {game} has been removed from the schedule.")
+                                                        } else {
+                                                            format!("The starting time for your half of this race has been removed from the schedule.")
+                                                        })
+                                                    )).await?;
+                                                }
+                                                Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
+                                                    if team.as_ref().is_some_and(|team| team1 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else if team.as_ref().is_some_and(|team| team3 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start3 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else {
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(true)
+                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to edit asynced schedules (with team parameter)
+                                                        )).await?;
+                                                        transaction.rollback().await?;
+                                                        return Ok(())
+                                                    }
+                                                    transaction.commit().await?;
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(if let Some(game) = race.game {
+                                                            format!("The starting time for your part of game {game} has been removed from the schedule.")
+                                                        } else {
+                                                            format!("The starting time for your part of this race has been removed from the schedule.")
+                                                        })
+                                                    )).await?;
+                                                }
+                                                _ => panic!("found race with not 2 or 3 MH teams scheduled as async"),
+                                            },
                                         }
-                                        RaceSchedule::Async { .. } => match race.entrants {
-                                            Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                                if team.as_ref().is_some_and(|team| team1 == team) {
-                                                    sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                } else if team.as_ref().is_some_and(|team| team2 == team) {
-                                                    sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                } else {
-                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(true)
-                                                        .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to edit asynced schedules (with team parameter)
-                                                    )).await?;
-                                                    transaction.rollback().await?;
-                                                    return Ok(())
-                                                }
-                                                transaction.commit().await?;
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(if let Some(game) = race.game {
-                                                        format!("The starting time for your half of game {game} has been removed from the schedule.")
-                                                    } else {
-                                                        format!("The starting time for your half of this race has been removed from the schedule.")
-                                                    })
-                                                )).await?;
-                                            }
-                                            Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
-                                                if team.as_ref().is_some_and(|team| team1 == team) {
-                                                    sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                } else if team.as_ref().is_some_and(|team| team2 == team) {
-                                                    sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                } else if team.as_ref().is_some_and(|team| team3 == team) {
-                                                    sqlx::query!("UPDATE races SET async_start3 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                } else {
-                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(true)
-                                                        .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to edit asynced schedules (with team parameter)
-                                                    )).await?;
-                                                    transaction.rollback().await?;
-                                                    return Ok(())
-                                                }
-                                                transaction.commit().await?;
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(if let Some(game) = race.game {
-                                                        format!("The starting time for your part of game {game} has been removed from the schedule.")
-                                                    } else {
-                                                        format!("The starting time for your part of this race has been removed from the schedule.")
-                                                    })
-                                                )).await?;
-                                            }
-                                            _ => panic!("found race with not 2 or 3 MH teams scheduled as async"),
-                                        },
+                                    } else {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(if let French = event.language {
+                                                "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                            } else {
+                                                "Sorry, only participants in this race and organizers can use this command."
+                                            })
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    },
+                                    SchedulingBackend::SpeedGamingOnline(_) | SchedulingBackend::SpeedGamingInPerson => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("Please contact a tournament organizer to reschedule this race.")
+                                        )).await?;
+                                        transaction.rollback().await?;
                                     }
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(if let French = event.language {
-                                            "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
-                                        } else {
-                                            "Sorry, only participants in this race and organizers can use this command."
-                                        })
-                                    )).await?;
-                                    transaction.rollback().await?;
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.second {
@@ -2319,29 +2353,36 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
                 content.push(' ');
             }
             content.push("match. Use ");
-            if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                content.push("<https://speedgaming.org/");
-                content.push(speedgaming_slug);
-                if game_count > 1 {
-                    content.push("/submit> to schedule your races.");
+            match event.scheduling_backend(&mut transaction).await? {
+                SchedulingBackend::MidosHouse => {
+                    content.mention_command(command_ids.schedule, "schedule");
+                    if event.asyncs_allowed() {
+                        content.push(" to schedule as a live race or ");
+                        content.mention_command(command_ids.schedule_async, "schedule-async");
+                        content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
+                    } else {
+                        content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
+                    }
+                    if game_count > 1 {
+                        content.push(" You can use the ");
+                        content.push_mono("game:");
+                        content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                    }
+                }
+                SchedulingBackend::SpeedGamingOnline(speedgaming_slug) =>  {
+                    content.push("<https://speedgaming.org/");
+                    content.push(speedgaming_slug);
+                    if game_count > 1 {
+                        content.push("/submit> to schedule your races.");
+                    } else {
+                        content.push("/submit> to schedule your race.");
+                    }
+                }
+                SchedulingBackend::SpeedGamingInPerson => if game_count > 1 {
+                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
                 } else {
-                    content.push("/submit> to schedule your race.");
-                }
-                //TODO include in-person scheduling link (or only show that link if event has started)
-            } else {
-                content.mention_command(command_ids.schedule, "schedule");
-                if event.asyncs_allowed() {
-                    content.push(" to schedule as a live race or ");
-                    content.mention_command(command_ids.schedule_async, "schedule-async");
-                    content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
-                } else {
-                    content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
-                }
-                if game_count > 1 {
-                    content.push(" You can use the ");
-                    content.push_mono("game:");
-                    content.push(" parameter with these commands to schedule subsequent games ahead of time.");
-                }
+                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your race.");
+                },
             }
         }
     };

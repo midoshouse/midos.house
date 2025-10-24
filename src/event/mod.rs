@@ -198,6 +198,12 @@ pub(crate) enum DataError {
     NonexistentUser,
 }
 
+pub(crate) enum SchedulingBackend<'a> {
+    MidosHouse,
+    SpeedGamingOnline(&'a str),
+    SpeedGamingInPerson,
+}
+
 impl<'a> Data<'a> {
     pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
@@ -498,6 +504,19 @@ impl<'a> Data<'a> {
 
     fn is_ended(&self) -> bool {
         self.end.is_some_and(|end| end <= Utc::now())
+    }
+
+    pub(crate) async fn scheduling_backend(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<SchedulingBackend<'_>, DataError> {
+        Ok(match (self.speedgaming_slug.as_deref(), self.speedgaming_in_person_id.is_some()) {
+            (None, false) => SchedulingBackend::MidosHouse,
+            (None, true) => SchedulingBackend::SpeedGamingInPerson,
+            (Some(slug), false) => SchedulingBackend::SpeedGamingOnline(slug),
+            (Some(slug), true) => if self.is_started(transaction).await? {
+                SchedulingBackend::SpeedGamingInPerson
+            } else {
+                SchedulingBackend::SpeedGamingOnline(slug)
+            },
+        })
     }
 
     pub(crate) async fn organizers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
