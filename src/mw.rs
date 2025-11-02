@@ -64,8 +64,8 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
             tr {
                 th;
                 th : "Windows";
-                th : "Linux";
                 th : "macOS";
+                th : "Linux";
             }
             tr {
                 th : "EverDrive";
@@ -76,12 +76,12 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
                 }
                 td {
                     : "✓ (";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
+                    a(href = uri!(install_macos)) : "install instructions";
                     : ") *";
                 }
                 td {
                     : "✓ (";
-                    a(href = uri!(install_macos)) : "install instructions";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
                     : ") *";
                 }
             }
@@ -103,12 +103,12 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
                     : ")";
                 }
                 td {
+                    a(href = "https://github.com/tasemulators/bizHawk#macos-legacy-bizhawk") : "Not supported by BizHawk itself";
+                }
+                td {
                     : "✓ (";
                     a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
                     : ")";
-                }
-                td {
-                    a(href = "https://github.com/tasemulators/bizHawk#macos-legacy-bizhawk") : "Not supported by BizHawk itself";
                 }
             }
             tr {
