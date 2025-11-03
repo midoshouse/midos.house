@@ -473,8 +473,10 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     };
     let mut events_organized = user.events_organized(&mut transaction).await?;
     events_organized.retain(|event| event.listed);
+    events_organized.sort_by_key(|event| (event.base_start.is_some(), Reverse(event.base_start)));
     let mut events_participated = user.events_participated(&mut transaction).await?;
     events_participated.retain(|event| event.listed);
+    events_participated.sort_by_key(|event| (event.base_start.is_some(), Reverse(event.base_start)));
     let mut chests_events = events_organized.clone();
     chests_events.extend_from_slice(&events_participated);
     chests_events.sort_unstable_by(|e1, e2| e1.series.cmp(&e2.series).then_with(|| e1.event.cmp(&e2.event)));
