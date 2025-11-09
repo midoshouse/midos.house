@@ -2858,6 +2858,9 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                     }
                 }, true, Vec::default()).await?;
+                if let (Series::BattleRoyale, "2") | (Series::League, "9") | (Series::TriforceBlitz, "4") = (event.series, &*event.event) {
+                    ctx.say("This race uses the old Standard ruleset: https://zsr.link/f_eTj").await?;
+                }
                 let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = event.draft_kind() {
                     let state = cal_event.race.draft.clone().expect("missing draft state");
                     let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(draft_kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
