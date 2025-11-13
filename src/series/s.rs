@@ -195,20 +195,20 @@ impl WeeklyKind {
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Short;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/league/chests-9-8.3.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-8-8.2.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "League";
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "S8";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
-            : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 9, 27, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " on Discord. Current settings starting with the Zora weekly on ";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 11, 15, 19, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
             : " are those for ";
-            a(href = uri!(event::info(Series::League, "9"))) : "League season 9";
+            a(href = uri!(event::info(Series::Standard, "8"))) : "Standard Tournament Season 8";
             : ".";
         }
     }
@@ -234,9 +234,11 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : English.join_html_opt(race_mods);
                         : ") and main tournament organizers (";
                         : English.join_html_opt(main_tournament_organizers);
-                        : ") in cooperation with ZeldaSpeedRuns. The races are open to all participants.";
+                        : ") in cooperation with ZeldaSpeedRuns. The races are open to all participants and use ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "the Standard ruleset";
+                        : ".";
                     }
-                    p : "Starting from January 4, 2025, there will be alternating schedules:";
+                    p : "The race schedule runs on a 2-week cycle:";
                     ol {
                         li {
                             : "The Kokiri weekly, Saturdays of week A at 6PM Eastern Time (next: ";
