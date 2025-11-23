@@ -1418,7 +1418,7 @@ impl GlobalState {
         tokio::spawn(async move {
             if_chain! {
                 if allow_web;
-                if let Some(web_version) = self.ootr_api_client.can_roll_on_web(None, &version, world_count, !plando.is_empty(), unlock_spoiler_log).await;
+                if let Some(web_version) = self.ootr_api_client.can_roll_on_web(false, None, &version, world_count, !plando.is_empty(), unlock_spoiler_log).await;
                 then {
                     // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
                     // This is especially true for open races, whose rooms are opened an entire hour before start.
@@ -1520,7 +1520,7 @@ impl GlobalState {
                 .check(PYTHON).await?
                 .stdout;
             let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<rando::Version>()?;
-            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned { version: randomizer_version.clone() }, world_count, false, unlock_spoiler_log).await;
+            let web_version = self.ootr_api_client.can_roll_on_web(false, Some(&preset), &VersionedBranch::Pinned { version: randomizer_version.clone() }, world_count, false, unlock_spoiler_log).await;
             // run the RSL script
             update_tx.send(SeedRollUpdate::Started).await.allow_unreceived();
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script

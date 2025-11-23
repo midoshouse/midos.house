@@ -69,6 +69,7 @@ impl IsNetworkError for Error {
     }
 }
 
+#[derive(Clone)]
 struct VersionsResponse {
     currently_active_version: Option<ootr_utils::Version>,
     available_versions: Vec<ootr_utils::Version>,
@@ -108,6 +109,7 @@ pub(crate) struct ApiClient {
     next_request: Mutex<Instant>,
     mw_seed_rollers: Arc<Semaphore>,
     waiting: Mutex<Vec<mpsc::UnboundedSender<()>>>,
+    versions_cache: Mutex<HashMap<&'static str, (Instant, VersionsResponse)>>,
 }
 
 impl ApiClient {
@@ -116,6 +118,7 @@ impl ApiClient {
             next_request: Mutex::new(Instant::now() + MULTIWORLD_RATE_LIMIT),
             mw_seed_rollers: Arc::new(Semaphore::new(2)), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
             waiting: Mutex::default(),
+            versions_cache: Mutex::default(),
             http_client, api_key, api_key_encryption,
         }
     }
@@ -162,7 +165,7 @@ impl ApiClient {
         })
     }
 
-    async fn get_versions(&self, branch: Option<ootr_utils::Branch>, random_settings: bool) -> Result<VersionsResponse, Error> {
+    async fn get_versions(&self, allow_cache: bool, branch: Option<ootr_utils::Branch>, random_settings: bool) -> Result<VersionsResponse, Error> {
         #[derive(DeserializeFromStr)]
         struct VersionsResponseVersion {
             major: u8,
@@ -217,17 +220,28 @@ impl ApiClient {
             // API lists releases under the “master” branch
             "master"
         };
-        let RawVersionsResponse { currently_active_version, available_versions } = self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", web_branch)])).await?
-            .detailed_error_for_status().await?
-            .json_with_text_in_error().await?;
-        Ok(VersionsResponse {
-            currently_active_version: currently_active_version.normalize(branch),
-            available_versions: available_versions.into_iter().filter_map(|ver| ver.normalize(branch)).collect(),
-        })
+        Ok(lock!(versions_cache = self.versions_cache; if_chain! {
+            if allow_cache;
+            if let Some((retrieved, response)) = versions_cache.get(web_branch);
+            if retrieved.elapsed() < Duration::from_secs(60 * 60);
+            then {
+                response.clone()
+            } else {
+                let RawVersionsResponse { currently_active_version, available_versions } = self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", web_branch)])).await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error().await?;
+                let response = VersionsResponse {
+                    currently_active_version: currently_active_version.normalize(branch),
+                    available_versions: available_versions.into_iter().filter_map(|ver| ver.normalize(branch)).collect(),
+                };
+                versions_cache.insert(web_branch, (Instant::now(), response.clone()));
+                response
+            }
+        }))
     }
 
     /// Checks if the given randomizer branch/version is available on web, and if so, which version to use.
-    pub(crate) async fn can_roll_on_web(&self, rsl_preset: Option<&rsl::VersionedPreset>, version: &VersionedBranch, world_count: u8, plando: bool, unlock_spoiler_log: UnlockSpoilerLog) -> Option<ootr_utils::Version> {
+    pub(crate) async fn can_roll_on_web(&self, allow_versions_cache: bool, rsl_preset: Option<&rsl::VersionedPreset>, version: &VersionedBranch, world_count: u8, plando: bool, unlock_spoiler_log: UnlockSpoilerLog) -> Option<ootr_utils::Version> {
         if world_count > 3 { return None }
         if plando { return None }
         if let UnlockSpoilerLog::Progression = unlock_spoiler_log { return None }
@@ -245,12 +259,12 @@ impl ApiClient {
                         0, // legacy version which was not yet tagged with its supplementary version number
                     ))
                 }
-                self.get_versions((!version.is_release()).then(|| version.branch()), rsl_preset.is_some()).await
+                self.get_versions(allow_versions_cache, (!version.is_release()).then(|| version.branch()), rsl_preset.is_some()).await
                     // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
                     .is_ok_and(|VersionsResponse { available_versions, .. }| available_versions.contains(version))
                     .then(|| version.clone())
             }
-            VersionedBranch::Latest { branch } => self.get_versions(Some(*branch), rsl_preset.is_some()).await.ok().and_then(|response| response.currently_active_version),
+            VersionedBranch::Latest { branch } => self.get_versions(allow_versions_cache, Some(*branch), rsl_preset.is_some()).await.ok().and_then(|response| response.currently_active_version),
             VersionedBranch::Custom { .. } => None,
         }
     }

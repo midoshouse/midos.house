@@ -853,7 +853,7 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
-pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     enum ShowStatus {
         Detailed,
         Confirmed,
@@ -863,7 +863,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
     let mut transaction = pool.begin().await?;
     let mut cache = Cache::new(http_client.clone());
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Teams, false).await?;
     let mut show_status = ShowStatus::None;
     let is_organizer = if let Some(ref me) = me {
         data.organizers(&mut transaction).await?.contains(me)
@@ -1287,6 +1287,6 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    list(pool, http_client, me, uri, csrf, Context::default(), series, event).await
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    list(pool, http_client, ootr_api_client, me, uri, csrf, Context::default(), series, event).await
 }

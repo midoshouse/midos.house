@@ -396,7 +396,8 @@ CREATE TABLE public.events (
     single_settings jsonb,
     manual_reporting_with_breaks boolean DEFAULT false NOT NULL,
     emulator_settings_reminder boolean DEFAULT false NOT NULL,
-    prevent_late_joins boolean DEFAULT false NOT NULL
+    prevent_late_joins boolean DEFAULT false NOT NULL,
+    speedgaming_in_person_id bigint
 );
 
 
@@ -647,6 +648,7 @@ CREATE TABLE public.races (
     breaks_used boolean DEFAULT false NOT NULL,
     video_url_es text,
     restreamer_es text,
+    speedgaming_onsite_id bigint,
     CONSTRAINT async_exclusion CHECK (((start IS NULL) OR ((async_start1 IS NULL) AND (async_start2 IS NULL) AND (async_start3 IS NULL)))),
     CONSTRAINT matching_hash_nullness CHECK ((((hash1 IS NULL) = (hash2 IS NULL)) AND ((hash1 IS NULL) = (hash3 IS NULL)) AND ((hash1 IS NULL) = (hash4 IS NULL)) AND ((hash1 IS NULL) = (hash5 IS NULL)))),
     CONSTRAINT matching_last_edited_nullness CHECK (((last_edited_by IS NULL) = (last_edited_at IS NULL))),
@@ -713,6 +715,18 @@ CREATE TABLE public.speedgaming_disambiguation_messages (
 
 
 ALTER TABLE public.speedgaming_disambiguation_messages OWNER TO mido;
+
+--
+-- Name: speedgaming_onsite_disambiguation_messages; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.speedgaming_onsite_disambiguation_messages (
+    message_id bigint NOT NULL,
+    speedgaming_id bigint NOT NULL
+);
+
+
+ALTER TABLE public.speedgaming_onsite_disambiguation_messages OWNER TO mido;
 
 --
 -- Name: team_members; Type: TABLE; Schema: public; Owner: mido
@@ -921,6 +935,22 @@ ALTER TABLE ONLY public.speedgaming_disambiguation_messages
 
 ALTER TABLE ONLY public.speedgaming_disambiguation_messages
     ADD CONSTRAINT speedgaming_disambiguation_messages_pkey PRIMARY KEY (speedgaming_id);
+
+
+--
+-- Name: speedgaming_onsite_disambiguation_messages speedgaming_onsite_disambiguation_messages_message_id_key; Type: CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.speedgaming_onsite_disambiguation_messages
+    ADD CONSTRAINT speedgaming_onsite_disambiguation_messages_message_id_key UNIQUE (message_id);
+
+
+--
+-- Name: speedgaming_onsite_disambiguation_messages speedgaming_onsite_disambiguation_messages_pkey; Type: CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.speedgaming_onsite_disambiguation_messages
+    ADD CONSTRAINT speedgaming_onsite_disambiguation_messages_pkey PRIMARY KEY (speedgaming_id);
 
 
 --
