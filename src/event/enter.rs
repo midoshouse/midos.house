@@ -1173,14 +1173,14 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(enter_form(transaction, http_client, ootr_api_client, discord_ctx, me, uri, csrf.as_ref(), data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();

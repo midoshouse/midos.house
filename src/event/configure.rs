@@ -119,7 +119,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
 }
 
 #[rocket::get("/event/<series>/<event>/configure")]
-pub(crate) async fn get(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(configure_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?)
@@ -137,7 +137,7 @@ pub(crate) struct ConfigureForm {
 }
 
 #[rocket::post("/event/<series>/<event>/configure", data = "<form>")]
-pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ConfigureForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ConfigureForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -292,7 +292,7 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_c
 }
 
 #[rocket::get("/event/<series>/<event>/configure/restreamers")]
-pub(crate) async fn restreamers_get(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+pub(crate) async fn restreamers_get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(restreamers_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, RestreamersFormDefaults::None).await?)
@@ -306,7 +306,7 @@ pub(crate) struct AddRestreamerForm {
 }
 
 #[rocket::post("/event/<series>/<event>/configure/restreamers", data = "<form>")]
-pub(crate) async fn add_restreamer(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, AddRestreamerForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_restreamer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, AddRestreamerForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -338,7 +338,7 @@ pub(crate) async fn add_restreamer(pool: &State<PgPool>, ootr_api_client: &State
 }
 
 #[rocket::post("/event/<series>/<event>/configure/restreamers/<restreamer>/remove", data = "<form>")]
-pub(crate) async fn remove_restreamer(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, restreamer: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn remove_restreamer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, restreamer: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();

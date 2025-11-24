@@ -1976,7 +1976,7 @@ pub(crate) struct CreateRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
-pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -2509,7 +2509,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
 }
 
 #[rocket::get("/event/<series>/<event>/races/import")]
-pub(crate) async fn import_races(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+pub(crate) async fn import_races(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(import_races_form(transaction, http_client, ootr_api_client, &*discord_ctx.read().await, config, me, uri, csrf.as_ref(), event, Context::default()).await?)
@@ -2530,7 +2530,7 @@ pub(crate) struct ImportRacesForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/import", data = "<form>")]
-pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -3311,7 +3311,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit?<redirect_to>")]
-pub(crate) async fn edit_race(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -3340,7 +3340,7 @@ pub(crate) struct EditRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit?<redirect_to>", data = "<form>")]
-pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -3726,7 +3726,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
-pub(crate) async fn add_file_hash(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_file_hash(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -3748,7 +3748,7 @@ pub(crate) struct AddFileHashForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit-hash", data = "<form>")]
-pub(crate) async fn add_file_hash_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_file_hash_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;

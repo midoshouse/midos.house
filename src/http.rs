@@ -275,7 +275,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
 }
 
 #[rocket::get("/")]
-async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut upcoming_events = Vec::default();
     let mut races = Vec::default();

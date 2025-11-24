@@ -944,7 +944,7 @@ impl<E: Into<InfoError>> From<E> for StatusOrError<InfoError> {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
+pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Info, false).await?;
@@ -997,7 +997,7 @@ pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<ootr_web:
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
-pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Races, false).await?;
@@ -1469,7 +1469,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn status(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(status_page(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
@@ -1483,7 +1483,7 @@ pub(crate) struct StatusForm {
 }
 
 #[rocket::post("/event/<series>/<event>/status", data = "<form>")]
-pub(crate) async fn status_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn status_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1550,7 +1550,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
 }
 
 #[rocket::get("/event/<series>/<event>/find-team")]
-pub(crate) async fn find_team(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
+pub(crate) async fn find_team(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(find_team_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?)
@@ -1568,7 +1568,7 @@ pub(crate) struct FindTeamForm {
 }
 
 #[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
-pub(crate) async fn find_team_post(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
+pub(crate) async fn find_team_post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1651,7 +1651,7 @@ impl<E: Into<AcceptError>> From<E> for StatusOrError<AcceptError> {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, AcceptForm>>) -> Result<RedirectOrContent, StatusOrError<AcceptError>> {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, AcceptForm>>) -> Result<RedirectOrContent, StatusOrError<AcceptError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1820,7 +1820,7 @@ pub(crate) struct ResignForm {
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, ResignForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
+pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, ResignForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let team = Team::from_id(&mut transaction, team).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -2044,7 +2044,7 @@ pub(crate) struct RequestAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/request-async", data = "<form>")]
-pub(crate) async fn request_async(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn request_async(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -2115,7 +2115,7 @@ pub(crate) struct SubmitAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/submit-async", data = "<form>")]
-pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -2368,7 +2368,7 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
 }
 
 #[rocket::get("/event/<series>/<event>/volunteer")]
-pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Volunteer, false).await?;

@@ -1287,6 +1287,6 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<ootr_web::ApiClient>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     list(pool, http_client, ootr_api_client, me, uri, csrf, Context::default(), series, event).await
 }
