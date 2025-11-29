@@ -354,6 +354,7 @@ impl<'a> Data<'a> {
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
             (Series::Standard, "8" | "8cc") => from_file!("../../assets/event/s/chests-8-8.2.json"),
+            (Series::Standard, "9" | "9cc") => from_file!("../../assets/event/s/chests-9-8.3.63.json"),
             (Series::TournoiFrancophone, "3") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"),
             (Series::TournoiFrancophone, "4") => from_file!("../../assets/event/fr/chests-4-8.1.45-rob.105.json"),
             (Series::TournoiFrancophone, "5") => from_file!("../../assets/event/fr/chests-5-8.2.64-rob.135.json"),
@@ -422,12 +423,13 @@ impl<'a> Data<'a> {
     pub(crate) async fn qualifier_kind(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>) -> Result<QualifierKind, DataError> {
         Ok(match (self.series, &*self.event) {
             (Series::SongsOfHope, "1") => QualifierKind::SongsOfHope,
-            (Series::SpeedGaming, "2023onl" | "2024onl" | "2025onl") | (Series::Standard, "8") => {
+            (Series::SpeedGaming, "2023onl" | "2024onl" | "2025onl") | (Series::Standard, "8" | "9") => {
                 QualifierKind::Score(match (self.series, &*self.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierScoreKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierScoreKind::Sgl2024Online,
                     (Series::SpeedGaming, "2025onl") => teams::QualifierScoreKind::Sgl2025Online,
-                    (Series::Standard, "8") => teams::QualifierScoreKind::Standard,
+                    (Series::Standard, "8") => teams::QualifierScoreKind::StandardS4,
+                    (Series::Standard, "9") => teams::QualifierScoreKind::StandardS9,
                     _ => unreachable!("checked by outer match"),
                 })
             }
@@ -665,7 +667,7 @@ impl<'a> Data<'a> {
             }
             @if let Some(start) = self.start(&mut *transaction).await? {
                 h2 {
-                    @if let (Series::Standard, "8") = (self.series, &*self.event) {
+                    @if let (Series::Standard, "8" | "9") = (self.series, &*self.event) {
                         : "Brackets: ";
                     }
                     : format_datetime(start, DateTimeFormat { long: true, running_text: false });

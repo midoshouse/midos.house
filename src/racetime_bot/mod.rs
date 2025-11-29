@@ -248,7 +248,7 @@ impl Goal {
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
             Self::Sgl2025 => series == Series::SpeedGaming && event.starts_with("2025"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
-            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8" | "8cc"),
+            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8" | "8cc" | "9" | "9cc"),
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TournoiFrancoS5 => series == Series::TournoiFrancophone && event == "5",
@@ -446,7 +446,7 @@ impl Goal {
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
                 => PrerollMode::Long,
-            Self::StandardRuleset => if let Some((Series::Standard, "8" | "8cc")) = event {
+            Self::StandardRuleset => if let Some((Series::Standard, "8" | "8cc" | "9" | "9cc")) = event {
                 PrerollMode::Short
             } else {
                 s::WEEKLY_PREROLL_MODE //TODO allow weekly organizers to configure this
@@ -2331,8 +2331,8 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
         streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
         allow_comments: true,
         hide_comments: true,
-        allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-        allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+        allow_prerace_chat: event.series != Series::Standard || !matches!(&*event.event, "8" | "9") || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+        allow_midrace_chat: event.series != Series::Standard || !matches!(&*event.event, "8" | "9") || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
         allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
         chat_message_delay: 0,
         info_user, info_bot, auto_start,
@@ -2763,7 +2763,6 @@ impl RaceHandler<GlobalState> for Handler {
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
-            lock!(@read data = race_data; println!("race handler for https://{}{} started", racetime_host(), data.url));
             let res = join_handle.await;
             lock!(@read data = race_data; {
                 lock!(clean_shutdown = global_state.clean_shutdown; {
@@ -2777,9 +2776,7 @@ impl RaceHandler<GlobalState> for Handler {
                         clean_shutdown.updates.send(CleanShutdownUpdate::Empty).allow_unreceived();
                     }
                 });
-                if let Ok(()) = res {
-                    println!("race handler for https://{}{} stopped", racetime_host(), data.url);
-                } else {
+                if res.is_err() {
                     eprintln!("race handler for https://{}{} panicked", racetime_host(), data.url);
                     if let Environment::Production = Environment::default() {
                         let _ = wheel::night_report(&format!("{}/error", night_path()), Some(&format!("race handler for https://{}{} panicked", racetime_host(), data.url))).await;
@@ -3916,17 +3913,19 @@ impl RaceHandler<GlobalState> for Handler {
                                     weights,
                                 }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                             }
-                            Goal::StandardRuleset => if let (Series::Standard, "8" | "8cc") = (event.series, &*event.event) {
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), s::s8_settings(), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "an", format!("S8 seed")).await
-                            } else {
+                            Goal::StandardRuleset => {
                                 let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                                let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
-                                let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
+                                let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured Standard event");
                                 transaction.commit().await.to_racetime()?;
                                 let mut settings = settings.into_owned();
                                 settings.insert(format!("password_lock"), json!(true));
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
-                            },
+                                this.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, if event.event == "w" { "a" } else { "an" }, match &*event.event {
+                                    "8" | "8cc" => format!("S8 seed"),
+                                    "9" | "9cc" => format!("S9 seed"),
+                                    "w" => format!("weekly seed"),
+                                    _ => unimplemented!(),
+                                }).await
+                            }
                             Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,

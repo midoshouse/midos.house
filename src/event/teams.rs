@@ -32,7 +32,8 @@ pub(crate) enum QualifierKind {
 
 #[derive(Clone, Copy)]
 pub(crate) enum QualifierScoreKind {
-    Standard,
+    StandardS4,
+    StandardS9,
     Sgl2023Online,
     Sgl2024Online,
     Sgl2025Online,
@@ -254,7 +255,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 0.0
                             } else {
                                 match score_kind {
-                                    QualifierScoreKind::Standard => 1100.0,
+                                    QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 1100.0,
                                     QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => 110.0,
                                 }
                             }));
@@ -271,7 +272,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 0.0
                             } else {
                                 match score_kind {
-                                    QualifierScoreKind::Standard => 1100.0,
+                                    QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 1100.0,
                                     QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => 110.0,
                                 }
                             }));
@@ -286,7 +287,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                     0.0
                                 } else {
                                     match score_kind {
-                                        QualifierScoreKind::Standard => 1100.0,
+                                        QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 1100.0,
                                         QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => 110.0,
                                     }
                                 }));
@@ -339,7 +340,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
                             let num_finishers = finish_times.len();
                             let par_cutoff = match score_kind {
-                                QualifierScoreKind::Standard => 7u8,
+                                QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 7u8,
                                 QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => if num_entrants < 20 { 3 } else { 4 },
                             };
                             if worst_case_extrapolation.is_none() && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
@@ -362,7 +363,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 let user = entrant.user.clone().map(racetime::model::UserData::try_from).transpose()?;
                                 scores.entry(MemberUser::from(user)).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
                                     match score_kind {
-                                        QualifierScoreKind::Standard => {
+                                        QualifierScoreKind::StandardS4 => {
                                             // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
                                             let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
                                             let par_cutoff = usize::from(par_cutoff).min(num_entrants);
@@ -374,6 +375,19 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                             let sigma_finish = t_g_h.div_duration_f64(t_average);
                                             let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
                                             ((1.0 - (finish_time - t_average - TimeDelta::minutes(10).min(t_jet + t_gamble)).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
+                                        }
+                                        QualifierScoreKind::StandardS9 => {
+                                            // https://docs.google.com/document/d/19hqOQvXyH_7b83nHrjetRI6s6RhS-KZ1BjBBu_gqScA/edit
+                                            let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
+                                            let par_cutoff = usize::from(par_cutoff).min(num_entrants);
+                                            let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
+                                            let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
+                                            let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) - t_average).div_duration_f64(TimeDelta::hours(2) - (TimeDelta::hours(1) + TimeDelta::minutes(10))))));
+                                            let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
+                                            let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
+                                            let sigma_finish = t_g_h.div_duration_f64(t_average);
+                                            let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                            ((1.0 - (finish_time - t_average).div_duration_f64(t_average + t_jet + t_gamble)) * 1000.0).clamp(100.0, 1100.0)
                                         }
                                         QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => {
                                             let par_time = finish_times[0..usize::from(par_cutoff)].iter().sum::<Duration>() / u32::from(par_cutoff);
@@ -444,7 +458,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         user,
                     }],
                     qualification: match score_kind {
-                        QualifierScoreKind::Standard => {
+                        QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => {
                             scores.truncate(8); // only count the first 8 qualifiers chronologically
                             let num_entered = scores.len();
                             scores.retain(|&score| score != 0.0); // only count finished races
@@ -809,20 +823,20 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             QualifierKind::Score(score_kind) => {
                 let (num1, score1) = match *qualification1 {
                     Qualification::Multiple { num_entered, num_finished, score } => match score_kind { //TODO determine based on enter flow
-                        QualifierScoreKind::Standard | QualifierScoreKind::Sgl2025Online => (num_finished, score),
+                        QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 | QualifierScoreKind::Sgl2025Online => (num_finished, score),
                         QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => (num_entered, score),
                     },
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
                 };
                 let (num2, score2) = match *qualification2 {
                     Qualification::Multiple { num_entered, num_finished, score } => match score_kind { //TODO determine based on enter flow
-                        QualifierScoreKind::Standard | QualifierScoreKind::Sgl2025Online => (num_finished, score),
+                        QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 | QualifierScoreKind::Sgl2025Online => (num_finished, score),
                         QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => (num_entered, score),
                     },
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
                 };
                 let required_qualifiers = match score_kind { //TODO determine based on enter flow
-                    QualifierScoreKind::Standard => 5,
+                    QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 5,
                     QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => 3,
                 };
                 num2.min(required_qualifiers).cmp(&num1.min(required_qualifiers)) // list racers closer to reaching the required number of qualifiers first
@@ -915,7 +929,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                 th : "Pieces Found";
             });
         }
-        QualifierKind::Score(QualifierScoreKind::Standard | QualifierScoreKind::Sgl2025Online) => { //TODO determine based on enter flow
+        QualifierKind::Score(QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 | QualifierScoreKind::Sgl2025Online) => { //TODO determine based on enter flow
             column_headers.push(html! {
                 th : "Qualifiers Entered";
             });
@@ -992,7 +1006,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                             QualifierKind::Rank => false, // unknown cutoff
                             QualifierKind::Single { .. } => false, // need to be qualified to be listed
                             QualifierKind::Triple => false, // no cutoff
-                            QualifierKind::Score(QualifierScoreKind::Standard) => {
+                            QualifierKind::Score(QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9) => {
                                 let Qualification::Multiple { num_finished, .. } = qualification else { unreachable!("qualification kind mismatch") };
                                 num_finished < 5
                             }
@@ -1097,7 +1111,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                                     }
                                 }
                                 (QualifierKind::Single { show_times: true }, Qualification::TriforceBlitz { pieces, .. }) => td : pieces;
-                                (QualifierKind::Score(QualifierScoreKind::Standard | QualifierScoreKind::Sgl2025Online), Qualification::Multiple { num_entered, num_finished, score }) => { //TODO determine based on enter flow
+                                (QualifierKind::Score(QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 | QualifierScoreKind::Sgl2025Online), Qualification::Multiple { num_entered, num_finished, score }) => { //TODO determine based on enter flow
                                     td(style = "text-align: right;") : num_entered;
                                     td(style = "text-align: right;") : num_finished;
                                     td(style = "text-align: right;") : format!("{score:.2}");
