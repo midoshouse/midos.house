@@ -610,41 +610,6 @@ impl Race {
             races.push(Self::from_id(&mut *transaction, http_client, id).await?);
         }
         match event.series {
-            Series::BattleRoyale => match &*event.event {
-                "1" => {}
-                "2" => {
-                    let schedule = RaceSchedule::Live { start: ohko::next_s2_race_after(now), end: None, room: None };
-                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
-                        let race = Race {
-                            id: Id::new(&mut *transaction).await?,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: Source::Manual,
-                            entrants: Entrants::Open,
-                            phase: None,
-                            round: None,
-                            game: None,
-                            scheduling_thread: None,
-                            schedule_updated_at: None,
-                            fpa_invoked: false,
-                            breaks_used: false,
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: false,
-                            schedule_locked: false,
-                            notified: false,
-                            schedule,
-                        };
-                        race.save(&mut *transaction).await?;
-                        races.push(race);
-                    }
-                }
-                _ => unimplemented!(),
-            },
             Series::League => {} // this series is scheduled via the League website, which is auto-imported
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
@@ -800,6 +765,7 @@ impl Race {
                 //TODO add archives of old Standard tournaments and Challenge Cups?
                 _ => {} // new events are scheduled via Mido's House
             },
+            | Series::BattleRoyale
             | Series::CoOp //TODO add archives of seasons 1 and 2?
             | Series::CopaDoBrasil
             | Series::CopaLatinoamerica
