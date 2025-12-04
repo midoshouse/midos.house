@@ -1049,6 +1049,936 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             }
         }),
+        "9" => Some(html! {
+            div(class = "toc") {
+                article {
+                    h2 : "Welcome to the Ocarina of Time Randomizer Standard Tournament Season 9";
+                    p : "The tournament will be hosted through a partnership between ZeldaSpeedRuns and The Silver Gauntlets to give 96 players a chance to participate in Season 9.";
+                    p {
+                        : "This event is organized by ";
+                        : English.join_html_opt(data.organizers(transaction).await?);
+                        : ". Please contact us if you have any questions or concerns. We can be reached by pinging the ";
+                        strong : "@Tourney Organisation";
+                        : " role on Discord.";
+                    };
+                    h2(id = "links") : "Important Links";
+                    ul {
+                        li {
+                            a(href = "https://discord.gg/ootrandomizer") : "Ocarina of Time Randomizer Discord";
+                        }
+                        li {
+                            a(href = "https://discord.gg/zsr") : "ZeldaSpeedRuns Discord";
+                        }
+                        li {
+                            a(href = "https://discord.gg/qrGf6yNY4C") : "The Silver Gauntlets Discord";
+                        }
+                        li {
+                            a(href = uri!(event::races(Series::Standard, "9"))) : "Qualifier Schedule";
+                        }
+                        li {
+                            a(href = "https://www.start.gg/tournament/ocarina-of-time-randomizer-standard-tournament-season-9/event/main-tournament") : "Brackets";
+                        }
+                        /*
+                        li {
+                            a(href = uri!(event::info(Series::Standard, "9cc"))) : "Challenge Cup";
+                        }
+                        */ //TODO uncomment once the event exists
+                        li {
+                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "OoTR Standard Racing Ruleset";
+                        }
+                        li {
+                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Rules#Universal_Rules") : "Universal Racing Rules";
+                        }
+                        li {
+                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Racing_Infractions") : "Infraction system";
+                            : " by the Race Mods";
+                        }
+                        li {
+                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
+                        }
+                        li {
+                            a(href = "https://docs.google.com/document/d/1xJQ8DKFhBelfDSTih324h90mS1KNtugEf-b0O5hlsnw/edit") : "Hint Prioritization Document";
+                        }
+                        li {
+                            : "Settings List: ";
+                            strong {
+                                : "see ";
+                                a(href = "#all-settings") : "Appendix 1";
+                            }
+                        }
+                        li {
+                            : "Sometimes/Dual Hints: ";
+                            strong {
+                                : "see ";
+                                a(href = "#sometimes-hints") : "Appendix 2";
+                            }
+                        }
+                    }
+                    h2(id = "format") : "Tournament Format";
+                    p {
+                        : "Season 9 will include a ";
+                        strong : "qualifying stage";
+                        : ", followed by a ";
+                        strong : "double elimination 1v1 group phase";
+                        : ", with crowning the winner in a ";
+                        strong : "single elimination best of 3 format";
+                        : ".";
+                    }
+                    p {
+                        : "ZeldaSpeedRuns will be hosting the main tournament series. The ";
+                        strong : "top 32";
+                        : " players after the qualifiers will be eligible to participate in the next phase of the tournament.";
+                    }
+                    p {
+                        : "The Silver Gauntlets will be hosting the ";
+                        strong : "Challenge Cup";
+                        : ", a 64-player event that will include a ";
+                        strong : "group stage and a bracket stage";
+                        : ". The Challenge Cup is available to players ranked 33–96 after the qualifiers.";
+                    }
+                    p : "More information on the format of the qualifiers and both tournaments can be found below.";
+                    h2(id = "ruleset") : "Ruleset";
+                    p {
+                        : "The Season 9 tournament will be operating under the current Standard ruleset. You can find the ruleset here: ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "OoTR Standard Racing Ruleset";
+                    }
+                    p {
+                        : "Please make sure to familiarize yourself with the updated ruleset (November 2025). You can find important resources on allowed tricks in the ";
+                        a(href = "https://discord.com/channels/274180765816848384/1444282753645543435") : "#s9-resources";
+                        : " channel in the ";
+                        a(href = "https://discord.gg/ootrandomizer") : "OoTR Discord";
+                        : ".";
+                    }
+                    h3(id = "penalties") : "Penalties";
+                    p {
+                        : "During Qualifiers the Tournament Organisation will follow the infraction system provided by the Race Mods: ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Racing_Infractions") : "Infractionary base outline";
+                    }
+                    p {
+                        strong : "After the qualifying stage, every minor infraction will get immediately upgraded to a medium level infraction and the corresponding punishment.";
+                    }
+                    ul {
+                        li : "If the winner of a match gets disqualified, the other player will get awarded with the win no matter if they finished the race.";
+                        li : "In case of both players getting disqualified, the organisation team will handle the match as a double loss: In best-of-3-matches a 4th match is required; in best-of-1 matches a rematch is needed. Scheduling deadlines will be decided by the organisation team on a case-by-case basis.";
+                    }
+                    h2(id = "settings") : "Settings";
+                    p {
+                        : "Season 9 qualifiers and both tournaments will be played on OoTR version 9.0. During the preseason, version 9.0 may not yet be available; seeds may be generated on ";
+                        a(href = "https://ootrandomizer.com/generatorDev") : "the Dev generator";
+                        : " in the meantime.";
+                    }
+                    p : "The following list is an overview of the main settings for the tournament:";
+                    ul {
+                        li {
+                            : "Vanilla Rainbow Bridge (requires Shadow ";
+                            em : "and";
+                            : " Spirit Medallion ";
+                            em : "as well as";
+                            : " Light Arrows)";
+                        }
+                        li {
+                            : "Ganon's Castle Boss Key on 6 medallions ";
+                            em : "(reward layout in the pause menu)";
+                        }
+                        li {
+                            : "Dungeon ER ";
+                            em : "(dungeon layout in the pause menu on the map screen by pressing A)";
+                        }
+                        li {
+                            : "Start with 1 major item (see ";
+                            a(href = "#important-information") : "Important Information";
+                            : " for a list of all major items)";
+                        }
+                        li : "Closed Deku Tree";
+                        li : "All Locations Reachable";
+                        li : "Chest Appearance Matches Contents (CAMC)";
+                        li : "Random starting age, random child spawn, vanilla adult spawn";
+                        li : "Blue Fire Arrows: On";
+                        li : "Cuccos: 3";
+                        li : "Require Lens of Truth and Magic for Treasure Chest Game: On";
+                        li : "Ruto Already at F1: Off";
+                        li : "Fast Shadow Boat: Off";
+                        li : "Free Scarecrow's Song: Off";
+                    }
+                    p {
+                        strong {
+                            : "To find a full list of the settings, please check ";
+                            a(href = "#all-settings") : "Appendix 1";
+                            : " at the end of this document.";
+                        }
+                    }
+                    h2(id = "hints") : "Hint Distribution";
+                    ul {
+                        li {
+                            : "5 x 2 Always hints: ";
+                            em : "Skull Mask, Biggoron, Frogs 2, Burning Kakariko & Ocarina of Time";
+                        }
+                        li : "2 x 2 Barren (foolish) hints";
+                        li : "2 x 2 Important Check hints";
+                        li : "1 x 2 Song hint";
+                        li : "2 x 2 Dual (sometimes) hints";
+                        li : "3 x 2 (single) Sometimes hints";
+                        li : "Light Arrows hinted in Dampé's Diary";
+                        li : "Skull hints (30/40/50) in the House of Skulltula";
+                    }
+                    p {
+                        strong {
+                            : "To find a full list of the Sometimes & Dual hints for Season 9, check ";
+                            a(href = "#sometimes-hints") : "Appendix 2";
+                            : " at the end of this document.";
+                        }
+                    }
+                    h2(id = "important-information") : "Important information";
+                    ul {
+                        li {
+                            : "Zelda's Lullaby cannot be ";
+                            em : "directly";
+                            : " hinted on a Path";
+                        }
+                        li : "Maximum of 1 dungeon can be hinted as Barren";
+                        li {
+                            : "One-hint-per-goal enabled ";
+                            em : "(see document below for details)";
+                        }
+                        li {
+                            : "Logical Quirks for Dungeon Entrance Randomizer can be found ";
+                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Entrance_Randomizer#ER_Logic_Quirks") : "here";
+                        }
+                        li {
+                            : "Additional enabled tricks:";
+                            ul {
+                                li : "Deku Tree Basement Web to Gohma with Bow";
+                                li : "Dodongo's Cavern Scarecrow GS with Armose Statue";
+                            }
+                        }
+                        li {
+                            : "Major items:";
+                            ul {
+                                li : "Slingshots";
+                                li : "Boomerang";
+                                li : "Bomb Bags";
+                                li : "Bows";
+                                li : "Progressive Hookshots";
+                                li : "Megaton Hammer";
+                                li : "Lens of Truth";
+                                li : "Bottles";
+                                li : "Magic Arrows (Fire, Blue Fire & Light Arrows)";
+                                li : "Magic Spells (Din's Fire, Farore's Wind & Nayru's Love)";
+                                li : "Adult Trade Items";
+                                li : "Biggoron Sword";
+                                li : "Mirror Shield";
+                                li : "Tunics (Goron & Zora)";
+                                li : "Boots (Iron & Hover Boots)";
+                                li : "Magic Power Upgrades";
+                                li : "Wallet (Adult & Giant's Wallet)";
+                                li : "Scales (Silver & Gold)";
+                                li : "Progressive Strength Upgrades";
+                                li : "Stone of Agony";
+                                li : "All Songs";
+                            }
+                        }
+                    }
+                    p {
+                        strong {
+                            : "Please also take a look at ";
+                            a(href = "https://docs.google.com/document/d/1xJQ8DKFhBelfDSTih324h90mS1KNtugEf-b0O5hlsnw/edit") : "this document";
+                            : " explaining the hint prioritization for the split win condition.";
+                        }
+                    }
+                    h2(id = "password") : "Password Protection";
+                    p : "Password protection is enabled to unlock the seed after patching. As soon as the countdown in the race room starts, the players will receive a 6-character passcode in the form of ocarina note buttons to enter in the file select menu. The players will then have 15 seconds (30 seconds in qualifiers) to enter the password correctly. Once the seed has been successfully unlocked, players must wait until the race timer hits zero before commencing the race.";
+                    p {
+                        a(href = "https://www.youtube.com/watch?v=PZLTvNjb_kg") : "Password Protection Demonstration Video";
+                    }
+                    h2(id = "qualifiers") : "Qualifiers";
+                    p {
+                        : "Anyone is free to enter the qualification races. There is no sign-up necessary to enter races or to have your points calculated on the leaderboard other than having a ";
+                        a(href = "https://racetime.gg/") : "racetime.gg";
+                        : " account. Please also make sure to read through the ";
+                        a(href = "rules") : "streaming rules";
+                        : " further below.";
+                    }
+                    ul {
+                        li : "There will be 20 total qualifiers";
+                        li : "Only your first 8 races will count towards your score on the leaderboard";
+                        li : "To be eligible for qualification, you need to complete a minimum of 5 non-zero qualifiers";
+                        li : "Each player's highest score will be dropped, and 2nd through 5th scores will be used to calculate their overall points; any possible 6th through 8th scores will be dropped";
+                        li : "Baseline for point calculation is 1000";
+                        li : "Maximum amount of points per race is 1100";
+                        li : "Minimum amount of points per race is 100";
+                        li : "Forfeits will count as 0 points";
+                    }
+                    p {
+                        strong : "Points will be calculated differently to previous seasons.";
+                        : " This document explains some minor changes: ";
+                        a(href = "https://docs.google.com/document/d/19hqOQvXyH_7b83nHrjetRI6s6RhS-KZ1BjBBu_gqScA/edit") : "S9 Qual Point Changes";
+                    }
+                    p {
+                        : "Dates for all Qualifiers can be found here: ";
+                        a(href = uri!(event::races(Series::Standard, "9"))) : "Season 9 Qualifier Schedule";
+                    }
+                    p {
+                        img(src = static_url!("event/s/9-qualifier-schedule.png"), style = "max-width: 100%; max-height: 100vh;");
+                    }
+                    ul {
+                        li : "Race rooms will be automatically opened 1 hour before the scheduled start time by the Mido's House bot.";
+                        li : "Mido will provide a seed 15 minutes before the race.";
+                        li : "Qualifiers will be set to “invite only” 5 minutes before the scheduled start of the race.";
+                        li : "Qualifiers will be force-started at the designated starting time.";
+                        li : "Any participant who is not ready at that time will be removed from the race.";
+                    }
+                    h2(id = "brackets") : "Brackets";
+                    p {
+                        : "After all 20 Qualification Races have concluded, the ";
+                        strong : "top 32 players";
+                        : " will qualify for the double elimination group stage of the main tournament and players ";
+                        strong : "ranked 33–96";
+                        : " will qualify for the Challenge Cup. If players are tied on points, the player with the highest individual point value from any of their eligible scoring races will win the tiebreaker. If it is still tied, the second-highest race will be considered next, and so on until the tie is broken.";
+                    }
+                    p : "If a player decides to opt out of the bracket phase of the tournament, their spot will go to the next person in line. This means that players ranked outside of the top 32 or 96 may still qualify for one of the tournaments, depending on players dropping out before the next phase begins. If you qualify for the main tournament, you cannot opt out to play in the Challenge Cup.";
+                    p {
+                        strong : "To opt in for the tournament, you are required to have a Mido's House account.";
+                        br;
+                        : "The progress of the bracket will be organized on ";
+                        a(href = "https://www.start.gg/tournament/ocarina-of-time-randomizer-standard-tournament-season-9/event/main-tournament") : "start.gg";
+                        : ". A start.gg account is not required, but may optionally be provided to receive notifications about your matches.";
+                    }
+                    p : "Timeline for Season 9:";
+                    ul {
+                        li {
+                            : "Qualifiers ";
+                            : format_date_range(Utc.with_ymd_and_hms(2026, 1, 3, 19, 0, 0).single().expect("wrong hardcoded datetime"), Utc.with_ymd_and_hms(2026, 1, 31, 19, 0, 0).single().expect("wrong hardcoded datetime"));
+                        }
+                        li {
+                            : "Opt-ins until ";
+                            : format_datetime(Utc.with_ymd_and_hms(2026, 2, 2, 18, 59, 59).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                        }
+                        li {
+                            : "Start of the bracket phase: ";
+                            : format_datetime(Utc.with_ymd_and_hms(2026, 2, 2, 19, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                        }
+                    }
+                    h3(id = "top32") : "Main Tournament";
+                    h4(id = "preliminary-bracket") : "Preliminary bracket";
+                    ul {
+                        li : "Players will be seeded into 4 groups, consisting of 8 people.";
+                        li : "Double-Elimination format; players progress to brackets after winning 2 1v1-matches and are eliminated after 2 losses.";
+                        li : "One week per round; players may schedule ahead of time where possible.";
+                    }
+                    strong : "Group Seeding:";
+                    ul {
+                        li : "Group A — 1, 16, 17, 32 | 8, 9, 24, 25";
+                        li : "Group B — 2, 15, 18, 31 | 7, 10, 23, 26";
+                        li : "Group C — 3, 14, 19, 30 | 6, 11, 22, 27";
+                        li : "Group D — 4, 13, 20, 29 | 5, 12, 21, 28";
+                    }
+                    strong : "Reseeding & Placement:";
+                    ul {
+                        li : "Players advancing 2-0 through the groups will be reseeded higher than those with a 2-1 record.";
+                        li : "One player from each group will be placed into a quartile of the bracket to ensure there are no immediate rematches.";
+                        li : "Higher seeds will face off against lower ranked seeds in the first round of brackets, provided they are not from the same group.";
+                    }
+                    h4(id = "main-bracket") : "Main bracket";
+                    ul {
+                        li : "Single-Elimination Best of 3 format.";
+                        li : "Two weeks per matchup; players may schedule ahead of time where possible.";
+                        li : "Grand Finals have been allocated 3 weeks if necessary.";
+                    }
+                    h3(id = "cc") : "Challenge Cup";
+                    ul {
+                        li : "Challenge Cup will follow the same format as the Main Tournament";
+                        li : "Players will be drawn into 8 groups of 8 in the traditional reveal stream.";
+                        li : "The second stage of tournament will follow the same structure as the Main Tournament.";
+                    }
+                    h3(id = "scheduling") : "Scheduling";
+                    p {
+                        : "Matches will be organized via the Mido's House bot. To schedule your match, please use the ";
+                        code : "/schedule";
+                        : " command in your scheduling thread. A race room will automatically be opened 30 minutes before the designated time of the race. Mido will automatically roll the seed 15 minutes before the race is due to start. Unless the Fair Play Agreement (FPA) command has been utilized, the result will be automatically processed and posted in the ";
+                        a(href = "https://discord.com/channels/274180765816848384/1444282821484220467") : "#s9-results";
+                        : " channel (after a 20-minute delay to avoid spoiling spectators).";
+                    }
+                    p {
+                        : "The race can be rescheduled by using ";
+                        code : "/schedule";
+                        : " again, or removed from the schedule using ";
+                        code : "/schedule-remove";
+                        : ". If the room has already been opened or if there are any technical difficulties, please contact the tournament organizers.";
+                    }
+                    h3(id = "asyncs") : "Asynchronous Matches (asyncs)";
+                    p {
+                        : "To ensure we run a smooth tournament, we are going to allow asynchronous matches in the bracket phase of the tournament. ";
+                        strong : "Before requesting an async, the players must have made significant efforts to attempt to schedule a live match.";
+                        : " Permission from tournament organizers needs to be requested at least 24 hours in advance to make sure an organizer is available for the scheduled time.";
+                    }
+                    p : "Here are the guidelines:";
+                    ul {
+                        li : "No breaks";
+                        li : "15 minute FPA time allowed";
+                        li : "After scheduling your async, you will receive the seed from a tournament organizer. You must start the race within 10 minutes of obtaining the seed and submit your time within 5 minutes of finishing.";
+                        li : "If you obtain a seed but do not submit a finish time, it will count as a forfeit.";
+                        li : "Async races will no longer be an option for players from Quarter Finals.";
+                    }
+                    p {
+                        : "Here are ";
+                        em : "additional";
+                        : " guidelines for the ";
+                        strong : "first person playing";
+                        : ":";
+                    }
+                    ul {
+                        li : "No streaming allowed";
+                        li : "Unlisted upload on YouTube. Please note that the result can already be submitted before YouTube has fully processed the upload.";
+                        li : "A tournament organizer or volunteer will be in a voice call with the racer, so screen sharing on Discord is required.";
+                    }
+                    p {
+                        : "If you are the ";
+                        strong : "second person playing";
+                        : ", you must stream your async live on Twitch.";
+                    }
+                    h2(id = "fpa") : "Fair Play Agreement (FPA)";
+                    p {
+                        : "The ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
+                        : " is mandatory for all runners.";
+                    }
+                    p : "Mido will automatically enable FPA for all 1v1 matches. FPA is not available during qualifiers.";
+                    h2(id = "rules") : "Tournament and Streaming Rules";
+                    p : "Players may participate on N64 (EverDrive), Wii Virtual Console, and any race-legal emulator.";
+                    p {
+                        : "Please read and follow the ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Rules#Universal_Rules") : "Universal Racing Rules";
+                        : " for all races.";
+                    }
+                    p {
+                        : "Streaming will be required during every tournament race. Please refer to the ";
+                        a(href = "#streaming") : "streaming setup";
+                        : " section for further information.";
+                    }
+                    p : "There will be no additional streaming rules during qualifiers, but we encourage all racers to take precautions to protect themselves against malicious behavior (such as spoilers).";
+                    p {
+                        strong : "Bracket matches in the main tournament will enforce a strict stream delay of 20 minutes.";
+                    }
+                    p : "We ask that you test to ensure your streaming setup is capable of handling delayed streaming if you would like to participate in the bracket stage of the main tournament.";
+                    p : "Any additional rules will be given to bracket participants at a later date.";
+                    p {
+                        : "All races will be hosted on ";
+                        a(href = "https://racetime.gg/") : "racetime.gg";
+                        : ". A racetime.gg account is mandatory to officially participate in races and have your qualifier scores calculated.";
+                    }
+                    p {
+                        : "Please be courteous toward your fellow racers! Do not post information about ongoing seeds anywhere outside of the designated spoiler discussion channels. Please discuss seeds in the ";
+                        a(href = "https://discord.com/channels/274180765816848384/1444282846083547237") : "#s8-results-discussion";
+                        : " channel of the OoTR Discord after finishing a race. ";
+                        strong : "Depending on the severity of the offense, spoilers may result in disqualification from the entire tournament.";
+                    }
+                    p {
+                        strong {
+                            : "If you do not wish to participate in the bracket stage of either tournament, please ";
+                            a(href = uri!(event::opt_out(Series::Standard, "9"))) : "opt out";
+                            : " as soon as possible.";
+                        }
+                    }
+                    h2(id = "streaming") : "Streaming Setup";
+                    p : "To make the entire race workflow from race monitoring to restreaming as straightforward and barrier-free as possible, the following settings should be ensured regarding bitrate, resolution, and framerate:";
+                    p : "Resolution 420p, Frame Rate 30 fps → Bitrate of 1000–1500 kbps";
+                    p : "Resolution 720p, Frame Rate 30 fps → Bitrate of 2000–2600 kbps";
+                    p {
+                        : "Resolution 720p, Frame Rate 60 fps → Bitrate of 2800–3400 kbps";
+                        br;
+                        : "(bleeding edge without partner / assured quality options)";
+                    }
+                    p {
+                        : "Resolution 1080p, Frame Rate 30 fps → Bitrate of 3000–3500 kbps";
+                        br;
+                        : "(not recommended without partner / assured quality options)";
+                    }
+                    p {
+                        : "Resolution 1080p, Frame Rate 60 fps → Bitrate of 4500–5000 kbps";
+                        br;
+                        : "(not recommended without partner / assured quality options)";
+                    }
+                    p {
+                        : "Note that the default settings OBS ships with are a ";
+                        strong : "TON";
+                        : " higher. Therefore, it is important you check your bitrate and resolution settings before your first tournament participation.";
+                    }
+                    p {
+                        : "During the bracket stage of the main tournament, a stream delay of 20 minutes is enforced. Please ensure that the option ";
+                        strong : "Preserve cutoff point when reconnecting";
+                        : " is ";
+                        strong : "DISABLED";
+                        : " at all costs to prevent the loss of footage and desyncing issues. The ";
+                        strong : "Delay";
+                        : " setting needs to be set to ";
+                        strong : "1200s";
+                        : ". You can find both settings in ";
+                        em : "General › Advanced › Stream Delay";
+                        : ".";
+                    }
+                    h2(id = "coverage") : "Coverage";
+                    p : "Tournament qualifiers and bracket matches will be streamed live on several Twitch channels. Be sure to follow them to catch all the S9 action you can!";
+                    p {
+                        : "English Coverage:";
+                        br;
+                        a(href = "https://twitch.tv/zeldaspeedruns") : "twitch.tv/zeldaspeedruns";
+                        br;
+                        a(href = "https://twitch.tv/zeldaspeedruns2") : "twitch.tv/zeldaspeedruns2";
+                        br;
+                        a(href = "https://twitch.tv/zeldaspeedruns_3") : "twitch.tv/zeldaspeedruns_3";
+                        br;
+                        a(href = "https://twitch.tv/zeldaspeedruns_4") : "twitch.tv/zeldaspeedruns_4";
+                        br;
+                        a(href = "https://twitch.tv/thesilvergauntlets") : "twitch.tv/thesilvergauntlets";
+                    }
+                    p {
+                        : "French Coverage:";
+                        br;
+                        : "Coverage will be handled by papy_grant and the French Restream Coordination.";
+                        br;
+                        a(href = "https://twitch.tv/papy_grant") : "twitch.tv/papy_grant";
+                    }
+                    p {
+                        : "German Coverage:";
+                        br;
+                        : "ZeldaSpeedrunsDE will coordinate this year's German restreams, courtesy of UtzStauder and other community members!";
+                        br;
+                        a(href = "https://twitch.tv/zeldaspeedrunsde") : "twitch.tv/zeldaspeedrunsDE";
+                    }
+                    p : "If you want to broadcast multiple matches of the tournament in another language, please reach out to us.";
+                    p {
+                        : "Due to the high amount of matches, it is very unlikely that all matches of the bracket stage will be restreamed. To prevent burnout for both restreamers and volunteers, coverage will be limited to a maximum of ";
+                        strong : "two";
+                        : " matches per day, unless a third is being requested by a full set of volunteers.";
+                    }
+                    p : "While most streams will have either dual language restreams or just English coverage, there might be matches only covered in a single language, especially in the earlier stages of the tournament.";
+                    p : "hours in advance through the Mido's House event status page. From Quarter Finals onwards, ZeldaSpeedRuns, The Silver Gauntlets, and their international partners reserve the right to restream the matches for their respective tournaments.";
+                    p {
+                        : "Beyond this pre-approval, the following rules apply: If a race cannot be covered by the pre-approved channel for a given language, other channels are welcome to request permission to restream in the ";
+                        a(href = "https://discord.com/channels/274180765816848384/1444282780489093170") : "#s9-restream-planning";
+                        : " channel, and will be approved on a case-by-case basis given participants also consent. If a channel is interested in covering one or more races in a language not listed above, please also reach out in the #s9-restream-planning channel to ask for restream permission. Note that we will only allow a low number of additional channels per language. In all cases, restreams must be scheduled at least 24 hours in advance, to ensure that racers and volunteers have appropriate notice. We reserve the right to restream all semifinals and finals matches.";
+                    }
+                    p : "Please consider doing interviews for all restreams. While not required, volunteers and viewers on all channels appreciate hearing from runners.";
+                    h2(id = "special-thanks") : "Special Thanks";
+                    p : "We would like to extend a special thanks to the following individuals and groups for working with us to help make S9 work smoothly:";
+                    p {
+                        strong : "OoTR developers and contributors";
+                        : ", thank you for your continued work to have a stable v9.0 with exciting new features and providing valuable insight whenever we needed clarification.";
+                    }
+                    p {
+                        strong : "Fenhl";
+                        : ", for providing the comfort of Mido's House.";
+                    }
+                    p {
+                        strong : "Tourney testers";
+                        : ", who volunteered to play various combinations of asyncs and gave us input for finetuning our ideas from a racer's perspective.";
+                    }
+                    p {
+                        strong : "Aksannyi";
+                        : ", for providing us with excellent artwork to make our qualifier schedule look amazing again!";
+                    }
+                    p {
+                        strong : "Beta Testers";
+                        : ", for assisting devs by reporting issues with new features for the latest release (9.0).";
+                    }
+                    p {
+                        strong : "Race Mods";
+                        : ", for their updates to rule enforcement guidelines, and their flexibility in implementing it to ensure integrity and equity in the tournament.";
+                    }
+                    p {
+                        strong : "TreZ & Chimp";
+                        : " have both offered us insight and context as well as helped us with general organization within Discord. Whenever we needed something, you were there to help!";
+                    }
+                    h2(id = "all-settings") : "Appendix 1: Settings List";
+                    h3 : "Main Rules";
+                    ul {
+                        li : "Randomize Main Rule Settings: Disabled";
+                        li : "Logic Rules: Glitchless";
+                    }
+                    h4 : "Open";
+                    ul {
+                        li : "Forest: Closed Deku";
+                        li : "Kakariko Gate: Open Gate";
+                        li : "Door of Time: Open";
+                        li : "Zora's Fountain: Default Behavior (Closed)";
+                        li : "Gerudo's Fortress: Rescue One Carpenter";
+                        li : "Dungeon Boss Shortcuts Mode: Off";
+                        li : "Rainbow Bridge Requirement: Vanilla Requirements";
+                        li : "Random Number of Ganon's Trials: Disabled";
+                        li : "Ganon's Trials Count: 0";
+                    }
+                    h4 : "World";
+                    ul {
+                        li : "Starting Age: Random";
+                        li : "MQ Dungeon Mode: Vanilla";
+                        li : "Pre-completed Dungeons Mode: Off";
+                        li : "Shuffle Interior Entrances: Off";
+                        li : "Shuffle Thieves' Hideout Entrances: Disabled";
+                        li : "Shuffle Grotto Entrances: Disabled";
+                        li : "Shuffle Dungeon Entrances: Dungeon";
+                        li : "Shuffle Boss Entrances: Off";
+                        li : "Shuffle Ganon's Tower Entrance: Disabled";
+                        li : "Shuffle Overworld Entrances: Disabled";
+                        li : "Shuffle Gerudo Valley River Exit: Disabled";
+                        li : "Randomize Owl Drops: Disabled";
+                        li : "Randomize Warp Song Destinations: Disabled";
+                        li : "Randomize Overworld Spawns: Child";
+                        li : "Triforce Hunt: Disabled";
+                        li : "Add Bombchu Bag and Drops: Disabled";
+                    }
+                    h4 : "Shuffle";
+                    ul {
+                        li : "Shuffle Songs: Song Locations";
+                        li : "Shopsanity: Off";
+                        li : "Tokensanity: Off";
+                        li : "Scrub Shuffle: Off";
+                        li : "Shuffle Child Trade Sequence Items: None";
+                        li : "Shuffle All Selected Adult Trade Items: Disabled";
+                        li : "Shuffle Adult Trade Sequence Items: Prescription, Eyeball Frog, Eyedrops, Claim Check";
+                        li : "Shuffle Rupees & Hearts: Off";
+                        li : "Shuffle Pots: Off";
+                        li : "Shuffle Crates: Off";
+                        li : "Shuffle Cows: Disabled";
+                        li : "Shuffle Beehives: Disabled";
+                        li : "Shuffle Wonderitems: Disabled";
+                        li : "Shuffle Kokiri Sword: Enabled";
+                        li : "Shuffle Ocarinas: Disabled";
+                        li : "Shuffle Gerudo Card: Disabled";
+                        li : "Shuffle Magic Beans: Disabled";
+                        li : "Shuffle Expensive Merchants: Disabled";
+                        li : "Shuffle Frog Song Rupees: Disabled";
+                        li : "Shuffle 100 Skulltula Reward: Disabled";
+                        li : "Shuffle Hyrule Loach Reward: Off";
+                        li : "Shuffle Individual Ocarina Notes: Disabled";
+                    }
+                    h4 : "Shuffle Dungeon Items";
+                    ul {
+                        li : "Shuffle Dungeon Rewards: Dungeon Reward Locations";
+                        li : "Maps & Compasses: Start With";
+                        li : "Small Keys: Own Dungeon";
+                        li : "Thieves' Hideout Keys: Vanilla Locations";
+                        li : "Treasure Chest Game Keys: Vanilla Locations";
+                        li : "Key Rings Mode: Off";
+                        li : "Boss Keys: Own Dungeon";
+                        li : "Ganon's Boss Key: Medallions";
+                        li : "Medallions Required for Ganon's BK: 6";
+                        li : "Shuffle Silver Rupees: Vanilla Locations";
+                        li : "Maps and Compasses Give Information: Map gives dungeon location, Compass gives reward info";
+                    }
+                    h3 : "Detailed Logic";
+                    ul {
+                        li : "Guarantee Reachable Locations: All";
+                        li : "Nighttime Skulltulas Expect Sun's Song: Disabled";
+                    }
+                    h4 : "Exclude Locations";
+                    ul {
+                        li : "Deku Theater Mask of Truth";
+                    }
+                    h4 : "Enable Tricks";
+                    ul {
+                        li : "Enable Advanced Tricks: None";
+                        li : "Hidden Grottos without Stone of Agony";
+                        li : "Fewer Tunic Requirements";
+                        li : "Hammer Rusted Switches and Boulders Through Walls";
+                        li : "Man on Roof without Hookshot";
+                        li : "Windmill PoH as Adult with Nothing";
+                        li : "Crater's Bean PoH with Hover Boots";
+                        li : "Deku Tree Basement Web to Gohma with Bow";
+                        li : "Dodongo's Cavern Scarecrow GS with Armos Statue";
+                        li : "Dodongo's Cavern Spike Trap Room Jump without Hover Boots";
+                        li : "Bottom of the Well without Lens of Truth";
+                        li : "Child Dead Hand without Kokiri Sword";
+                        li : "Forest Temple East Courtyard Vines with Hookshot";
+                        li : "Shadow Temple Stationary Objects without Lens of Truth";
+                        li : "Shadow Temple Invisible Moving Platform without Lens of Truth";
+                        li : "Shadow Temple Bongo Bongo without Lens of Truth";
+                        li : "Spirit Temple without Lens of Truth";
+                        li : "Gerudo Training Ground without Lens of Truth";
+                        li : "Ganon's Castle without Lens of Truth";
+                    }
+                    h3 : "Starting Inventory";
+                    h4 : "Starting Equipment";
+                    ul {
+                        li : "Deku Shield";
+                    }
+                    h4 : "Starting Items";
+                    ul {
+                        li : "Ocarina";
+                        li : "Zelda's Letter";
+                    }
+                    h4 : "Starting Songs";
+                    ul {
+                        li : "None";
+                    }
+                    h4 : "Other";
+                    ul {
+                        li : "Additional Random Starting Items: Enabled";
+                        li : "Exclude Item Types: Bombchus, Deku/Hylian Shields, Deku Stick/Nut Upgrades, Health Upgrades, Junk Items";
+                        li : "Amount of Items: 1";
+                        li : "Start with Consumables: Enabled";
+                        li : "Start with Max Rupees: Disabled";
+                        li : "Starting Hearts: 3";
+                    }
+                    h3 : "Other";
+                    h4 : "Timesavers";
+                    ul {
+                        li : "Free Reward from Rauru: Enabled";
+                        li : "Skip Tower Escape Sequence: Enabled";
+                        li : "Skip Child Stealth: Enabled";
+                        li : "Skip Epona Race: Enabled";
+                        li : "Skip Some Minigame Phases: Enabled";
+                        li : "Complete Mask Quest: Disabled";
+                        li : "Enable Specific Glitch-Useful Cutscenes: Disabled";
+                        li : "Fast Chest Cutscenes: Enabled";
+                        li : "Scarecrow Behavior: Fast";
+                        li : "Fast Bunny Hood: Enabled";
+                        li : "Maintain Mask Equips through Scene Changes: Disabled";
+                        li : "Plant Magic Beans: Disabled";
+                        li : "Easier Fire Arrow Entry: Disabled";
+                        li : "Ruto Already at F1: Disabled";
+                        li : "Fast Shadow Boat: Disabled";
+                        li : "Random Cucco Count: Disabled";
+                        li : "Cucco Count: 3";
+                        li : "Random Big Poe Target Count: Disabled";
+                        li : "Big Poe Target Count: 1";
+                    }
+                    h4 : "Hints and Information";
+                    ul {
+                        li : "Clearer Hints: Enabled";
+                        li : "Gossip Stones: Hints; Need Nothing";
+                        li : "Hint Distribution: Tournament";
+                        li : "Misc. Hints: Temple of Time Altar, Dampé's Diary (Light Arrows), Ganondorf (Light Arrows), Warp Songs and Owls, House of Skulltula: 30 / 40 / 50";
+                        li : "Chest Appearance Matches Contents: Both Size and Texture";
+                        li : "Chest Textures: All";
+                        li : "Minor Items in Big/Gold chests: None";
+                        li : "Invisible Chests: Disabled";
+                        li : "Pot, Crate, & Beehive Appearance Matches Contents: Off";
+                        li : "Key Appearance Matches Dungeon: Disabled";
+                    }
+                    h4 : "Gameplay Changes";
+                    ul {
+                        li : "Randomize Ocarina Melodies: None";
+                        li : "Text Shuffle: No Text Shuffled";
+                        li : "Damage Multiplier: Normal";
+                        li : "Bonks Do Damage: No Damage";
+                        li : "Starting Time of Day: Default (10:00)";
+                        li : "Blue Fire Arrows: Enabled";
+                        li : "Fix Broken Drops: Disabled";
+                        li : "Require Lens of Truth for Treasure Chest Game: Enabled";
+                        li : "Hero Mode: Disabled";
+                        li : "Dungeons Have One Major Item: Disabled";
+                    }
+                    h4 : "Item Pool";
+                    ul {
+                        li : "Item Pool: Balanced";
+                        li : "Ice Traps: No Ice Traps";
+                        li : "Ice Trap Appearance: Anything";
+                    }
+                    h2(id = "sometimes-hints") : "Appendix 2: Sometimes/Dual Hints";
+                    h3 : "Sometimes Hints";
+                    h4 : "Overworld:";
+                    ul {
+                        li : "LW Skull Kid";
+                        li : "LW Target in Woods";
+                        li : "Market 10 Big Poes";
+                        li : "Market Treasure Chest Game Reward";
+                        li : "HC Fairy Reward";
+                        li : "Kak 20 Gold Skulltulla Reward";
+                        li {
+                            : "Kak Anju as Child ";
+                            em : "(Chickens)";
+                        }
+                        li {
+                            : "Graveyard Heart Piece Grave Chest ";
+                            em : "(Sun's Song grave)";
+                        }
+                        li {
+                            : "Graveyard Royal Familys Tomb Chest ";
+                            em : "(Composer's Grave Torches)";
+                        }
+                        li : "GC Darunias Joy";
+                        li : "GC Pot Freestanding PoH";
+                        li : "GC Maze Left Chest";
+                        li : "ZR Frogs in the Rain";
+                        li : "ZD King Zora Thawed";
+                        li : "ZF Bottom Freestanding PoH";
+                        li : "LH Sun";
+                        li : "LH Lab Dive";
+                        li {
+                            : "GV Chest ";
+                            em : "(Hammer Rocks)";
+                        }
+                        li : "Wasteland Chest";
+                        li : "OGC Fairy Reward";
+                    }
+                    h4 : "Dungeons:";
+                    ul {
+                        li {
+                            : "Jabu Jabus Belly Boomerang Chest ";
+                            em : "(Stingers)";
+                        }
+                        li : "Fire Temple Scarecrow Chest";
+                        li : "Fire Temple Megaton Hammer Chest";
+                        li : "Water Temple River Chest";
+                        li : "Water Temple Central Pillar Chest";
+                        li {
+                            : "Water Temple Boss Key Chest ";
+                            em : "(Rolling Boulders)";
+                        }
+                        li {
+                            : "Spirit Temple Silver Gauntlets Chest ";
+                            em : "(Right Hand)";
+                        }
+                        li {
+                            : "Spirit Temple Mirror Shield Chest ";
+                            em : "(Left Hand)";
+                        }
+                        li {
+                            : "Shadow Temple Freestanding Key ";
+                            em : "(Pot Room)";
+                        }
+                        li {
+                            : "Ice Cavern Iron Boots Chest ";
+                            em : "(Final Chest)";
+                        }
+                        li : "GTG Underwater Silver Rupee Chest";
+                        li : "GTG Maze Path Final Chest";
+                        li : "IGC Shadow Trial Golden Gauntlets Chest";
+                    }
+                    h3 : "Dual Hints";
+                    h4 : "Overworld:";
+                    ul {
+                        li : "Market Bombchu Bowling Prizes";
+                        li {
+                            : "ZD Diving Minigame & Chest ";
+                            em : "(Torches)";
+                        }
+                        li {
+                            : "LH Adult Fishing & Freestanding PoH ";
+                            em : "(Top of Lab)";
+                        }
+                        li : "GV Crate & Waterfall Freestanding PoHs";
+                        li : "GF HBA 1000 & 1500";
+                        li : "HC & OGC Fairy Rewards";
+                    }
+                    h4 : "Dungeons:";
+                    ul {
+                        li {
+                            : "Fire Temple Flare Dancer & Boss Key Chest ";
+                            em : "(Hammer Loop)";
+                        }
+                        li {
+                            : "Water Temple Longshot & River Chest ";
+                            em : "(Dark Link Loop)";
+                        }
+                        li {
+                            : "Spirit Temple Silver Gauntlets & Mirror Shield Chest ";
+                            em : "(Colossus Hands)";
+                        }
+                        li {
+                            : "Spirit Temple Child Bridge & Early Torches Chest ";
+                            em : "(Child Loop)";
+                        }
+                        li {
+                            : "Spirit Temple Compass & Early Adult Right Chest ";
+                            em : "(Early Adult)";
+                        }
+                        li : "Shadow Temple Invisible Blades Visible & Invisible Chest";
+                        li {
+                            : "Shadow Temple Spike Walls Left & Boss Key Chest ";
+                            em : "(Wooden Walls)";
+                        }
+                        li {
+                            : "BOTW Invisible & Lens of Truth Chest ";
+                            em : "(Dead Hand)";
+                        }
+                        li : "IGC Spirit Trial Crystal Switch & Invisible Chest";
+                    }
+                }
+                div {
+                    nav {
+                        strong : "Contents";
+                        ul {
+                            li {
+                                a(href = "#links") : "Important Links";
+                            }
+                            li {
+                                a(href = "#format") : "Tournament Format";
+                            }
+                            li {
+                                a(href = "#ruleset") : "Ruleset";
+                                ul {
+                                    li {
+                                        a(href = "#penalties") : "Penalties";
+                                    }
+                                }
+                            }
+                            li {
+                                a(href = "#settings") : "Settings";
+                            }
+                            li {
+                                a(href = "#hints") : "Hint Distribution";
+                            }
+                            li {
+                                a(href = "#important-information") : "Important information";
+                            }
+                            li {
+                                a(href = "#password") : "Password Protection";
+                            }
+                            li {
+                                a(href = "#qualifiers") : "Qualifiers";
+                            }
+                            li {
+                                a(href = "#brackets") : "Brackets";
+                                ul {
+                                    li {
+                                        a(href = "#top32") : "Main Tournament";
+                                        ul {
+                                            li {
+                                                a(href = "#preliminary-bracket") : "Preliminary bracket";
+                                            }
+                                            li {
+                                                a(href = "#main-bracket") : "Main bracket";
+                                            }
+                                        }
+                                    }
+                                    li {
+                                        a(href = "#cc") : "Challenge Cup";
+                                    }
+                                    li {
+                                        a(href = "#scheduling") : "Scheduling";
+                                    }
+                                    li {
+                                        a(href = "#asyncs") : "Asynchronous Matches (asyncs)";
+                                    }
+                                }
+                            }
+                            li {
+                                a(href = "#fpa") : "Fair Play Agreement (FPA)";
+                            }
+                            li {
+                                a(href = "#rules") : "Tournament and Streaming Rules";
+                            }
+                            li {
+                                a(href = "#streaming") : "Streaming Setup";
+                            }
+                            li {
+                                a(href = "#coverage") : "Coverage";
+                            }
+                            li {
+                                a(href = "#special-thanks") : "Special Thanks";
+                            }
+                            li {
+                                a(href = "#all-settings") : "Appendix 1: Settings List";
+                            }
+                            li {
+                                a(href = "#sometimes-hints") : "Appendix 2: Sometimes/Dual Hints";
+                            }
+                        }
+                    }
+                }
+            }
+        }),
         _ => None,
     })
 }
