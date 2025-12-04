@@ -766,8 +766,8 @@ impl<'a> Data<'a> {
                         None
                     }
                 };
-                @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| html! {
-                    a(class = "button", href = url.to_string()) {
+                @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| {
+                    let content = html! {
                         @if let Some(favicon_url) = favicon_url {
                             : favicon(&favicon_url);
                         }
@@ -775,6 +775,13 @@ impl<'a> Data<'a> {
                             : "Roll Seed";
                         } else {
                             : "Practice";
+                        }
+                    };
+                    html! {
+                        @if let Tab::Practice = tab {
+                            a(class = "button selected", href? = is_subpage.then(|| url.to_string())) : content;
+                        } else {
+                            a(class = "button", href = url.to_string()) : content;
                         }
                     }
                 });
@@ -860,6 +867,7 @@ pub(crate) enum Tab {
     MyStatus,
     Enter,
     FindTeam,
+    Practice,
     Volunteer,
     Configure,
 }
@@ -2305,7 +2313,9 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwe
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PracticeError {
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Event(#[from] Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
+    #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -2328,43 +2338,76 @@ async fn practice_seed_favicon_url(ootr_api_client: &ootr_web::ApiClient, data: 
 }
 
 #[rocket::get("/event/<series>/<event>/practice")] //TODO this should probably be POST, need to turn links pointing here into buttons to support that
-pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Option<Redirect>, PracticeError> {
+pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<Option<RedirectOrContent>, PracticeError> {
     let mut transaction = pool.begin().await?;
     let Some(data) = Data::new(&mut transaction, series, event).await? else { println!("no such event"); return Ok(None) };
-    transaction.commit().await?;
+
+    macro_rules! roll_try {
+        ($res:expr) => {{
+            match $res {
+                Ok(v) => {
+                    transaction.commit().await?;
+                    v
+                }
+                Err(racetime_bot::RollError::Retries { num_retries, last_error }) => {
+                    if let Some(last_error) = last_error {
+                        eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                    } else {
+                        eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                    }
+                    let content = html! {
+                        : data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Practice, false).await?;
+                        p {
+                            : "Sorry, the seed could not be rolled because the randomizer reported an error ";
+                            : num_retries;
+                            : " times. Please reload this page to try again. If this error persists, please report it to ";
+                            : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
+                            : ".";
+                        }
+                    };
+                    return Ok(Some(RedirectOrContent::Content(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", data.display_name), content).await?)))
+                }
+                Err(e) => {
+                    transaction.commit().await?;
+                    return Err(PracticeError::Roll(e))
+                }
+            }
+        }};
+    }
+
     if series == Series::BattleRoyale && event == "2" {
-        let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
+        let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
         let (mut settings, plando) = ohko::s2_settings();
         settings.remove("password_lock");
-        let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
+        let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
         let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
         if let Some(spoiler_log_path) = spoiler_log_path {
             fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
         }
-        Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
+        Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
     } else if series == Series::CopaLatinoamerica && event == "2025" {
-        let Some(rando_version) = data.rando_version else { println!("no randomizer version"); return Ok(None) };
+        let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
         let (mut settings, plando) = latam::settings_2025();
         settings.remove("password_lock");
-        let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
+        let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
         let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
         if let Some(spoiler_log_path) = spoiler_log_path {
             fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
         }
-        Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
+        Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
     } else {
         let Some((rando_version, settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
             let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
-            Ok(Some(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}"))))
+            Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))))
         } else {
-            let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings.into_owned(), serde_json::Map::default()).await?;
+            let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings.into_owned(), serde_json::Map::default()).await);
             let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
             if let Some(spoiler_log_path) = spoiler_log_path {
                 fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
             }
-            Ok(Some(Redirect::to(format!("/seed/{file_stem}"))))
+            Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
         }
     }
 }
@@ -2402,7 +2445,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<
         },
         _ => unimplemented!(), //TODO ask other events' organizers if they want to show the Volunteer tab
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Volunteer — {}", data.display_name), html! {
         : header;
         : content;
     }).await?)
