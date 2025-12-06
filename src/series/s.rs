@@ -195,20 +195,20 @@ impl WeeklyKind {
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Short;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-8-8.2.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-9-8.3.63.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "S8";
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "S9";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
-            : " on Discord. Current settings starting with the Zora weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 11, 15, 19, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " on Discord. Current settings starting with the Kokiri weekly on ";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 12, 6, 23, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
             : " are those for ";
-            a(href = uri!(event::info(Series::Standard, "8"))) : "Standard Tournament Season 8";
+            a(href = uri!(event::info(Series::Standard, "9"))) : "Standard Tournament Season 9";
             : ".";
         }
     }
