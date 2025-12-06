@@ -2984,13 +2984,14 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqw
     let _ = (series, event);
     let mut transaction = pool.begin().await?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
-    let (rando_version, settings) = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let (rando_version, mut settings) = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     transaction.commit().await?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
         let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
         Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
     } else {
+        settings.remove("password_lock");
         let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await?;
         let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
         if let Some(spoiler_log_path) = spoiler_log_path {

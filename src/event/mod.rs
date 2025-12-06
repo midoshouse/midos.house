@@ -2396,12 +2396,13 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
         }
         Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
     } else {
-        let Some((rando_version, settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
+        let Some((rando_version, mut settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
             let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
             Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))))
         } else {
+            settings.to_mut().remove("password_lock");
             let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings.into_owned(), serde_json::Map::default()).await);
             let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
             if let Some(spoiler_log_path) = spoiler_log_path {
