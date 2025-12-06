@@ -1198,7 +1198,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li : "Require Lens of Truth and Magic for Treasure Chest Game: On";
                         li : "Ruto Already at F1: Off";
                         li : "Fast Shadow Boat: Off";
-                        li : "Free Scarecrow's Song: Off";
+                        li : "Scarecrow Behavior: Fast";
                     }
                     p {
                         strong {
