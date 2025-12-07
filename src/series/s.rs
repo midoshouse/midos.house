@@ -1213,6 +1213,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             : "5 x 2 Always hints: ";
                             em : "Skull Mask, Biggoron, Frogs 2, Burning Kakariko & Ocarina of Time";
                         }
+                        li : "5 x 2 Goal (path) hints";
                         li : "2 x 2 Barren (foolish) hints";
                         li : "2 x 2 Important Check hints";
                         li : "1 x 2 Song hint";
