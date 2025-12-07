@@ -1296,7 +1296,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : "Anyone is free to enter the qualification races. There is no sign-up necessary to enter races or to have your points calculated on the leaderboard other than having a ";
                         a(href = "https://racetime.gg/") : "racetime.gg";
                         : " account. Please also make sure to read through the ";
-                        a(href = "rules") : "streaming rules";
+                        a(href = "#rules") : "streaming rules";
                         : " further below.";
                     }
                     ul {
