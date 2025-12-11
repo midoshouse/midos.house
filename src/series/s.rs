@@ -1187,7 +1187,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li {
                             : "Start with 1 major item (see ";
                             a(href = "#important-information") : "Important Information";
-                            : " for a list of all major items)";
+                            : " for a list of possible items)";
                         }
                         li : "Closed Deku Tree";
                         li : "All Locations Reachable";
@@ -1253,7 +1253,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                         }
                         li {
-                            : "Major items:";
+                            : "Possible randomized starting items:";
                             ul {
                                 li : "Slingshots";
                                 li : "Boomerang";
@@ -1263,6 +1263,11 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 li : "Megaton Hammer";
                                 li : "Lens of Truth";
                                 li : "Bottles";
+                                li {
+                                    : "Ruto's Letter (note: ";
+                                    strong : "not";
+                                    : " shown on the file select screen)";
+                                }
                                 li : "Magic Arrows (Fire, Blue Fire & Light Arrows)";
                                 li : "Magic Spells (Din's Fire, Farore's Wind & Nayru's Love)";
                                 li : "Adult Trade Items";
@@ -1274,6 +1279,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 li : "Wallet (Adult & Giant's Wallet)";
                                 li : "Scales (Silver & Gold)";
                                 li : "Progressive Strength Upgrades";
+                                li : "Double Defence";
                                 li : "Stone of Agony";
                                 li : "All Songs";
                             }
