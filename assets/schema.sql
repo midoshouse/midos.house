@@ -649,6 +649,7 @@ CREATE TABLE public.races (
     video_url_es text,
     restreamer_es text,
     speedgaming_onsite_id bigint,
+    team4 bigint,
     CONSTRAINT async_exclusion CHECK (((start IS NULL) OR ((async_start1 IS NULL) AND (async_start2 IS NULL) AND (async_start3 IS NULL)))),
     CONSTRAINT matching_hash_nullness CHECK ((((hash1 IS NULL) = (hash2 IS NULL)) AND ((hash1 IS NULL) = (hash3 IS NULL)) AND ((hash1 IS NULL) = (hash4 IS NULL)) AND ((hash1 IS NULL) = (hash5 IS NULL)))),
     CONSTRAINT matching_last_edited_nullness CHECK (((last_edited_by IS NULL) = (last_edited_at IS NULL))),
