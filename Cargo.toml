@@ -56,13 +56,13 @@ itertools = "0.14"
 kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"
-log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
-mhstatus = { git = "https://github.com/midoshouse/status.midos.house", branch = "main" }
+log-lock = { git = "https://github.com/fenhl/log-lock" }
+mhstatus = { git = "https://github.com/midoshouse/status.midos.house" }
 #mimalloc = "0.1.43" # fails to compile on Ubuntu
 noisy_float = "0.2"
 nonempty-collections = "1"
-ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
-racetime = "0.31"
+ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", features = ["sqlx"] }
+racetime = "0.32"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
@@ -79,7 +79,7 @@ serde_plain = "1"
 serde_urlencoded = "0.7.1"
 serde_with = { version = "3", features = ["json"] }
 serenity = { version = "0.12.4", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] }
-serenity-utils = { git = "https://github.com/fenhl/serenity-utils", branch = "main" }
+serenity-utils = { git = "https://github.com/fenhl/serenity-utils" }
 smart-default = "0.7.1"
 sqlx = { version = "0.8.3", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
 tempfile = "3.20.0"
