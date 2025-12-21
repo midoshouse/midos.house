@@ -2322,7 +2322,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
         invitational: !matches!(cal_event.race.entrants, Entrants::Open),
         unlisted: cal_event.is_private_async_part(),
         partitionable: false,
-        hide_entrants: event.series == Series::BattleRoyale,
+        hide_entrants: event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open,
         ranked: cal_event.is_private_async_part() || event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }), //HACK: private async parts must be marked as ranked so they don't immediately get published on finish/cancel
         require_even_teams: true,
         start_delay: if cal_event.race.entrants == Entrants::Open && (event.series != Series::Standard || event.event != "w" || cal_event.race.round.as_ref().is_some_and(|round| round.contains("Qualifier"))) { 30 } else { 15 },
