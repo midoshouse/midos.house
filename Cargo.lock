@@ -391,7 +391,7 @@ dependencies = [
  "http 1.4.0",
  "http-body 1.0.1",
  "http-body-util",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "matchit",
  "memchr",
  "mime",
@@ -1033,7 +1033,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
 dependencies = [
  "csv-core",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "ryu",
  "serde_core",
 ]
@@ -1899,7 +1899,7 @@ dependencies = [
  "bstr",
  "gix-date",
  "gix-utils",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "thiserror 2.0.17",
  "winnow",
 ]
@@ -2038,7 +2038,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "661245d045aa7c16ba4244daaabd823c562c3e45f1f25b816be2c57ee09f2171"
 dependencies = [
  "bstr",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "jiff",
  "smallvec",
  "thiserror 2.0.17",
@@ -2229,7 +2229,7 @@ dependencies = [
  "gix-utils",
  "gix-validate",
  "hashbrown 0.15.5",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "libc",
  "memmap2",
  "rustix",
@@ -2291,7 +2291,7 @@ dependencies = [
  "gix-path",
  "gix-utils",
  "gix-validate",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "smallvec",
  "thiserror 2.0.17",
  "winnow",
@@ -3044,7 +3044,7 @@ checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
 dependencies = [
  "bytes",
  "fnv",
- "itoa 1.0.15",
+ "itoa 1.0.16",
 ]
 
 [[package]]
@@ -3054,7 +3054,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3ba2a386d7f85a81f119ad7498ebe444d2e22c2af0b86b069416ace48b3311a"
 dependencies = [
  "bytes",
- "itoa 1.0.15",
+ "itoa 1.0.16",
 ]
 
 [[package]]
@@ -3130,7 +3130,7 @@ dependencies = [
  "http-body 0.4.6",
  "httparse",
  "httpdate",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "pin-project-lite",
  "socket2 0.5.10",
  "tokio",
@@ -3154,7 +3154,7 @@ dependencies = [
  "http-body 1.0.1",
  "httparse",
  "httpdate",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "pin-project-lite",
  "pin-utils",
  "smallvec",
@@ -3523,9 +3523,9 @@ checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
 
 [[package]]
 name = "itoa"
-version = "1.0.15"
+version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
+checksum = "7ee5b5339afb4c41626dde77b7a611bd4f2c202b897852b4bcf5d03eddc61010"
 
 [[package]]
 name = "jiff"
@@ -5870,7 +5870,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "402a6f66d8c709116cf22f558eab210f5a50187f702eb4d7e5ef38d9a7f1c79c"
 dependencies = [
  "indexmap 2.12.1",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "memchr",
  "ryu",
  "serde",
@@ -5894,7 +5894,7 @@ version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
 dependencies = [
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "serde",
  "serde_core",
 ]
@@ -5933,7 +5933,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
 dependencies = [
  "form_urlencoded",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "ryu",
  "serde",
 ]
@@ -6337,7 +6337,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "log",
  "md-5",
  "memchr",
@@ -6378,7 +6378,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "home",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "log",
  "md-5",
  "memchr",
@@ -6697,7 +6697,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91e7d9e3bb61134e77bde20dd4825b97c010155709965fedf0f49bb138e52a9d"
 dependencies = [
  "deranged",
- "itoa 1.0.15",
+ "itoa 1.0.16",
  "libc",
  "num-conv",
  "num_threads",
@@ -7536,7 +7536,7 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.15.2"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#a02504956bc316d241092e94635b1b17d72415fb"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#c37db65932be3bf74e124d075e77e201e2f4a142"
 dependencies = [
  "async-proto",
  "async-trait",
@@ -7563,7 +7563,7 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.15.2"
-source = "git+https://github.com/fenhl/wheel#2bfac554378217913c5a719830962f6549ba9489"
+source = "git+https://github.com/fenhl/wheel#b147493313e559c2ec3751b10e0c792f15a6e02f"
 dependencies = [
  "async-trait",
  "clap",
@@ -7584,7 +7584,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.2"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#a02504956bc316d241092e94635b1b17d72415fb"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#c37db65932be3bf74e124d075e77e201e2f4a142"
 dependencies = [
  "itertools",
  "proc-macro2",
@@ -7595,7 +7595,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.2"
-source = "git+https://github.com/fenhl/wheel#2bfac554378217913c5a719830962f6549ba9489"
+source = "git+https://github.com/fenhl/wheel#b147493313e559c2ec3751b10e0c792f15a6e02f"
 dependencies = [
  "itertools",
  "proc-macro2",

@@ -2594,13 +2594,14 @@ pub(crate) enum AutoImportError {
     #[error(transparent)] Event(#[from] event::Error),
     #[error(transparent)] EventData(#[from] event::DataError),
     #[error(transparent)] IntoEntrant(wheel::Error),
+    #[error(transparent)] LeagueSchedule(wheel::Error),
+    #[error(transparent)] NightReport(wheel::Error),
     #[error(transparent)] RacetimeId(wheel::Error),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] SglInPersonSchedule(wheel::Error),
     #[error(transparent)] SglOnlineSchedule(wheel::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
-    #[error(transparent)] Wheel(wheel::Error),
     #[error("HTTP error{}: {}", if let Some(url) = .0.url() { format!(" at {url}") } else { String::default() }, .0)]
     Http(#[from] reqwest::Error),
 }
@@ -2612,7 +2613,7 @@ impl IsNetworkError for AutoImportError {
             Self::Discord(_) => false,
             Self::Event(e) => e.is_network_error(),
             Self::EventData(_) => false,
-            Self::IntoEntrant(e) | Self::RacetimeId(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) | Self::Wheel(e) => e.is_network_error(),
+            Self::IntoEntrant(e) | Self::LeagueSchedule(e) | Self::NightReport(e) | Self::RacetimeId(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) => e.is_network_error(),
             Self::Serenity(_) => false,
             Self::Sql(_) => false,
             Self::Url(_) => false,
@@ -2638,8 +2639,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                             }
                             let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
                                 .send().await?
-                                .detailed_error_for_status().await.map_err(AutoImportError::Wheel)?
-                                .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::Wheel)?;
+                                .detailed_error_for_status().await.map_err(AutoImportError::LeagueSchedule)?
+                                .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::LeagueSchedule)?;
                             for match_data in schedule.matches {
                                 if match_data.id <= 938 { continue } // seasons 5 to 8
                                 let mut new_race = Race {
@@ -2985,7 +2986,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
                     eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                     if wait_time >= Duration::from_secs(10 * 60) {
                         if let Environment::Production = Environment::default() {
-                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.map_err(AutoImportError::Wheel)?;
+                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.map_err(AutoImportError::NightReport)?;
                         }
                     }
                 }
@@ -2994,7 +2995,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
             }
             Err(e) => {
                 if let Environment::Production = Environment::default() {
-                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await.map_err(AutoImportError::Wheel)?;
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await.map_err(AutoImportError::NightReport)?;
                 }
                 break Err(e)
             }
