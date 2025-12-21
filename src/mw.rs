@@ -63,12 +63,31 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
         table {
             tr {
                 th;
-                th : "Windows";
-                th : "macOS";
-                th : "Linux";
+                th {
+                    : "Windows";
+                    br;
+                    small(style = "font-weight: normal;") : "version 10 or newer";
+                }
+                th {
+                    : "macOS";
+                    br;
+                    small(style = "font-weight: normal;") : "version 10.15 or newer"; // Rust supports 10.12+, Info.plist requires <key>NSRequiresAquaSystemAppearance</key><string>NO</string> below 10.14, this minimum is limited by Homebrew support
+                }
+                th {
+                    : "Linux";
+                    br;
+                    small(style = "font-weight: normal;") {
+                        : "x86_64 (kernel 3.2+, glibc 2.17+); aarch64 support ";
+                        a(href = "https://github.com/midoshouse/ootr-multiworld/issues/38") : "planned";
+                    }
+                }
             }
             tr {
-                th : "EverDrive";
+                th {
+                    : "EverDrive";
+                    br;
+                    small(style = "font-weight: normal;") : "X7 or V3";
+                }
                 td {
                     : "✓ (";
                     a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
@@ -96,7 +115,11 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
                 td(colspan = "3") : "Would require a modification to Virtual Console itself. The “Multiworld 2.0” project claims to have solved this issue but has not shared any details out of concerns for competitive integrity.";
             }
             tr {
-                th : "BizHawk";
+                th {
+                    : "BizHawk";
+                    br;
+                    small(style = "font-weight: normal;") : "version 2.11"; //TODO automatically update based on MH MW release assets?
+                }
                 td {
                     : "✓ (";
                     a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
@@ -112,7 +135,11 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
                 }
             }
             tr {
-                th : "Project64";
+                th {
+                    : "Project64";
+                    br;
+                    small(style = "font-weight: normal;") : "version 2.4 or newer";
+                }
                 td {
                     : "✓ (";
                     a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
