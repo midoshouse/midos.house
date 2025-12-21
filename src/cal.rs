@@ -2593,10 +2593,14 @@ pub(crate) enum AutoImportError {
     #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Event(#[from] event::Error),
     #[error(transparent)] EventData(#[from] event::DataError),
+    #[error(transparent)] IntoEntrant(wheel::Error),
+    #[error(transparent)] RacetimeId(wheel::Error),
     #[error(transparent)] Serenity(#[from] serenity::Error),
+    #[error(transparent)] SglInPersonSchedule(wheel::Error),
+    #[error(transparent)] SglOnlineSchedule(wheel::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
-    #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error(transparent)] Wheel(wheel::Error),
     #[error("HTTP error{}: {}", if let Some(url) = .0.url() { format!(" at {url}") } else { String::default() }, .0)]
     Http(#[from] reqwest::Error),
 }
@@ -2608,10 +2612,10 @@ impl IsNetworkError for AutoImportError {
             Self::Discord(_) => false,
             Self::Event(e) => e.is_network_error(),
             Self::EventData(_) => false,
+            Self::IntoEntrant(e) | Self::RacetimeId(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) | Self::Wheel(e) => e.is_network_error(),
             Self::Serenity(_) => false,
             Self::Sql(_) => false,
             Self::Url(_) => false,
-            Self::Wheel(e) => e.is_network_error(),
             Self::Http(e) => e.is_network_error(),
         }
     }
@@ -2634,8 +2638,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                             }
                             let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
                                 .send().await?
-                                .detailed_error_for_status().await?
-                                .json_with_text_in_error::<league::Schedule>().await?;
+                                .detailed_error_for_status().await.map_err(AutoImportError::Wheel)?
+                                .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::Wheel)?;
                             for match_data in schedule.matches {
                                 if match_data.id <= 938 { continue } // seasons 5 to 8
                                 let mut new_race = Race {
@@ -2644,8 +2648,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     event: event.event.to_string(),
                                     source: Source::League { id: match_data.id },
                                     entrants: Entrants::Two([
-                                        match_data.player_a.into_entrant(&http_client).await?,
-                                        match_data.player_b.into_entrant(&http_client).await?,
+                                        match_data.player_a.into_entrant(&http_client).await.map_err(AutoImportError::IntoEntrant)?,
+                                        match_data.player_b.into_entrant(&http_client).await.map_err(AutoImportError::IntoEntrant)?,
                                     ]),
                                     phase: None,
                                     round: Some(match_data.division),
@@ -2668,7 +2672,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     },
                                     restreamers: if_chain! {
                                         if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one(); //TODO notify on multiple restreams
-                                        if let Some(racetime_id) = restreamer.racetime_id(&http_client).await?;
+                                        if let Some(racetime_id) = restreamer.racetime_id(&http_client).await.map_err(AutoImportError::RacetimeId)?;
                                         then {
                                             iter::once((match_data.restream_language.unwrap_or(English), racetime_id)).collect()
                                         } else {
@@ -2717,7 +2721,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                     }
                 }
                 if let Some(ref speedgaming_slug) = event.speedgaming_slug {
-                    let schedule = sgl::online_schedule(&http_client, speedgaming_slug).await?;
+                    let schedule = sgl::online_schedule(&http_client, speedgaming_slug).await.map_err(AutoImportError::SglOnlineSchedule)?;
                     let races = Race::for_event(&mut transaction, &http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
                     let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingOnline { .. }));
                     unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
@@ -2827,7 +2831,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                     }
                 }
                 if let Some(tournament_id) = event.speedgaming_in_person_id {
-                    let schedule = sgl::in_person_schedule(&http_client, tournament_id).await?;
+                    let schedule = sgl::in_person_schedule(&http_client, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
                     let races = Race::for_event(&mut transaction, &http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
                     let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
                     unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingOnline { .. }));
@@ -2981,7 +2985,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
                     eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                     if wait_time >= Duration::from_secs(10 * 60) {
                         if let Environment::Production = Environment::default() {
-                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.map_err(AutoImportError::Wheel)?;
                         }
                     }
                 }
@@ -2990,7 +2994,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
             }
             Err(e) => {
                 if let Environment::Production = Environment::default() {
-                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await.map_err(AutoImportError::Wheel)?;
                 }
                 break Err(e)
             }
