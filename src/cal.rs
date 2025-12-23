@@ -6,7 +6,7 @@ use {
             Description,
             DtEnd,
             DtStart,
-            RRule,
+            //RRule, // regular weekly schedule suspended during s/9 qualifiers
             Summary,
             URL,
         },
@@ -604,7 +604,7 @@ impl Race {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
-        let now = Utc::now();
+        //let now = Utc::now(); // regular weekly schedule suspended during s/9 qualifiers
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
             races.push(Self::from_id(&mut *transaction, http_client, id).await?);
@@ -731,6 +731,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
+                /*
                 "w" => for kind in all::<s::WeeklyKind>() {
                     let schedule = RaceSchedule::Live { start: kind.next_weekly_after(now).to_utc(), end: None, room: None };
                     if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
@@ -762,6 +763,7 @@ impl Race {
                         races.push(race);
                     }
                 },
+                */ // regular weekly schedule suspended during s/9 qualifiers
                 //TODO add archives of old Standard tournaments and Challenge Cups?
                 _ => {} // new events are scheduled via Mido's House
             },
@@ -1607,8 +1609,7 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     let now = Utc::now();
-    let mut latest_instantiated_ohko_2_race = None;
-    let mut latest_instantiated_weeklies = HashMap::new();
+    //let mut latest_instantiated_weeklies = HashMap::new(); // regular weekly schedule suspended during s/9 qualifiers
     for race in Race::for_event(transaction, http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -1706,26 +1707,19 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 }
                 cal.add_event(cal_event);
                 match (event.series, &*event.event, &race.round) {
-                    (Series::BattleRoyale, "2", _) => latest_instantiated_ohko_2_race = Some(start),
+                    /*
                     (Series::Standard, "w", Some(round)) => if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
                         if let Ok(kind) = kind.parse::<s::WeeklyKind>() {
                             latest_instantiated_weeklies.insert(kind, start);
                         }
                     },
+                    */ // regular weekly schedule suspended during s/9 qualifiers
                     _ => {}
                 }
             }
         }
     }
-    if let Some(start) = latest_instantiated_ohko_2_race {
-        let mut cal_event = ics::Event::new("ohko-2@midos.house", dtstamp(now));
-        cal_event.push(Summary::new("Battle Royale Season 2"));
-        let start = ohko::next_s2_race_after(start);
-        cal_event.push(dtstart(start));
-        cal_event.push(dtend(start + Series::BattleRoyale.default_race_duration()));
-        cal_event.push(RRule::new("FREQ=WEEKLY"));
-        cal.add_event(cal_event);
-    }
+    /*
     for (kind, start) in latest_instantiated_weeklies {
         let mut cal_event = ics::Event::new(format!("weekly-{}@midos.house", kind.cal_id_part()), dtstamp(now));
         cal_event.push(Summary::new(format!("{kind} Weekly")));
@@ -1735,6 +1729,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
         cal_event.push(RRule::new("FREQ=WEEKLY;INTERVAL=2"));
         cal.add_event(cal_event);
     }
+    */ // regular weekly schedule suspended during s/9 qualifiers
     Ok(())
 }
 
