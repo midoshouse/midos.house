@@ -5,6 +5,7 @@ use {
         EntrantStatusValue,
         RaceStatusValue,
     },
+    sqlx::types::Json,
     crate::{
         event::{
             Data,
@@ -215,9 +216,7 @@ pub(crate) struct SignupsTeam {
     pub(crate) team: Option<Team>,
     pub(crate) members: Vec<SignupsMember>,
     pub(crate) qualification: Qualification,
-    hard_settings_ok: bool,
-    mq_ok: bool,
-    lite_ok: bool,
+    custom_choices: BTreeSet<String>,
 }
 
 pub(crate) struct Cache {
@@ -547,9 +546,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             }
                         }
                     },
-                    hard_settings_ok: false,
-                    mq_ok: false,
-                    lite_ok: false,
+                    custom_choices: BTreeSet::default(),
                 });
             }
             signups
@@ -624,23 +621,19 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         user,
                     }],
                     qualification: Qualification::Single { qualified: qualification_level == QualificationLevel::Qualified },
-                    hard_settings_ok: false,
-                    mq_ok: false,
-                    lite_ok: false,
+                    custom_choices: BTreeSet::default(),
                 }).collect()
         }
         QualifierKind::None | QualifierKind::Rank | QualifierKind::Single { .. } => {
             struct TeamRow {
                 team: Team,
-                hard_settings_ok: bool,
-                mq_ok: bool,
-                lite_ok: bool,
+                custom_choices: BTreeSet<String>,
                 pieces: Option<i16>,
                 qualified: bool,
             }
 
             let teams = if let QualifierKind::Single { .. } = qualifier_kind {
-                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, custom_choices as "custom_choices: Json<BTreeSet<String>>", restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
                     series = $1
                     AND event = $2
                     AND NOT resigned
@@ -664,9 +657,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             mw_impl: row.mw_impl,
                             qualifier_rank: row.qualifier_rank,
                         },
-                        hard_settings_ok: row.hard_settings_ok,
-                        mq_ok: row.mq_ok,
-                        lite_ok: row.lite_ok,
+                        custom_choices: row.custom_choices.0,
                         pieces: row.pieces,
                         qualified: row.qualified,
                     })
@@ -674,7 +665,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             } else {
                 // teams are manually ranked so include ones that haven't submitted qualifier asyncs
                 // also use for no qualifiers for now to avoid excluding teams that have submitted seeding asyncs (TODO display seeding async results like qual asyncs but with DNS below DNF instead of omitted)
-                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, custom_choices as "custom_choices: Json<BTreeSet<String>>", restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
                     series = $1
                     AND event = $2
                     AND NOT resigned
@@ -696,9 +687,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             mw_impl: row.mw_impl,
                             qualifier_rank: row.qualifier_rank,
                         },
-                        hard_settings_ok: row.hard_settings_ok,
-                        mq_ok: row.mq_ok,
-                        lite_ok: row.lite_ok,
+                        custom_choices: row.custom_choices.0,
                         pieces: None,
                         qualified: false,
                     })
@@ -730,9 +719,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     } else {
                         Qualification::Single { qualified: team.qualified }
                     },
-                    hard_settings_ok: team.hard_settings_ok,
-                    mq_ok: team.mq_ok,
-                    lite_ok: team.lite_ok,
+                    custom_choices: team.custom_choices,
                     members,
                 });
             }
@@ -740,7 +727,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
         }
         QualifierKind::Triple => {
             // teams may qualifier via live races so include ones that haven't submitted qualifier asyncs
-            let rows = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+            let rows = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, custom_choices AS "custom_choices: Json<BTreeSet<String>>", restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
                 series = $1
                 AND event = $2
                 AND NOT resigned
@@ -800,9 +787,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             false
                         },
                     },
-                    hard_settings_ok: row.hard_settings_ok,
-                    mq_ok: row.mq_ok,
-                    lite_ok: row.lite_ok,
+                    custom_choices: row.custom_choices.0,
                     members,
                 });
             }
@@ -1045,7 +1030,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                         }
                     }
                 } else {
-                    @for (signup_idx, SignupsTeam { team, members, qualification, hard_settings_ok, mq_ok, lite_ok }) in signups.into_iter().enumerate() {
+                    @for (signup_idx, SignupsTeam { team, members, qualification, custom_choices }) in signups.into_iter().enumerate() {
                         @let is_dimmed = match qualifier_kind {
                             QualifierKind::None => false,
                             QualifierKind::Rank => false, // unknown cutoff
@@ -1185,9 +1170,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                                         enter::Requirement::TextField2 { .. } => {}
                                                         enter::Requirement::YesNo { .. } => {}
                                                         enter::Requirement::Rules { .. } => {}
-                                                        enter::Requirement::HardSettingsOk => {}
-                                                        enter::Requirement::MqOk => {}
-                                                        enter::Requirement::LiteOk => {}
+                                                        enter::Requirement::BooleanChoice { .. } => {}
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
@@ -1289,18 +1272,18 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                             @match data.draft_kind() {
                                 None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
                                 Some(draft::Kind::RslS7) => td {
-                                    @if lite_ok {
+                                    @if custom_choices.contains("lite") {
                                         : "✓";
                                     }
                                 }
                                 Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5) => {
                                     td {
-                                        @if hard_settings_ok {
+                                        @if custom_choices.contains("hard_settings") {
                                             : "✓";
                                         }
                                     }
                                     td {
-                                        @if mq_ok {
+                                        @if custom_choices.contains("mq") {
                                             : "✓";
                                         }
                                     }

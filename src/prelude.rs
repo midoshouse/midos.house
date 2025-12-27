@@ -9,6 +9,7 @@ pub(crate) use {
             Reverse,
         },
         collections::{
+            BTreeSet,
             HashSet,
             hash_map::{
                 self,

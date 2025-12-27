@@ -873,7 +873,8 @@ CREATE TABLE public.teams (
     qualifier_rank smallint,
     yes_no boolean,
     challonge_id text,
-    lite_ok boolean DEFAULT false NOT NULL
+    lite_ok boolean DEFAULT false NOT NULL,
+    custom_choices jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 
 

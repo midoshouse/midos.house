@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO teams (id, series, event, plural_name, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, lite_ok, mw_impl) VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9, $10, $11)",
+  "query": "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, yes_no, custom_choices, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
   "describe": {
     "columns": [],
     "parameters": {
@@ -8,13 +8,13 @@
         "Int8",
         "Varchar",
         "Varchar",
+        "Varchar",
+        "Text",
         "Bool",
         "Text",
         "Text",
         "Bool",
-        "Bool",
-        "Bool",
-        "Bool",
+        "Jsonb",
         {
           "Custom": {
             "name": "mw_impl",
@@ -30,5 +30,5 @@
     },
     "nullable": []
   },
-  "hash": "57222908a0b84efcbf00c65d5e406541fc041ae1dedd729bf767622ad0b632a8"
+  "hash": "fb0c3ca1f7134cacf736b60968385bc4fee88f3b941e5bfdec1e8d83d77a8c42"
 }

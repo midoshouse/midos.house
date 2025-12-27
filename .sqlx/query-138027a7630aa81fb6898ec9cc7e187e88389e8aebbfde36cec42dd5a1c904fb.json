@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE\n                    series = $1\n                    AND event = $2\n                    AND NOT resigned\n                    AND (\n                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n                    )\n                ",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, submitted IS NOT NULL AS \"qualified!\", pieces, custom_choices as \"custom_choices: Json<BTreeSet<String>>\", restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE\n                    series = $1\n                    AND event = $2\n                    AND NOT resigned\n                    AND (\n                        $3\n                        OR EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)\n                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n                    )\n                    AND (kind = 'qualifier' OR kind IS NULL)\n                ",
   "describe": {
     "columns": [
       {
@@ -30,18 +30,18 @@
       },
       {
         "ordinal": 5,
-        "name": "hard_settings_ok",
+        "name": "qualified!",
         "type_info": "Bool"
       },
       {
         "ordinal": 6,
-        "name": "mq_ok",
-        "type_info": "Bool"
+        "name": "pieces",
+        "type_info": "Int2"
       },
       {
         "ordinal": 7,
-        "name": "lite_ok",
-        "type_info": "Bool"
+        "name": "custom_choices: Json<BTreeSet<String>>",
+        "type_info": "Jsonb"
       },
       {
         "ordinal": 8,
@@ -73,6 +73,7 @@
       "Left": [
         "Text",
         "Text",
+        "Bool",
         "Int8"
       ]
     },
@@ -82,13 +83,13 @@
       true,
       true,
       true,
-      false,
-      false,
+      null,
+      true,
       false,
       false,
       true,
       true
     ]
   },
-  "hash": "f6845a9d3141839651a2e8347021cace48efe391c2050e22cd9d931efca88fce"
+  "hash": "138027a7630aa81fb6898ec9cc7e187e88389e8aebbfde36cec42dd5a1c904fb"
 }
