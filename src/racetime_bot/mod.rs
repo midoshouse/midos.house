@@ -2331,7 +2331,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
         streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
         allow_comments: true,
         hide_comments: true,
-        allow_prerace_chat: event.series != Series::Standard || !matches!(&*event.event, "8" | "9") || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+        allow_prerace_chat: event.series != Series::Standard || !matches!(&*event.event, "8") || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
         allow_midrace_chat: event.series != Series::Standard || !matches!(&*event.event, "8" | "9") || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
         allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
         chat_message_delay: 0,
