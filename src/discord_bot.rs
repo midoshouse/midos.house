@@ -80,7 +80,6 @@ pub(crate) trait MessageBuilderExt {
     async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
-    fn push_emoji(&mut self, emoji: &ReactionType) -> &mut Self;
     fn push_named_link_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self;
     fn push_named_link_safe_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self;
 }
@@ -130,10 +129,6 @@ impl MessageBuilderExt for MessageBuilder {
         } else {
             self.push_safe(user.display_name())
         }
-    }
-
-    fn push_emoji(&mut self, emoji: &ReactionType) -> &mut Self {
-        self.push(emoji.to_string())
     }
 
     fn push_named_link_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self {
