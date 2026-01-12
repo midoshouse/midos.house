@@ -2294,6 +2294,26 @@ fn format_password(password: [OcarinaNote; 6]) -> impl fmt::Display {
     password.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
+fn ocarina_note_to_ootr_discord_emoji(note: OcarinaNote) -> ReactionType {
+    ReactionType::Custom {
+        animated: false,
+        id: EmojiId::new(match note {
+            OcarinaNote::A => 658692216373379072,
+            OcarinaNote::CDown => 658692230479085570,
+            OcarinaNote::CRight => 658692260002791425,
+            OcarinaNote::CLeft => 658692245771517962,
+            OcarinaNote::CUp => 658692275152355349,
+        }),
+        name: Some(match note {
+            OcarinaNote::A => format!("staffA"),
+            OcarinaNote::CDown => format!("staffDown"),
+            OcarinaNote::CRight => format!("staffRight"),
+            OcarinaNote::CLeft => format!("staffLeft"),
+            OcarinaNote::CUp => format!("staffUp"),
+        }),
+    }
+}
+
 async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Event, info_user: String, info_bot: String, auto_start: bool) -> racetime::StartRace {
     racetime::StartRace {
         goal: goal.as_str().to_owned(),
@@ -4463,6 +4483,32 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Some(password) = extra.password {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
+                        if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
+                            if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+                                // post password on Discord as a contingency for racetime.gg issues in large qualifiers
+                                //TODO implement custom emoji preloading on racetime.gg, then retire this feature
+                                let channel = match &*event.event {
+                                    "8" => Some(ChannelId::new(1306254442298998884)),
+                                    "9" => Some(ChannelId::new(1444301469011415111)),
+                                    "w" => None,
+                                    _ => {
+                                        if let Environment::Production = Environment::default() {
+                                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("no password channel configured for event s/{}", event.event))).await.to_racetime()?;
+                                        }
+                                        None
+                                    }
+                                };
+                                if let Some(channel) = channel {
+                                    let mut msg = MessageBuilder::default();
+                                    msg.push("Seed password: ");
+                                    msg.push_emoji(&ReactionType::Custom { animated: false, id: EmojiId::new(658692193338392614), name: Some(format!("staffClef")) });
+                                    for note in password {
+                                        msg.push_emoji(&ocarina_note_to_ootr_discord_emoji(note));
+                                    }
+                                    channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+                                }
+                            }
+                        }
                     }
                 });
                 self.password_sent = true;
