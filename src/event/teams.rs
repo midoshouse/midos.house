@@ -477,6 +477,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         QualifierScoreKind::Sgl2023Online => {
                             scores.truncate(5); // only count the first 5 qualifiers chronologically
                             let num_entered = scores.len();
+                            let num_finished = scores.iter().filter(|score| **score != 0.0).count();
                             scores.sort_unstable();
                             if num_entered >= 4 {
                                 scores.pop(); // remove best score
@@ -485,22 +486,21 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 scores.swap_remove(0); // remove worst score
                             }
                             Qualification::Multiple {
-                                num_finished: scores.iter().filter(|score| **score != 0.0).count(),
                                 score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64), // overall score is average of remaining scores
-                                num_entered,
+                                num_entered, num_finished,
                             }
                         }
                         QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => {
                             scores.truncate(6); // only count the first 6 qualifiers chronologically
                             let num_entered = scores.len();
+                            let num_finished = scores.iter().filter(|score| **score != 0.0).count();
                             scores.sort_unstable();
                             if num_entered >= 4 {
                                 scores.swap_remove(0); // remove worst score
                             }
                             Qualification::Multiple {
-                                num_finished: scores.iter().filter(|score| **score != 0.0).count(),
                                 score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64), // overall score is average of remaining scores
-                                num_entered,
+                                num_entered, num_finished,
                             }
                         }
                     },
@@ -889,7 +889,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
         if !data.is_started(&mut transaction).await? {
             if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) {
                 show_status = ShowStatus::Confirmed;
-            } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO debug detailed status display showing weird-looking data (e.g. sgl/2025onl after qualifier 11), then show to everyone
+            } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO replay s/8 and s/9 qual history to check for detailed status display showing any weird-looking data at any point, then show to everyone
                 show_status = ShowStatus::Detailed;
             }
         }
