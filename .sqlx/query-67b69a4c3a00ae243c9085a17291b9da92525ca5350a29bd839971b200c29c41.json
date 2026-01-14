@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT start, end_time AS \"end\" FROM racetime_maintenance WHERE start < $1 AND end_time > $2",
+  "query": "SELECT start, end_time AS \"end\" FROM maintenance_windows WHERE kind = 'midos_house' AND start <= NOW() + INTERVAL '168:00:00' AND end_time > NOW() ORDER BY start LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -15,15 +15,12 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Timestamptz",
-        "Timestamptz"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
       false
     ]
   },
-  "hash": "3ff301b8a3b983729c9e756d3e9b13fa19dafef39fbd320b187adb9c8d490041"
+  "hash": "67b69a4c3a00ae243c9085a17291b9da92525ca5350a29bd839971b200c29c41"
 }

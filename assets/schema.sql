@@ -92,6 +92,18 @@ CREATE TYPE public.language AS ENUM (
 ALTER TYPE public.language OWNER TO mido;
 
 --
+-- Name: maintenance_kind; Type: TYPE; Schema: public; Owner: mido
+--
+
+CREATE TYPE public.maintenance_kind AS ENUM (
+    'midos_house',
+    'racetime'
+);
+
+
+ALTER TYPE public.maintenance_kind OWNER TO mido;
+
+--
 -- Name: mw_impl; Type: TYPE; Schema: public; Owner: mido
 --
 
@@ -418,6 +430,19 @@ CREATE TABLE public.looking_for_team (
 
 
 ALTER TABLE public.looking_for_team OWNER TO mido;
+
+--
+-- Name: maintenance_windows; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.maintenance_windows (
+    start timestamp with time zone NOT NULL,
+    end_time timestamp with time zone NOT NULL,
+    kind public.maintenance_kind NOT NULL
+);
+
+
+ALTER TABLE public.maintenance_windows OWNER TO mido;
 
 --
 -- Name: mw_config; Type: TABLE; Schema: public; Owner: mido

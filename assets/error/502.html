@@ -10,16 +10,43 @@
                 font-family: system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
             }
 
+            .warning {
+                border: 1px solid #909000;
+            }
+
+            p.warning {
+                background-color: #ffff90;
+                padding: 8px;
+            }
+
             @media (prefers-color-scheme: dark) {
                 body {
                     background-color: black;
                     color: white;
                 }
+
+                .warning {
+                    border-color: #ffff00;
+                }
+
+                p.warning {
+                    background-color: #404000;
+                }
             }
         </style>
     </head>
     <body>
+        <p class="warning">Maintenance on the Mido's House server is scheduled from <span class="datetime" data_timestamp="1779062400000" data_long="true">Monday, May 18, 2026, 00:00 UTC (02:00 CEST, Sunday 8PM EDT)</span> until <span class="datetime" data_timestamp="1779408000000" data_long="true">Friday, May 22, 2026, 00:00 UTC (02:00 CEST, Thursday 8PM EDT)</span>. This website, multiworld, and the Discord and racetime.gg bots may go offline for a while during that time.</p>
         <h1>Error 502: Bad Gateway</h1>
         <p>Mido's House is currently offline. It's probably being updated and will be back in a couple seconds. If this error persists, please contact Fenhl on Discord.</p>
+        <script>
+            document.querySelectorAll('.datetime').forEach(function(dateTime) {
+                var longFormat = dateTime.dataset.long == 'true';
+                dateTime.textContent = new Date(parseInt(dateTime.dataset.timestamp)).toLocaleString([], {
+                    dateStyle: longFormat ? 'full' : 'medium',
+                    timeStyle: longFormat ? 'full' : 'short',
+                });
+            });
+        </script>
     </body>
 </html>

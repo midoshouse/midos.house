@@ -204,6 +204,7 @@ pub(crate) use {
     },
     crate::{
         Environment,
+        MaintenanceKind,
         auth,
         base_uri,
         cal::{

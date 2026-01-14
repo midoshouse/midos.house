@@ -113,6 +113,23 @@ fn parse_port(arg: &str) -> Result<u16, std::num::ParseIntError> {
     }
 }
 
+#[derive(Debug, sqlx::Type)]
+#[sqlx(type_name = "maintenance_kind", rename_all = "snake_case")]
+enum MaintenanceKind {
+    MidosHouse,
+    #[sqlx(rename = "racetime")]
+    RaceTime,
+}
+
+impl fmt::Display for MaintenanceKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MidosHouse => write!(f, "Mido's House"),
+            Self::RaceTime => write!(f, "racetime.gg"),
+        }
+    }
+}
+
 #[cfg(not(unix))]
 #[derive(clap::Subcommand)]
 enum Subcommand {}

@@ -164,6 +164,17 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
     } else {
         Vec::default()
     };
+    let maintenance_notice = sqlx::query_as!(Range::<DateTime<Utc>>, r#"SELECT start, end_time AS "end" FROM maintenance_windows WHERE kind = 'midos_house' AND start <= NOW() + INTERVAL '168:00:00' AND end_time > NOW() ORDER BY start LIMIT 1"#)
+        .fetch_optional(&mut *transaction).await?
+        .map(|window| html! {
+            p(class = "warning") {
+                : "Maintenance on the Mido's House server is scheduled from ";
+                : format_datetime(window.start, DateTimeFormat { long: true, running_text: true });
+                : " until ";
+                : format_datetime(window.end, DateTimeFormat { long: true, running_text: true });
+                : ". This website, multiworld, and the Discord and racetime.gg bots may go offline for a while during that time.";
+            }
+        });
     let (banner_content, content) = if let PageKind::Banner = style.kind {
         (Some(content), None)
     } else {
@@ -237,6 +248,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                             }
                         }
                     }
+                    : maintenance_notice;
                     @if let Some(content) = content {
                         main(class? = matches!(style.kind, PageKind::Center).then(|| "center")) {
                             : content;
