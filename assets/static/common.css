@@ -345,6 +345,14 @@ td > input[type="text"] {
     color: #008000;
 }
 
+.numeric {
+    text-align: right;
+}
+
+td.numeric {
+    font-feature-settings: "tnum";
+}
+
 .check-item {
     display: flex;
     flex-flow: row;

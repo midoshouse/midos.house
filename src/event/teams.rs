@@ -906,7 +906,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
     let mut column_headers = Vec::default();
     if let QualifierKind::Rank | QualifierKind::Score(_) = qualifier_kind {
         column_headers.push(html! {
-            th : "Qualifier Rank";
+            th(class = "numeric") : "Qualifier Rank";
         });
     }
     if !matches!(data.team_config, TeamConfig::Solo) {
@@ -926,26 +926,26 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
         }),
         QualifierKind::Single { show_times: true } => if series == Series::TriforceBlitz {
             column_headers.push(html! {
-                th : "Pieces Found";
+                th(class = "numeric") : "Pieces Found";
             });
         }
         QualifierKind::Score(QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 | QualifierScoreKind::Sgl2025Online) => { //TODO determine based on enter flow
             column_headers.push(html! {
-                th : "Qualifiers Entered";
+                th(class = "numeric") : "Qualifiers Entered";
             });
             column_headers.push(html! {
-                th : "Qualifiers Finished";
+                th(class = "numeric") : "Qualifiers Finished";
             });
             column_headers.push(html! {
-                th : "Qualifier Points";
+                th(class = "numeric") : "Qualifier Points";
             });
         }
         QualifierKind::Score(QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online) => {
             column_headers.push(html! {
-                th : "Qualifiers Entered";
+                th(class = "numeric") : "Qualifiers Entered";
             });
             column_headers.push(html! {
-                th : "Qualifier Points";
+                th(class = "numeric") : "Qualifier Points";
             });
         }
     }
@@ -1022,8 +1022,8 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                         };
                         tr(class? = is_dimmed.then_some("dimmed")) {
                             @match qualifier_kind {
-                                QualifierKind::Rank => td : team.as_ref().and_then(|team| team.qualifier_rank);
-                                QualifierKind::Score(_) => td : signup_idx + 1;
+                                QualifierKind::Rank => td(class = "numeric") : team.as_ref().and_then(|team| team.qualifier_rank);
+                                QualifierKind::Score(_) => td(class = "numeric") : signup_idx + 1;
                                 _ => {}
                             }
                             @if !matches!(data.team_config, TeamConfig::Solo) {
@@ -1110,15 +1110,15 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                                         : "✓";
                                     }
                                 }
-                                (QualifierKind::Single { show_times: true }, Qualification::TriforceBlitz { pieces, .. }) => td : pieces;
+                                (QualifierKind::Single { show_times: true }, Qualification::TriforceBlitz { pieces, .. }) => td(class = "numeric") : pieces;
                                 (QualifierKind::Score(QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 | QualifierScoreKind::Sgl2025Online), Qualification::Multiple { num_entered, num_finished, score }) => { //TODO determine based on enter flow
-                                    td(style = "text-align: right;") : num_entered;
-                                    td(style = "text-align: right;") : num_finished;
-                                    td(style = "text-align: right;") : format!("{score:.2}");
+                                    td(class = "numeric") : num_entered;
+                                    td(class = "numeric") : num_finished;
+                                    td(class = "numeric") : format!("{score:.2}");
                                 }
                                 (QualifierKind::Score(QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online), Qualification::Multiple { num_entered, num_finished: _, score }) => {
-                                    td(style = "text-align: right;") : num_entered;
-                                    td(style = "text-align: right;") : format!("{score:.2}");
+                                    td(class = "numeric") : num_entered;
+                                    td(class = "numeric") : format!("{score:.2}");
                                 }
                                 (_, _) => @unreachable
                             }
