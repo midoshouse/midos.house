@@ -175,7 +175,7 @@ pub(crate) enum UnlockSpoilerLog {
     Never,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Sequence)]
+#[derive(Clone, Copy, PartialEq, Eq, Sequence)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
     BattleRoyaleS2,
@@ -263,12 +263,11 @@ impl Goal {
         }
     }
 
-    pub(crate) fn is_custom(&self) -> bool {
+    pub(crate) fn official_id(&self) -> Option<u32> { // temporary workaround for https://github.com/racetimeGG/racetime-app/issues/215
         match self {
-            | Self::Rsl
-            | Self::StandardRuleset
-            | Self::TriforceBlitz
-                => false,
+            Self::Rsl => Some(1104),
+            Self::StandardRuleset => Some(5115),
+            Self::TriforceBlitz => Some(4459),
             | Self::BattleRoyaleS2
             | Self::Cc7
             | Self::CoOpS3
@@ -297,9 +296,11 @@ impl Goal {
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
-                => true,
+                => None,
         }
     }
+
+    pub(crate) fn is_custom(&self) -> bool { self.official_id().is_none() }
 
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
@@ -5252,7 +5253,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                         break 'seed
                                     }
                                     SeedRollUpdate::Error(RollError::InsufficientStorage) => {
-                                        eprintln!("not preparing practice seed for {goal:?} due to low disk space");
+                                        eprintln!("not preparing practice seed for {} due to low disk space", goal.as_str());
                                         continue 'seed
                                     }
                                     SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {

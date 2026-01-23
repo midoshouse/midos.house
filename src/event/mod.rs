@@ -752,12 +752,15 @@ impl<'a> Data<'a> {
                 };
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
-                    if goal.is_custom(); //TODO also support non-custom goals, see https://github.com/racetimeGG/racetime-app/issues/215
                     then {
                         let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
+                        if let Some(goal_id) = goal.official_id() {
+                            practice_url.query_pairs_mut().append_pair("goal", &goal_id.to_string());
+                        } else {
+                            practice_url.query_pairs_mut().append_pair("custom_goal", goal.as_str());
+                        }
                         practice_url
                             .query_pairs_mut()
-                            .append_pair(if goal.is_custom() { "custom_goal" } else { "goal" }, goal.as_str())
                             .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
                             .append_pair("hide_comments", "1")
                             .finish();
