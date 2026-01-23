@@ -546,6 +546,17 @@ async fn bad_gateway(request: &Request<'_>) -> PageResult {
     }).await
 }
 
+#[rocket::catch(507)]
+async fn insufficient_storage(request: &Request<'_>) -> PageResult {
+    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let me = request.guard::<User>().await.succeeded();
+    let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
+    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Insufficient Storage — Mido's House", html! {
+        h1 : "Error 507: Insufficient Storage";
+        p : "Sorry, the Mido's House server's disk is almost full, so rolling practice seeds with settings not supported by ootrandomizer.com is temporarily disabled. Please try again later. If this error persists, please contact Fenhl on Discord.";
+    }).await
+}
+
 #[rocket::catch(default)]
 async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     eprintln!("responding with unexpected HTTP status code {} {} to request {request:?}", status.code, status.reason_lossy());
@@ -647,6 +658,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         unprocessable_content,
         internal_server_error,
         bad_gateway,
+        insufficient_storage,
         fallback_catcher,
     ])
     .attach(rocket_csrf::Fairing::default())

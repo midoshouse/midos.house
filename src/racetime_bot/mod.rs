@@ -25,6 +25,10 @@ use {
         CreateMessage,
     },
     smart_default::SmartDefault,
+    systemstat::{
+        ByteSize,
+        Platform as _,
+    },
     tokio::time::timeout,
     crate::{
         cal::Entrant,
@@ -171,7 +175,7 @@ pub(crate) enum UnlockSpoilerLog {
     Never,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Sequence)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Sequence)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
     BattleRoyaleS2,
@@ -1819,6 +1823,12 @@ impl GlobalState {
 }
 
 pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
+    if delay_until.is_none() { // practice seed
+        let fs = systemstat::System::new().mount_at("/").at("/")?;
+        if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
+            return Err(RollError::InsufficientStorage)
+        }
+    }
     let allow_riir = match version {
         VersionedBranch::Pinned { ref version } => version.branch() == rando::Branch::DevFenhl && (version.base(), version.supplementary()) >= (&Version::new(8, 3, 25), Some(1)), // some versions older than this generate corrupted patch files
         VersionedBranch::Latest { branch } => branch == rando::Branch::DevFenhl,
@@ -1969,6 +1979,8 @@ pub(crate) enum RollError {
     },
     #[error("there is nothing waiting for this seed anymore")]
     ChannelClosed,
+    #[error("not allowing practice seed due to low disk space")]
+    InsufficientStorage,
     #[cfg(unix)]
     #[error("randomizer settings must be a JSON object")]
     NonObjectSettings,
@@ -2259,6 +2271,10 @@ impl SeedRollUpdate {
                     transaction.commit().await.to_racetime()?;
                 }
                 lock!(@write state = state; *state = RaceState::Rolled(seed));
+            }
+            Self::Error(RollError::InsufficientStorage) => {
+                ctx.say("Sorry @entrants, the Mido's House server's disk is almost full, so rolling practice seeds with settings not supported by ootrandomizer.com is temporarily disabled. Please try again later or roll the seed manually. If this error persists, please report it to Fenhl.").await?;
+                lock!(@write state = state; *state = RaceState::Init);
             }
             Self::Error(RollError::Retries { num_retries, last_error }) | Self::Error(RollError::OotrWeb(ootr_web::Error::Retries { num_retries, last_error })) => {
                 if let Some(last_error) = last_error {
@@ -5128,17 +5144,17 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                     if let Some((version, settings)) = race.single_settings(&mut transaction).await? {
                         transaction.commit().await?;
                         if race.seed.files.is_none()
-                        && race
+                        && let Some(start) = race
                             .cal_events()
                             .filter_map(|cal_event| cal_event.start())
                             .min()
-                            .is_some_and(|start| start > Utc::now())
+                        && start > Utc::now()
                         {
                             'seed: loop {
                                 let mut seed_rx = global_state.clone().roll_seed(
                                     PrerollMode::Long,
                                     false,
-                                    None,
+                                    Some(start),
                                     version.clone(),
                                     settings.clone(),
                                     serde_json::Map::default(),
@@ -5234,6 +5250,10 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                             _ => unimplemented!("unexpected seed files in prerolled seed"),
                                         }
                                         break 'seed
+                                    }
+                                    SeedRollUpdate::Error(RollError::InsufficientStorage) => {
+                                        eprintln!("not preparing practice seed for {goal:?} due to low disk space");
+                                        continue 'seed
                                     }
                                     SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
                                         if let Some(last_error) = last_error {

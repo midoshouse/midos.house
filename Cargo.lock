@@ -556,6 +556,12 @@ dependencies = [
 
 [[package]]
 name = "bytesize"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e93abca9e28e0a1b9877922aacb20576e05d4679ffa78c3d6dc22a26a216659"
+
+[[package]]
+name = "bytesize"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bd91ee7b2422bcb158d90ef4d14f75ef67f340943fc4149891dcce8f8b972a3"
@@ -2094,7 +2100,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d56aad357ae016449434705033df644ac6253dfcf1281aad3af3af9e907560d1"
 dependencies = [
  "bytes",
- "bytesize",
+ "bytesize 2.3.1",
  "crc32fast",
  "crossbeam-channel",
  "gix-path",
@@ -3932,6 +3938,7 @@ dependencies = [
  "serenity-utils",
  "smart-default",
  "sqlx",
+ "systemstat",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
@@ -4700,7 +4707,7 @@ version = "30.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a6efc566849d3d9d737c5cb06cc50e48950ebe3d3f9d70631490fff3a07b139"
 dependencies = [
- "bytesize",
+ "bytesize 2.3.1",
  "human_format",
  "parking_lot",
 ]
@@ -6538,6 +6545,20 @@ checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "systemstat"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5021f5184d44b26fb184acd689671bbe1e4bbd24bbdaa6bc7ec383fad32d2033"
+dependencies = [
+ "bytesize 1.3.3",
+ "lazy_static",
+ "libc",
+ "nom",
+ "time",
+ "winapi",
 ]
 
 [[package]]

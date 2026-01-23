@@ -20,6 +20,10 @@ use {
         CreateSelectMenuOption,
     },
     sqlx::types::Json,
+    systemstat::{
+        ByteSize,
+        Platform as _,
+    },
     crate::{
         discord_bot,
         event::Tab,
@@ -3021,6 +3025,10 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqw
         let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
         Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
     } else {
+        let fs = systemstat::System::new().mount_at("/").at("/")?;
+        if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
+            return Err(StatusOrError::Status(Status::InsufficientStorage))
+        }
         settings.remove("password_lock");
         let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await?;
         let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
