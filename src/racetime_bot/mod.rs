@@ -205,6 +205,7 @@ pub(crate) enum Goal {
     Sgl2025,
     SongsOfHope,
     StandardRuleset,
+    StandardWeeklies,
     TournoiFrancoS3,
     TournoiFrancoS4,
     TournoiFrancoS5,
@@ -259,6 +260,7 @@ impl Goal {
             Self::Sgl2025 => series == Series::SpeedGaming && event.starts_with("2025"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
             Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "9" | "9cc"),
+            Self::StandardWeeklies => false, // practice only
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TournoiFrancoS5 => series == Series::TournoiFrancophone && event == "5",
@@ -299,6 +301,7 @@ impl Goal {
             | Self::Sgl2024
             | Self::Sgl2025
             | Self::SongsOfHope
+            | Self::StandardWeeklies
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
@@ -340,6 +343,7 @@ impl Goal {
             Self::Sgl2025 => "SGL 2025",
             Self::SongsOfHope => "Songs of Hope",
             Self::StandardRuleset => "Standard Ruleset",
+            Self::StandardWeeklies => "Standard Weeklies",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TournoiFrancoS5 => "Tournoi Francophone Saison 5",
@@ -379,6 +383,7 @@ impl Goal {
             | Self::Sgl2025
             | Self::SongsOfHope
             | Self::StandardRuleset
+            | Self::StandardWeeklies
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
                 => English,
@@ -423,6 +428,7 @@ impl Goal {
             | Self::Sgl2025
             | Self::SongsOfHope
             | Self::StandardRuleset
+            | Self::StandardWeeklies
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
@@ -476,6 +482,7 @@ impl Goal {
             } else {
                 s::WEEKLY_PREROLL_MODE //TODO allow weekly organizers to configure this
             },
+            Self::StandardWeeklies => s::WEEKLY_PREROLL_MODE
         }
     }
 
@@ -521,6 +528,7 @@ impl Goal {
                 | Self::S8
                 | Self::Sgl2025
                 | Self::StandardRuleset
+                | Self::StandardWeeklies
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
             }
         }
@@ -564,6 +572,7 @@ impl Goal {
                     unreachable!("official seeds should use the event's rando version")
                 }
             },
+            Self::StandardWeeklies => event.expect("event must be set for Goal::StandardWeeklies").rando_version.clone().expect("no randomizer version configured for weeklies"), //TODO allow weekly organizers to configure this
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
             Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105) },
             Self::TournoiFrancoS5 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 2, 64, 135) },
@@ -605,6 +614,7 @@ impl Goal {
             Self::Sgl2025 => Some(sgl::settings_2025()),
             Self::SongsOfHope => Some(soh::settings()),
             Self::StandardRuleset => None, // per-event settings
+            Self::StandardWeeklies => None, // read from database
             Self::TournoiFrancoS3 => None, // settings draft
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TournoiFrancoS5 => None, // settings draft
@@ -695,6 +705,7 @@ impl Goal {
                 ctx.say("!seed s8: The settings for season 8 of the main tournament").await?;
                 ctx.say("!seed weekly: The current weekly settings").await?;
             }
+            Self::StandardWeeklies => ctx.say("!seed: The current weekly settings").await?,
             Self::TournoiFrancoS3 => {
                 ctx.say("!seed base : Settings de base.").await?;
                 ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
@@ -1160,6 +1171,15 @@ impl Goal {
                 }
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
+            Self::StandardWeeklies => {
+                let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
+                let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
+                transaction.commit().await.to_racetime()?;
+                let (_, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
+                let mut settings = settings.into_owned();
+                settings.insert(format!("password_lock"), json!(true));
+                SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("weekly seed") }
+            }
             Self::TournoiFrancoS3 | Self::TournoiFrancoS4 | Self::TournoiFrancoS5 => {
                 let all_settings = match self {
                     Self::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
@@ -3516,6 +3536,18 @@ impl RaceHandler<GlobalState> for Handler {
                                 ],
                             ).await?,
                             Goal::StandardRuleset => unreachable!("attempted to handle a user-opened Standard Ruleset room"),
+                            Goal::StandardWeeklies => ctx.send_message(
+                                "Welcome! This is a practice room for the Standard Weeklies. Learn more about the weeklies at https://midos.house/event/s/w",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the current weekly settings.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::TournoiFrancoS3 => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
                                 true,
@@ -4030,7 +4062,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     weights,
                                 }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                             }
-                            Goal::StandardRuleset => {
+                            Goal::StandardRuleset | Goal::StandardWeeklies => {
                                 let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                                 let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured Standard event");
                                 transaction.commit().await.to_racetime()?;
@@ -4470,8 +4502,12 @@ impl RaceHandler<GlobalState> for Handler {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                         match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.eq_ignore_ascii_case("spoilerseed"), false, &args).await.to_racetime()? {
                             SeedCommandParseResult::Regular { settings, plando, unlock_spoiler_log, language, article, description } => {
-                                let event = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| event);
-                                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, plando, unlock_spoiler_log, language, article, description).await
+                                let event = if let Goal::StandardWeeklies = goal {
+                                    event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.map(Cow::Owned)
+                                } else {
+                                    self.official_data.as_ref().map(|OfficialRaceData { event, .. }| Cow::Borrowed(event))
+                                };
+                                self.roll_seed(ctx, goal.preroll_seeds(event.as_ref().map(|event| (event.series, &*event.event))), goal.rando_version(event.as_deref()), settings, plando, unlock_spoiler_log, language, article, description).await
                             },
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Tfb { version, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, version, unlock_spoiler_log, language, article, description).await,
@@ -4765,6 +4801,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Sgl2025
                     | Goal::SongsOfHope
                     | Goal::StandardRuleset
+                    | Goal::StandardWeeklies
                     | Goal::TournoiFrancoS3
                     | Goal::TournoiFrancoS4
                     | Goal::TournoiFrancoS5
@@ -5313,7 +5350,14 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                             PrerollMode::Long,
                             false,
                             None,
-                            goal.rando_version(None),
+                            if let Goal::StandardWeeklies = goal {
+                                let mut transaction = global_state.db_pool.begin().await?;
+                                let rando_version = event::Data::new(&mut transaction, Series::Standard, "w").await?.expect("missing weeklies event").rando_version.expect("no randomizer version configured for weeklies"); //TODO allow weekly organizers to configure this
+                                transaction.commit().await?;
+                                rando_version
+                            } else {
+                                goal.rando_version(None)
+                            },
                             settings.clone(),
                             serde_json::Map::default(),
                             goal.unlock_spoiler_log(false, false),

@@ -197,6 +197,7 @@ impl WeeklyKind {
 */ // regular weekly schedule suspended during s/9 qualifiers
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
+pub(crate) const RANDOBOT_CAN_ROLL_WEEKLY: bool = true;
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Short;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-9-8.3.63.json")).expect("failed to parse chest weights"));

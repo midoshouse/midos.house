@@ -20,6 +20,14 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
             html! {
                 @if event.series == Series::Standard && event.event == "w" {
                     p {
+                        : "RandoBot support: ";
+                        @if s::RANDOBOT_CAN_ROLL_WEEKLY {
+                            : "yes";
+                        } else {
+                            : "no";
+                        }
+                    }
+                    p {
                         : "Preroll mode: ";
                         : format!("{:?}", s::WEEKLY_PREROLL_MODE);
                     }

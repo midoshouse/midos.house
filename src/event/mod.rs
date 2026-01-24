@@ -750,24 +750,24 @@ impl<'a> Data<'a> {
                         None
                     },
                 };
-                @let practice_race_url = if_chain! {
-                    if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
-                    then {
-                        let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
-                        if let Some(goal_id) = goal.official_id() {
-                            practice_url.query_pairs_mut().append_pair("goal", &goal_id.to_string());
-                        } else {
-                            practice_url.query_pairs_mut().append_pair("custom_goal", goal.as_str());
-                        }
-                        practice_url
-                            .query_pairs_mut()
-                            .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
-                            .append_pair("hide_comments", "1")
-                            .finish();
-                        Some(practice_url)
-                    } else {
-                        None
+                @let practice_race_url = if let Some(mut goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
+                    if self.series == Series::Standard && self.event == "w" && !s::RANDOBOT_CAN_ROLL_WEEKLY {
+                        goal = racetime_bot::Goal::StandardWeeklies;
                     }
+                    let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
+                    if let Some(goal_id) = goal.official_id() {
+                        practice_url.query_pairs_mut().append_pair("goal", &goal_id.to_string());
+                    } else {
+                        practice_url.query_pairs_mut().append_pair("custom_goal", goal.as_str());
+                    }
+                    practice_url
+                        .query_pairs_mut()
+                        .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
+                        .append_pair("hide_comments", "1")
+                        .finish();
+                    Some(practice_url)
+                } else {
+                    None
                 };
                 @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| {
                     let content = html! {
