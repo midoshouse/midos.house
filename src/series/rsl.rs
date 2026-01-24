@@ -119,7 +119,7 @@ pub(crate) enum ScriptPathError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)]
     #[error("RSL script not found")]
-    NotFound,
+    NotFound(PathBuf),
     #[cfg(unix)]
     #[error("base rom not found")]
     RomPath,
@@ -169,9 +169,18 @@ impl VersionedPreset {
             #[cfg(unix)] {
                 match self {
                     Self::Fenhl { version: None, .. } => Cow::Borrowed(Path::new("/opt/git/github.com/fenhl/plando-random-settings/main")),
-                    Self::Fenhl { version: Some((base, supplementary)), .. } => Cow::Owned(BaseDirectories::new().find_data_file(Path::new("midos-house").join(format!("rsl-dev-fenhl-{base}-{supplementary}"))).ok_or(ScriptPathError::NotFound)?),
-                    Self::Xopar { version: None, .. } | Self::XoparCustom { version: None, .. } => Cow::Owned(BaseDirectories::new().find_data_file("fenhl/rslbot/plando-random-settings").ok_or(ScriptPathError::NotFound)?),
-                    Self::Xopar { version: Some(version), .. } | Self::XoparCustom { version: Some(version), .. } => Cow::Owned(BaseDirectories::new().find_data_file(Path::new("midos-house").join(format!("rsl-{version}"))).ok_or(ScriptPathError::NotFound)?),
+                    Self::Fenhl { version: Some((base, supplementary)), .. } => {
+                        let path = Path::new("midos-house").join(format!("rsl-dev-fenhl-{base}-{supplementary}"));
+                        Cow::Owned(BaseDirectories::new().find_data_file(&path).ok_or(ScriptPathError::NotFound(path))?)
+                    }
+                    Self::Xopar { version: None, .. } | Self::XoparCustom { version: None, .. } => {
+                        let path = PathBuf::from("fenhl/rslbot/plando-random-settings");
+                        Cow::Owned(BaseDirectories::new().find_data_file(&path).ok_or(ScriptPathError::NotFound(path))?)
+                    }
+                    Self::Xopar { version: Some(version), .. } | Self::XoparCustom { version: Some(version), .. } => {
+                        let path = Path::new("midos-house").join(format!("rsl-{version}"));
+                        Cow::Owned(BaseDirectories::new().find_data_file(&path).ok_or(ScriptPathError::NotFound(path))?)
+                    }
                 }
             }
             #[cfg(windows)] {
