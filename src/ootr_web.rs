@@ -18,12 +18,17 @@ use {
 };
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API despite not being listed by the version endpoint since supplementary versions weren't tracked at the time.
-const KNOWN_GOOD_VERSIONS: [ootr_utils::Version; 5] = [
-    ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 6, 2, 238, 1),
+const KNOWN_GOOD_VERSIONS: [ootr_utils::Version; 4] = [
     ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
     ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 143, 1), // commit 06390ece7e38fce1dd02ca60a28a7b1ff9fceb10
     ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 6, 9, 14, 2),
     ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 8, 0, 1, 1),
+];
+
+/// Legacy devR/devRSL versions which are only available in random settings mode (devRSL), not regularly (devR)
+const KNOWN_GOOD_RSL_VERSIONS: [ootr_utils::Version; 2] = [
+    ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 6, 2, 238, 1),
+    ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 181, 1),
 ];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
@@ -248,9 +253,7 @@ impl ApiClient {
         if rsl_preset.is_some() && version.branch().is_none_or(|branch| branch.latest_web_name_random_settings().is_none()) { return None }
         match version {
             VersionedBranch::Pinned { version } => {
-                if matches!(rsl_preset, Some(rsl::VersionedPreset::Xopar { .. })) && *version == ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 181, 1) // legacy devR/devRSL version which is only available in random settings mode (devRSL), not regularly (devR)
-                    || KNOWN_GOOD_VERSIONS.contains(version)
-                {
+                if KNOWN_GOOD_VERSIONS.contains(version) || rsl_preset.is_some() && KNOWN_GOOD_RSL_VERSIONS.contains(version) {
                     return Some(ootr_utils::Version::from_branch(
                         version.branch(),
                         version.base().major.try_into().expect("taken from existing ootr_utils::Version"),
