@@ -1118,6 +1118,22 @@ impl Goal {
                         },
                         unlock_spoiler_log,
                     }),
+                    [preset] if preset == "s5" => return Ok(SeedCommandParseResult::Rsl {
+                        preset: rsl::VersionedPreset::Xopar { version: Some(Version::new(2, 3, 8)), preset: rsl::Preset::League },
+                        world_count: 1,
+                        language: English,
+                        article: "an",
+                        description: format!("RSL season 5 seed"),
+                        unlock_spoiler_log,
+                    }),
+                    [preset] if preset == "s6" => return Ok(SeedCommandParseResult::Rsl {
+                        preset: rsl::VersionedPreset::Xopar { version: Some(Version::new(2, 5, 11)), preset: rsl::Preset::League },
+                        world_count: 1,
+                        language: English,
+                        article: "an",
+                        description: format!("RSL season 6 seed"),
+                        unlock_spoiler_log,
+                    }),
                     [preset] => if let Ok(preset) = preset.parse() {
                         if let rsl::Preset::Multiworld = preset {
                             return Ok(SeedCommandParseResult::Error { language: English, msg: "Missing world count (e.g. “!seed multiworld 2” for 2 worlds)".into() })
@@ -3431,6 +3447,10 @@ impl RaceHandler<GlobalState> for Handler {
                                                 options: all()
                                                     .filter(|preset| !matches!(preset, rsl::Preset::League | rsl::Preset::Multiworld))
                                                     .map(|preset| (preset.name().to_owned(), preset.race_info().to_owned()))
+                                                    .chain([
+                                                        (format!("s6"), format!("RSL Season 6")),
+                                                        (format!("s5"), format!("RSL Season 5")),
+                                                    ])
                                                     .collect(),
                                             },
                                         ]),
