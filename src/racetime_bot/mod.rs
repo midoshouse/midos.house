@@ -200,6 +200,7 @@ pub(crate) enum Goal {
     S6,
     S7,
     S8,
+    ScrubsS6,
     Sgl2023,
     Sgl2024,
     Sgl2025,
@@ -255,6 +256,7 @@ impl Goal {
             Self::S6 => series == Series::Standard && event == "6",
             Self::S7 => series == Series::Standard && event == "7",
             Self::S8 => series == Series::Standard && matches!(event, "8" | "8cc"),
+            Self::ScrubsS6 => series == Series::Scrubs && event == "6",
             Self::Sgl2023 => series == Series::SpeedGaming && event.starts_with("2023"),
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
             Self::Sgl2025 => series == Series::SpeedGaming && event.starts_with("2025"),
@@ -297,6 +299,7 @@ impl Goal {
             | Self::S6
             | Self::S7
             | Self::S8
+            | Self::ScrubsS6
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -338,6 +341,7 @@ impl Goal {
             Self::S6 => "Standard Tournament Season 6",
             Self::S7 => "Standard Tournament Season 7",
             Self::S8 => "Standard Tournament Season 8",
+            Self::ScrubsS6 => "Scrubs Tournament Season 6",
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
             Self::Sgl2025 => "SGL 2025",
@@ -378,6 +382,7 @@ impl Goal {
             | Self::S6
             | Self::S7
             | Self::S8
+            | Self::ScrubsS6
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -423,6 +428,7 @@ impl Goal {
             | Self::PotsOfTime
             | Self::S6
             | Self::S8
+            | Self::ScrubsS6
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -465,6 +471,7 @@ impl Goal {
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::Rsl
+            | Self::ScrubsS6
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
@@ -510,6 +517,7 @@ impl Goal {
                 | Self::NineDaysOfSaws
                 | Self::PotsOfTime
                 | Self::Rsl
+                | Self::ScrubsS6
                 | Self::Sgl2023
                 | Self::Sgl2024
                 | Self::SongsOfHope
@@ -559,6 +567,7 @@ impl Goal {
             Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
             Self::S7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::S8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
+            Self::ScrubsS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
@@ -609,6 +618,7 @@ impl Goal {
             Self::S6 => Some(s::s6_settings()),
             Self::S7 => None, // settings draft
             Self::S8 => Some(s::s8_settings()),
+            Self::ScrubsS6 => Some(scrubs::s6_settings()),
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::Sgl2025 => Some(sgl::settings_2025()),
@@ -644,6 +654,7 @@ impl Goal {
             | Self::Mq
             | Self::S6
             | Self::S8
+            | Self::ScrubsS6
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -804,6 +815,7 @@ impl Goal {
             | Self::Pic7
             | Self::S6
             | Self::S8
+            | Self::ScrubsS6
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -3426,54 +3438,6 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
-                            Goal::Sgl2023 => ctx.send_message(
-                                "Welcome! This is a practice room for SpeedGaming Live 2023. Learn more about the tournaments at https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit",
-                                true,
-                                vec![
-                                    ("Roll seed", ActionButton::Message {
-                                        message: format!("!seed"),
-                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
-                                        survey: None,
-                                        submit: None,
-                                    }),
-                                ],
-                            ).await?,
-                            Goal::Sgl2024 => ctx.send_message(
-                                "Welcome! This is a practice room for SpeedGaming Live 2024. Learn more about the tournaments at https://docs.google.com/document/d/1I0IcnGMqKr3QaCgg923SR_SxVu0iytIA_lOhN2ybj9w/edit",
-                                true,
-                                vec![
-                                    ("Roll seed", ActionButton::Message {
-                                        message: format!("!seed"),
-                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
-                                        survey: None,
-                                        submit: None,
-                                    }),
-                                ],
-                            ).await?,
-                            Goal::Sgl2025 => ctx.send_message(
-                                "Welcome! This is a practice room for SpeedGaming Live 2025. Learn more about the tournaments at https://docs.google.com/document/d/1SFmkuknmCqfO9EmTwMVKmKdema5OQ1InUlbuy16zsy8/edit",
-                                true,
-                                vec![
-                                    ("Roll seed", ActionButton::Message {
-                                        message: format!("!seed"),
-                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
-                                        survey: None,
-                                        submit: None,
-                                    }),
-                                ],
-                            ).await?,
-                            Goal::SongsOfHope => ctx.send_message(
-                                "Welcome! This is a practice room for Songs of Hope, a charity tournament for the Autism of Society of America. Learn more about the tournament at https://midos.house/event/soh/1",
-                                true,
-                                vec![
-                                    ("Roll seed", ActionButton::Message {
-                                        message: format!("!seed"),
-                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
-                                        survey: None,
-                                        submit: None,
-                                    }),
-                                ],
-                            ).await?,
                             Goal::S6 => ctx.send_message(
                                 "Welcome! This is a practice room for Standard Tournament Season 6. Learn more about the tournament at https://midos.house/event/s/6",
                                 true,
@@ -3528,6 +3492,66 @@ impl RaceHandler<GlobalState> for Handler {
                             ).await?,
                             Goal::S8 => ctx.send_message(
                                 "Welcome! This is a practice room for Standard Tournament Season 8 and its Challenge Cup. Learn more about the tournaments at https://midos.house/event/s/8 and https://midos.house/event/s/8cc",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::ScrubsS6 => ctx.send_message(
+                                "Welcome! This is a practice room for Scrubs Tournament Season 6. Learn more about the tournament at https://midos.house/event/scrubs/6",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::Sgl2023 => ctx.send_message(
+                                "Welcome! This is a practice room for SpeedGaming Live 2023. Learn more about the tournaments at https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::Sgl2024 => ctx.send_message(
+                                "Welcome! This is a practice room for SpeedGaming Live 2024. Learn more about the tournaments at https://docs.google.com/document/d/1I0IcnGMqKr3QaCgg923SR_SxVu0iytIA_lOhN2ybj9w/edit",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::Sgl2025 => ctx.send_message(
+                                "Welcome! This is a practice room for SpeedGaming Live 2025. Learn more about the tournaments at https://docs.google.com/document/d/1SFmkuknmCqfO9EmTwMVKmKdema5OQ1InUlbuy16zsy8/edit",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::SongsOfHope => ctx.send_message(
+                                "Welcome! This is a practice room for Songs of Hope, a charity tournament for the Autism of Society of America. Learn more about the tournament at https://midos.house/event/soh/1",
                                 true,
                                 vec![
                                     ("Roll seed", ActionButton::Message {
@@ -4025,6 +4049,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Pic7
                             | Goal::S6
                             | Goal::S8
+                            | Goal::ScrubsS6
                             | Goal::Sgl2023
                             | Goal::Sgl2024
                             | Goal::Sgl2025
@@ -4803,6 +4828,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::S6
                     | Goal::S7
                     | Goal::S8
+                    | Goal::ScrubsS6
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
