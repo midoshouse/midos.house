@@ -644,7 +644,7 @@ impl<'a> Data<'a> {
     pub(crate) fn has_single_settings(&self) -> bool {
         match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => true,
-            (Series::PotsOfTime, "1") => true,
+            (Series::PotsOfTime, "1") | (Series::Rsl, "5" | "6") => true,
             (_, _) => self.single_settings.is_some(),
         }
     }
