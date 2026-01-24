@@ -700,11 +700,9 @@ impl Goal {
                 }
                 ctx.say("!seed draft: Pick the weights here in the chat.").await?;
                 ctx.say("!seed draft lite: Pick the weights here in the chat, but limit picks to RSL-Lite.").await?;
+                ctx.say("“!seed s6” or “!seed s5”: Previous seasons' weights").await?;
             }
-            Self::StandardRuleset => {
-                ctx.say("!seed s8: The settings for season 8 of the main tournament").await?;
-                ctx.say("!seed weekly: The current weekly settings").await?;
-            }
+            Self::StandardRuleset => unreachable!("practice races with this goal are handled by RandoBot"),
             Self::StandardWeeklies => ctx.say("!seed: The current weekly settings").await?,
             Self::TournoiFrancoS3 => {
                 ctx.say("!seed base : Settings de base.").await?;
@@ -2327,6 +2325,7 @@ impl SeedRollUpdate {
                 lock!(@write state = state; *state = RaceState::Rolled(seed));
             }
             Self::Error(RollError::InsufficientStorage) => {
+                assert!(official_data.is_none(), "RollError::InsufficientStorage returned for official race");
                 ctx.say("Sorry @entrants, the Mido's House server's disk is almost full, so rolling practice seeds with settings not supported by ootrandomizer.com is temporarily disabled. Please try again later or roll the seed manually. If this error persists, please report it to Fenhl.").await?;
                 lock!(@write state = state; *state = RaceState::Init);
             }
@@ -2336,12 +2335,16 @@ impl SeedRollUpdate {
                 } else {
                     eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
                 }
-                ctx.say(if let French = language {
-                    format!("Désolé @entrants, le randomizer a rapporté une erreur {num_retries} fois de suite donc je vais laisser tomber. Veuillez réessayer et, si l'erreur persiste, essayer de roll une seed de votre côté et contacter Fenhl.")
+                if official_data.is_some() {
+                    ctx.say(format!("Sorry @entrants, the randomizer reported an error {num_retries} times and the deadline was reached, so I'm giving up on rolling the seed. Please roll it manually or ask an organizer to do so. If this error persists, please report it to Fenhl.")).await?;
                 } else {
-                    format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")
-                }).await?; //TODO for official races, explain that retrying is done using !seed
-                lock!(@write state = state; *state = RaceState::Init);
+                    ctx.say(if let French = language {
+                        format!("Désolé @entrants, le randomizer a rapporté une erreur {num_retries} fois de suite donc je vais laisser tomber. Veuillez réessayer et, si l'erreur persiste, essayer de roll une seed de votre côté et contacter Fenhl.")
+                    } else {
+                        format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")
+                    }).await?;
+                    lock!(@write state = state; *state = RaceState::Init);
+                }
             }
             Self::Error(e) => {
                 eprintln!("seed roll error in https://{}{}: {e} ({e:?})", racetime_host(), ctx.data().await.url);
@@ -4342,7 +4345,11 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, this command is only available for official races.")
                 }).await?;
             },
-            "presets" => goal.send_presets(ctx).await?,
+            "presets" => if self.is_official() {
+                ctx.say(format!("Sorry {reply_to}, this command is only available for practice races.")).await?;
+            } else {
+                goal.send_presets(ctx).await?;
+            },
             "ready" => if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
                 if let Some(state) = restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
                     state.ready = true;
