@@ -179,7 +179,7 @@ pub(crate) enum UnlockSpoilerLog {
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
     BattleRoyaleS2,
-    Cc7,
+    Cc7, // same behavior as S7 but aliased for back-compat
     CoOpS3,
     CopaDoBrasil,
     CopaLatinoamerica2025,
@@ -197,6 +197,9 @@ pub(crate) enum Goal {
     PicRs2,
     PotsOfTime,
     Rsl,
+    S6,
+    S7,
+    S8,
     Sgl2023,
     Sgl2024,
     Sgl2025,
@@ -248,11 +251,14 @@ impl Goal {
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
             Self::PotsOfTime => series == Series::PotsOfTime && event == "1",
             Self::Rsl => series == Series::Rsl,
+            Self::S6 => series == Series::Standard && event == "6",
+            Self::S7 => series == Series::Standard && event == "7",
+            Self::S8 => series == Series::Standard && matches!(event, "8" | "8cc"),
             Self::Sgl2023 => series == Series::SpeedGaming && event.starts_with("2023"),
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
             Self::Sgl2025 => series == Series::SpeedGaming && event.starts_with("2025"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
-            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8" | "8cc" | "9" | "9cc"),
+            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "9" | "9cc"),
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TournoiFrancoS5 => series == Series::TournoiFrancophone && event == "5",
@@ -286,6 +292,9 @@ impl Goal {
             | Self::Pic7
             | Self::PicRs2
             | Self::PotsOfTime
+            | Self::S6
+            | Self::S7
+            | Self::S8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -323,6 +332,9 @@ impl Goal {
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::PotsOfTime => "Pots Of Time",
             Self::Rsl => "Random settings league",
+            Self::S6 => "Standard Tournament Season 6",
+            Self::S7 => "Standard Tournament Season 7",
+            Self::S8 => "Standard Tournament Season 8",
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
             Self::Sgl2025 => "SGL 2025",
@@ -359,6 +371,9 @@ impl Goal {
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::Rsl
+            | Self::S6
+            | Self::S7
+            | Self::S8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -379,7 +394,7 @@ impl Goal {
 
     fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
-            Self::Cc7 => Some(draft::Kind::S7),
+            Self::S7 | Self::Cc7 => Some(draft::Kind::S7),
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::MultiworldS5 => Some(draft::Kind::MultiworldS5),
@@ -401,6 +416,8 @@ impl Goal {
             | Self::Pic7
             | Self::PicRs2
             | Self::PotsOfTime
+            | Self::S6
+            | Self::S8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -426,6 +443,9 @@ impl Goal {
             | Self::CoOpS3
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::S6
+            | Self::S7
+            | Self::S8
                 => PrerollMode::Short,
             | Self::BattleRoyaleS2
             | Self::CopaDoBrasil
@@ -451,7 +471,7 @@ impl Goal {
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
                 => PrerollMode::Long,
-            Self::StandardRuleset => if let Some((Series::Standard, "8" | "8cc" | "9" | "9cc")) = event {
+            Self::StandardRuleset => if let Some((Series::Standard, "9" | "9cc")) = event {
                 PrerollMode::Short
             } else {
                 s::WEEKLY_PREROLL_MODE //TODO allow weekly organizers to configure this
@@ -496,6 +516,9 @@ impl Goal {
                 | Self::Cc7
                 | Self::CoOpS3
                 | Self::LeagueS9
+                | Self::S6
+                | Self::S7
+                | Self::S8
                 | Self::Sgl2025
                 | Self::StandardRuleset
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
@@ -525,6 +548,9 @@ impl Goal {
             } },
             Self::NineDaysOfSaws => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2) },
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
+            Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
+            Self::S7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
+            Self::S8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
@@ -535,7 +561,7 @@ impl Goal {
                 then {
                     event.rando_version.clone().expect("no randomizer version configured for weeklies") //TODO allow weekly organizers to configure this
                 } else {
-                    VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) }
+                    unreachable!("official seeds should use the event's rando version")
                 }
             },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
@@ -571,6 +597,9 @@ impl Goal {
             Self::PotsOfTime => None, // random settings
             Self::PicRs2 => None, // random settings
             Self::Rsl => None, // random settings
+            Self::S6 => Some(s::s6_settings()),
+            Self::S7 => None, // settings draft
+            Self::S8 => Some(s::s8_settings()),
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::Sgl2025 => Some(sgl::settings_2025()),
@@ -603,6 +632,8 @@ impl Goal {
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
             | Self::Mq
+            | Self::S6
+            | Self::S8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -613,7 +644,7 @@ impl Goal {
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
                 => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
-            Self::Cc7 => {
+            Self::Cc7 | Self::S7 => {
                 ctx.say("!seed base: The tournament's base settings.").await?;
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
                 ctx.say("!seed draft: Pick the settings here in the chat.").await?;
@@ -762,6 +793,8 @@ impl Goal {
             | Self::MixedPoolsS4
             | Self::Mq
             | Self::Pic7
+            | Self::S6
+            | Self::S8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -823,7 +856,7 @@ impl Goal {
                     settings, plando, unlock_spoiler_log,
                 }
             }
-            Self::Cc7 => {
+            Self::Cc7 | Self::S7 => {
                 let settings = match args {
                     [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
                     [arg] if arg == "base" => HashMap::default(),
@@ -3418,6 +3451,70 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::S6 => ctx.send_message(
+                                "Welcome! This is a practice room for Standard Tournament Season 6. Learn more about the tournament at https://midos.house/event/s/6",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::S7 => ctx.send_message(
+                                "Welcome! This is a practice room for Standard Tournament Season 7. Learn more about the tournament at https://midos.house/event/s/7",
+                                true,
+                                vec![
+                                    ("Roll seed (base settings)", ActionButton::Message {
+                                        message: format!("!seed base"),
+                                        help_text: Some(format!("Create a seed with the tournament's base settings.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                    ("Roll seed (random settings)", ActionButton::Message {
+                                        message: format!("!seed random"),
+                                        help_text: Some(format!("Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                    ("Roll seed (custom settings)", ActionButton::Message {
+                                        message: format!("!seed {}", s::S7_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                        help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                        survey: Some(s::S7_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                            name: setting.name.to_owned(),
+                                            label: setting.display.to_owned(),
+                                            default: Some(json!("default")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Radio,
+                                            placeholder: None,
+                                            options: iter::once((format!("default"), setting.default_display.to_owned()))
+                                                .chain(setting.other.iter().map(|(name, display, _)| (name.to_string(), display.to_string())))
+                                                .collect(),
+                                        }).collect()),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Start settings draft", ActionButton::Message {
+                                        message: format!("!seed draft"),
+                                        help_text: Some(format!("Pick the settings here in the chat.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::S8 => ctx.send_message(
+                                "Welcome! This is a practice room for Standard Tournament Season 8 and its Challenge Cup. Learn more about the tournaments at https://midos.house/event/s/8 and https://midos.house/event/s/8cc",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::StandardRuleset => unreachable!("attempted to handle a user-opened Standard Ruleset room"),
                             Goal::TournoiFrancoS3 => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
@@ -3891,6 +3988,8 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::MixedPoolsS4
                             | Goal::Mq
                             | Goal::Pic7
+                            | Goal::S6
+                            | Goal::S8
                             | Goal::Sgl2023
                             | Goal::Sgl2024
                             | Goal::Sgl2025
@@ -3905,6 +4004,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::MultiworldS4
                             | Goal::MultiworldS5
                             | Goal::Rsl
+                            | Goal::S7
                             | Goal::TournoiFrancoS3
                             | Goal::TournoiFrancoS4
                             | Goal::TournoiFrancoS5
@@ -3937,7 +4037,6 @@ impl RaceHandler<GlobalState> for Handler {
                                 let mut settings = settings.into_owned();
                                 settings.insert(format!("password_lock"), json!(true));
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, if event.event == "w" { "a" } else { "an" }, match &*event.event {
-                                    "8" | "8cc" => format!("S8 seed"),
                                     "9" | "9cc" => format!("S9 seed"),
                                     "w" => format!("weekly seed"),
                                     _ => unimplemented!(),
@@ -4658,6 +4757,9 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::NineDaysOfSaws
                     | Goal::PotsOfTime
                     | Goal::Rsl
+                    | Goal::S6
+                    | Goal::S7
+                    | Goal::S8
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025

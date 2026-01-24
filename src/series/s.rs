@@ -2020,6 +2020,70 @@ pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
     }
 }
 
+pub(crate) fn s6_settings() -> seed::Settings {
+    collect![
+        format!("user_message") => json!("S6 Tournament"),
+        format!("open_forest") => json!("closed_deku"),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("trials") => json!(0),
+        format!("starting_age") => json!("random"),
+        format!("spawn_positions") => json!([
+            "child",
+        ]),
+        format!("shuffle_child_trade") => json!("skip_child_zelda"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("shuffle_ganon_bosskey") => json!("remove"),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_items") => json!([
+            "ocarina",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("chicken_count") => json!(4),
+        format!("big_poe_count") => json!(1),
+        format!("correct_chest_appearances") => json!("both"),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("hint_dist") => json!("tournament"),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+    ]
+}
+
 pub(crate) fn s8_settings() -> seed::Settings {
     collect![
         format!("password_lock") => json!(true),
