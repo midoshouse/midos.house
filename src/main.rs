@@ -162,6 +162,14 @@ enum Error {
 
 #[wheel::main(rocket)]
 async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
+    let default_panic_hook = std::panic::take_hook();
+    if let Environment::Production = Environment::default() {
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = wheel::night_report_sync(&format!("{}/error", night_path()), Some("thread panic"));
+            default_panic_hook(info)
+        }));
+    }
+    let _ = rustls::crypto::ring::default_provider().install_default();
     if let Some(subcommand) = subcommand {
         #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
         #[cfg(unix)] subcommand.write(&mut sock).await?;
@@ -198,13 +206,6 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
             }
         }
     } else {
-        let default_panic_hook = std::panic::take_hook();
-        if let Environment::Production = Environment::default() {
-            std::panic::set_hook(Box::new(move |info| {
-                let _ = wheel::night_report_sync(&format!("{}/error", night_path()), Some("thread panic"));
-                default_panic_hook(info)
-            }));
-        }
         let config = Config::load().await?;
         let http_client = reqwest::Client::builder()
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION"), " (https://github.com/midoshouse/midos.house)"))

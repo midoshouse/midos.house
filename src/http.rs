@@ -287,7 +287,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
 }
 
 #[rocket::get("/")]
-async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut upcoming_events = Vec::default();
     let mut races = Vec::default();
@@ -385,7 +385,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
         @if races.is_empty() {
             i : "(none currently)";
         } else {
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, csrf.as_ref(), None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
         }
     };
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
@@ -613,7 +613,8 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         cal::create_race_post,
         cal::import_races,
         cal::import_races_post,
-        cal::practice_seed,
+        cal::practice_seed_get,
+        cal::practice_seed_post,
         cal::edit_race,
         cal::edit_race_post,
         cal::add_file_hash,
@@ -631,7 +632,8 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::opt_out_post,
         event::request_async,
         event::submit_async,
-        event::practice_seed,
+        event::practice_seed_get,
+        event::practice_seed_post,
         event::volunteer,
         event::enter::get,
         event::enter::post,

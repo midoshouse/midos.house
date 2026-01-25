@@ -7,7 +7,7 @@ use crate::{
 };
 
 async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Configure, false).await?;
+    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Configure, false).await?;
     let content = if event.is_ended() {
         html! {
             article {
@@ -228,7 +228,7 @@ impl<'v> RestreamersFormDefaults<'v> {
 }
 
 async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, defaults: RestreamersFormDefaults<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Configure, true).await?;
+    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Configure, true).await?;
     let content = if event.is_ended() {
         html! {
             article {

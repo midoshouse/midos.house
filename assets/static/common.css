@@ -109,7 +109,9 @@ span.button-row {
 }
 
 .button-row form {
-    padding-inline: 0;
+    padding: 0;
+    border: 0;
+    margin: 0;
 }
 
 .menu .button {
@@ -132,11 +134,20 @@ span.button-row {
     border-start-end-radius: 0;
 }
 
+.menu form {
+    padding-block: 0;
+}
+
+.menu button {
+    text-align: start;
+    width: 100%;
+}
+
 .popover-wrapper {
     position: relative;
 }
 
-.popover-wrapper button {
+button {
     font-size: unset;
     font-family: unset;
 }
@@ -166,7 +177,7 @@ span.button-row {
     display: grid;
 }
 
-[popover]:popover-open + * + button {
+.popover-wrapper button {
     border-end-start-radius: 0 !important;
     border-end-end-radius: 0 !important;
 }
@@ -176,19 +187,19 @@ input[type="checkbox"] {
     height: 16px;
 }
 
-.popover-wrapper > button,
 input[type="text"],
 input[type="number"],
 input[type="submit"],
 select,
 textarea,
+button,
 .button {
     background-color: white;
     border: 1px solid black;
     padding: 8px;
 }
 
-.popover-wrapper > button,
+.popover-wrapper button,
 input[type="submit"],
 .button {
     text-wrap: nowrap;
@@ -210,7 +221,8 @@ input[type="submit"],
 
 .button-row .popover-wrapper:nth-child(1) > button,
 fieldset input[type="submit"],
-.button-row form:nth-child(1) input[type="submit"],
+.button-row > form:nth-child(1) input[type="submit"],
+.button-row > form:nth-child(1) button,
 .button:nth-child(1) {
     border-inline-start-width: 1px;
     border-start-start-radius: 8px;
@@ -219,7 +231,8 @@ fieldset input[type="submit"],
 
 .button-row .popover-wrapper:nth-last-child(1) > button,
 fieldset input[type="submit"],
-.button-row form:nth-last-child(1) input[type="submit"],
+.button-row > form:nth-last-child(1) input[type="submit"],
+.button-row > form:nth-child(1) button,
 .button:nth-last-child(1) {
     border-start-end-radius: 8px;
     border-end-end-radius: 8px;
@@ -228,11 +241,13 @@ fieldset input[type="submit"],
 [popover]:popover-open + * + button,
 input[type="submit"]:hover,
 .button.selected,
+button:hover,
 .button:hover {
     background-color: black;
     color: white;
 }
 
+button,
 input[type="submit"] {
     cursor: pointer;
 }
@@ -249,6 +264,7 @@ input[type="submit"] {
     height: 16px;
 }
 
+button .favicon,
 .button .favicon {
     margin-inline-end: 8px;
     vertical-align: sub;
@@ -274,11 +290,6 @@ form {
     margin: 8px;
     padding: 8px;
     background-color: white;
-}
-
-.button-row form {
-    border: 0;
-    margin: 0;
 }
 
 .button-row + article,
@@ -561,12 +572,12 @@ footer,
         color: white;
     }
 
-    .button-row .popover-wrapper > button,
     input[type="text"],
     input[type="number"],
     input[type="submit"],
     select,
     textarea,
+    button,
     .button {
         background-color: black;
         border-color: white;
@@ -575,6 +586,7 @@ footer,
     [popover]:popover-open + * + button,
     input[type="submit"]:hover,
     .button.selected,
+    button:hover,
     .button:hover {
         background-color: white;
         color: black;

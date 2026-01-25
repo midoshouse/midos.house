@@ -1059,7 +1059,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
             },
         }
     };
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Enter, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, false).await?;
     let invites = html! {
         @for team_id in my_invites {
             : crate::notification::team_invite(&mut transaction, me.as_ref().expect("got a team invite while not logged in"), csrf, defaults.errors(), crate::notification::TeamInviteSource::Enter, team_id).await?;
@@ -1075,7 +1075,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
 fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, http_client: &reqwest::Client, ootr_api_client: &'a ootr_web::ApiClient, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
     let team_members = defaults.racetime_members(http_client);
     Box::pin(async move {
-        let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Enter, true).await?;
+        let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, true).await?;
         let page_content = {
             let team_config = data.team_config;
             let team_members = team_members.await?;

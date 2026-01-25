@@ -877,7 +877,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
     let mut transaction = pool.begin().await?;
     let mut cache = Cache::new(http_client.clone());
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Teams, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Teams, false).await?;
     let mut show_status = ShowStatus::None;
     let is_organizer = if let Some(ref me) = me {
         data.organizers(&mut transaction).await?.contains(me)

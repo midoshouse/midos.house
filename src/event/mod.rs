@@ -649,7 +649,8 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<&User>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
+    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<&User>, csrf: Option<&CsrfToken>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
+        let mut errors = RawHtml(String::default());
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -684,7 +685,7 @@ impl<'a> Data<'a> {
                     @if let Tab::Teams = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(teams::get(self.series, &*self.event)))) : teams_label;
                     } else if let Some(ref teams_url) = self.teams_url {
-                        a(class = "button", href = teams_url.to_string()) {
+                        a(class = "button", href = teams_url) {
                             : favicon(teams_url);
                             : teams_label;
                         }
@@ -709,7 +710,7 @@ impl<'a> Data<'a> {
                     @if let Tab::Enter = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(enter::get(self.series, &*self.event, _, _)))) : "Enter";
                     } else if let Some(ref enter_url) = self.enter_url {
-                        a(class = "button", href = enter_url.to_string()) {
+                        a(class = "button", href = enter_url) {
                             : favicon(enter_url);
                             : "Enter";
                         }
@@ -724,84 +725,10 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @let practice_seed_url = match (self.series, &*self.event) {
-                    (Series::TriforceBlitz, "2") => {
-                        let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
-                        Some((url.to_string(), Some(url)))
-                    }
-                    (Series::TriforceBlitz, "3") => {
-                        let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
-                        Some((url.to_string(), Some(url)))
-                    }
-                    (Series::TriforceBlitz, "4coop") => {
-                        let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
-                        Some((url.to_string(), Some(url)))
-                    }
-                    (Series::TriforceBlitz, "4") => {
-                        let url = Url::parse("https://www.triforceblitz.com/generator")?;
-                        Some((url.to_string(), Some(url)))
-                    }
-                    id => if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
-                        Some((
-                            uri!(practice_seed(self.series, &*self.event)).to_string(),
-                            practice_seed_favicon_url(ootr_api_client, self).await?,
-                        ))
-                    } else {
-                        None
-                    },
-                };
-                @let practice_race_url = if let Some(mut goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
-                    if self.series == Series::Standard && self.event == "w" && !s::RANDOBOT_CAN_ROLL_WEEKLY {
-                        goal = racetime_bot::Goal::StandardWeeklies;
-                    }
-                    let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
-                    if let Some(goal_id) = goal.official_id() {
-                        practice_url.query_pairs_mut().append_pair("goal", &goal_id.to_string());
-                    } else {
-                        practice_url.query_pairs_mut().append_pair("custom_goal", goal.as_str());
-                    }
-                    practice_url
-                        .query_pairs_mut()
-                        .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
-                        .append_pair("hide_comments", "1")
-                        .finish();
-                    Some(practice_url)
-                } else {
-                    None
-                };
-                @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| {
-                    let content = html! {
-                        @if let Some(favicon_url) = favicon_url {
-                            : favicon(&favicon_url);
-                        }
-                        @if practice_race_url.is_some() {
-                            : "Roll Seed";
-                        } else {
-                            : "Practice";
-                        }
-                    };
-                    html! {
-                        @if let Tab::Practice = tab {
-                            a(class = "button selected", href? = is_subpage.then(|| url.to_string())) : content;
-                        } else {
-                            a(class = "button", href = url.to_string()) : content;
-                        }
-                    }
-                });
-                @let practice_race_button = practice_race_url.map(|url| html! {
-                    a(class = "button", href = url.to_string()) {
-                        : favicon(&url);
-                        @if practice_seed_button.is_some() {
-                            : "Start Race";
-                        } else {
-                            : "Practice";
-                        }
-                    }
-                });
-                @match (practice_seed_button, practice_race_button) {
-                    (None, None) => {}
-                    (None, Some(button)) | (Some(button), None) => : button;
-                    (Some(practice_seed_button), Some(practice_race_button)) => div(class = "popover-wrapper") {
+                @match self.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await? {
+                    [None, None] => {}
+                    [None, Some(button)] | [Some(button), None] => : button;
+                    [Some(practice_seed_button), Some(practice_race_button)] => div(class = "popover-wrapper") {
                         div(id = "practice-menu", popover); //HACK workaround for lack of cross-browser support for CSS overlay property
                         div(class = "menu") {
                             : practice_seed_button;
@@ -818,13 +745,13 @@ impl<'a> Data<'a> {
                     }
                 }
                 @if let Some(ref video_url) = self.video_url {
-                    a(class = "button", href = video_url.to_string()) {
+                    a(class = "button", href = video_url) {
                         : favicon(video_url);
                         : "Watch";
                     }
                 }
                 @if let Some(ref url) = self.url {
-                    a(class = "button", href = url.to_string()) {
+                    a(class = "button", href = url) {
                         : favicon(url);
                         @match url.host_str() {
                             Some("racetime.gg" | "racetime.midos.house") => : "Race Room";
@@ -834,7 +761,7 @@ impl<'a> Data<'a> {
                     }
                 }
                 @if let Some(ref discord_invite_url) = self.discord_invite_url {
-                    a(class = "button", href = discord_invite_url.to_string()) {
+                    a(class = "button", href = discord_invite_url) {
                         : favicon(discord_invite_url);
                         : "Discord Server";
                     }
@@ -849,8 +776,107 @@ impl<'a> Data<'a> {
                     }
                 }
             }
+            : errors;
         })
     }
+
+    async fn practice_buttons(&self, ootr_api_client: &ootr_web::ApiClient, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<[Option<RawHtml<String>>; 2], Error> {
+        let practice_seed_url = match (self.series, &*self.event) {
+            (Series::TriforceBlitz, "2") => {
+                let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
+                Some((false, url.clone(), Some(url)))
+            }
+            (Series::TriforceBlitz, "3") => {
+                let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
+                Some((false, url.clone(), Some(url)))
+            }
+            (Series::TriforceBlitz, "4coop") => {
+                let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
+                Some((false, url.clone(), Some(url)))
+            }
+            (Series::TriforceBlitz, "4") => {
+                let url = Url::parse("https://www.triforceblitz.com/generator")?;
+                Some((false, url.clone(), Some(url)))
+            }
+            id => if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
+                Some((
+                    true,
+                    uri!(practice_seed_post(self.series, &*self.event)).to_string().parse()?,
+                    practice_seed_favicon_url(ootr_api_client, self).await?,
+                ))
+            } else {
+                None
+            },
+        };
+        let practice_race_url = if let Some(mut goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
+            if self.series == Series::Standard && self.event == "w" && !s::RANDOBOT_CAN_ROLL_WEEKLY {
+                goal = racetime_bot::Goal::StandardWeeklies;
+            }
+            let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
+            if let Some(goal_id) = goal.official_id() {
+                practice_url.query_pairs_mut().append_pair("goal", &goal_id.to_string());
+            } else {
+                practice_url.query_pairs_mut().append_pair("custom_goal", goal.as_str());
+            }
+            practice_url
+                .query_pairs_mut()
+                .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
+                .append_pair("hide_comments", "1")
+                .finish();
+            Some(practice_url)
+        } else {
+            None
+        };
+        let practice_seed_button = practice_seed_url.map(|(post, url, favicon_url)| {
+            let content = if matches!(ctx, PracticeButtonsContext::Content) || practice_race_url.is_some() { "Roll Seed" } else { "Practice" };
+            if post && match ctx { PracticeButtonsContext::Navbar { tab, is_subpage } => !matches!(tab, Tab::Practice) || is_subpage, PracticeButtonsContext::Content => true } {
+                let (new_errors, form) = if let Some(favicon_url) = favicon_url {
+                    external_button_form(url, csrf, Vec::default(), &favicon_url, content)
+                } else {
+                    button_form(url, csrf, Vec::default(), content)
+                };
+                errors.0.push_str(&new_errors.0);
+                form
+            } else {
+                html! {
+                    @if let PracticeButtonsContext::Navbar { tab: Tab::Practice, is_subpage } = ctx {
+                        a(class = "button selected", href? = is_subpage.then_some(url)) {
+                            @if let Some(favicon_url) = favicon_url {
+                                : favicon(&favicon_url);
+                            }
+                            : content;
+                        }
+                    } else {
+                        a(class = "button", href = url) {
+                            @if let Some(favicon_url) = favicon_url {
+                                : favicon(&favicon_url);
+                            }
+                            : content;
+                        }
+                    }
+                }
+            }
+        });
+        let practice_race_button = practice_race_url.map(|url| html! {
+            a(class = "button", href = url) {
+                : favicon(&url);
+                @if matches!(ctx, PracticeButtonsContext::Content) || practice_seed_button.is_some() {
+                    : "Start Race";
+                } else {
+                    : "Practice";
+                }
+            }
+        });
+        Ok([practice_seed_button, practice_race_button])
+    }
+}
+
+enum PracticeButtonsContext {
+    Navbar {
+        tab: Tab,
+        is_subpage: bool,
+    },
+    Content,
 }
 
 impl ToHtml for Data<'_> {
@@ -863,6 +889,7 @@ impl ToHtml for Data<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum Tab {
     Info,
     Teams,
@@ -881,6 +908,7 @@ pub(crate) enum Error {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] crate::discord_bot::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] RaceTime(#[from] racetime::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -910,6 +938,7 @@ impl IsNetworkError for Error {
             Self::Data(_) => false,
             Self::Discord(_) => false,
             Self::Json(_) => false,
+            Self::OotrWeb(e) => e.is_network_error(),
             Self::Page(e) => e.is_network_error(),
             Self::RaceTime(e) => e.is_network_error(),
             Self::Reqwest(e) => e.is_network_error(),
@@ -957,10 +986,10 @@ impl<E: Into<InfoError>> From<E> for StatusOrError<InfoError> {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
+pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Info, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
         Series::BattleRoyale => ohko::info(&mut transaction, &data).await?,
         Series::CoOp => coop::info(&mut transaction, &data).await?,
@@ -1010,10 +1039,10 @@ pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
-pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Races, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Races, false).await?;
     let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, &data).await?
         .into_iter()
         .partition::<Vec<_>, _>(|race| race.is_ended());
@@ -1036,13 +1065,13 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, show_restream_consent, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, show_restream_consent, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, show_restream_consent: false, challonge_import_ctx: None }, &past_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, show_restream_consent: false, challonge_import_ctx: None }, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
@@ -1098,7 +1127,7 @@ impl<'v> StatusContext<'v> {
 }
 
 async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::MyStatus, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
         if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
             id = team
@@ -1551,7 +1580,7 @@ impl<E: Into<FindTeamError>> From<E> for StatusOrError<FindTeamError> {
 async fn find_team_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config {
         TeamConfig::Solo => {
-            let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::FindTeam, false).await?;
+            let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::FindTeam, false).await?;
             page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
@@ -2340,87 +2369,131 @@ async fn practice_seed_favicon_url(ootr_api_client: &ootr_web::ApiClient, data: 
     }
 }
 
-#[rocket::get("/event/<series>/<event>/practice")] //TODO this should probably be POST, need to turn links pointing here into buttons to support that
-pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<Option<RedirectOrContent>, PracticeError> {
-    let mut transaction = pool.begin().await?;
-    let Some(data) = Data::new(&mut transaction, series, event).await? else { println!("no such event"); return Ok(None) };
-
-    macro_rules! roll_try {
-        ($res:expr) => {{
-            match $res {
-                Ok(v) => {
-                    transaction.commit().await?;
-                    v
-                }
-                Err(racetime_bot::RollError::Retries { num_retries, last_error }) => {
-                    if let Some(last_error) = last_error {
-                        eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
-                    } else {
-                        eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
-                    }
-                    let content = html! {
-                        : data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Practice, false).await?;
-                        p {
-                            : "Sorry, the seed could not be rolled because the randomizer reported an error ";
-                            : num_retries;
-                            : " times. Please reload this page to try again. If this error persists, please report it to ";
-                            : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
-                            : ".";
-                        }
-                    };
-                    return Ok(Some(RedirectOrContent::Content(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", data.display_name), content).await?)))
-                }
-                Err(e) => {
-                    transaction.commit().await?;
-                    return Err(PracticeError::Roll(e))
-                }
-            }
-        }};
-    }
-
-    if series == Series::BattleRoyale && event == "2" {
-        let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
-        let (mut settings, plando) = ohko::s2_settings();
-        settings.remove("password_lock");
-        let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
-        let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
-        if let Some(spoiler_log_path) = spoiler_log_path {
-            fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
+    let content = html! {
+        : data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Practice, false).await?;
+        @for error in ctx.errors() {
+            : render_form_error(error);
         }
-        Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
-    } else if series == Series::CopaLatinoamerica && event == "2025" {
-        let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
-        let (mut settings, plando) = latam::settings_2025();
-        settings.remove("password_lock");
-        let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
-        let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
-        if let Some(spoiler_log_path) = spoiler_log_path {
-            fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
-        }
-        Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
-    } else {
-        let Some((rando_version, mut settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
-        let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
-            let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
-            Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))))
+        @let mut errors = RawHtml(String::default());
+        @let [practice_seed_button, practice_race_button] = data.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Content).await?;
+        : errors;
+        @if let Some(practice_seed_button) = practice_seed_button {
+            : practice_seed_button;
         } else {
-            settings.to_mut().remove("password_lock");
-            let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings.into_owned(), serde_json::Map::default()).await);
-            let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
-            if let Some(spoiler_log_path) = spoiler_log_path {
-                fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+            article {
+                p : "Sorry, rolling practice seeds for this event is not yet supported.";
             }
-            Ok(Some(RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))))
+            //TODO allow making any necessary choices like draft picks
         }
-    }
+        @if let Some(practice_race_button) = practice_race_button {
+            : practice_race_button;
+        } else {
+            article {
+                p : "Sorry, starting practice races for this event is not yet supported.";
+            }
+        }
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", data.display_name), content).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/practice")]
+pub(crate) async fn practice_seed_get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<Option<RawHtml<String>>, Error> {
+    let mut transaction = pool.begin().await?;
+    let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
+    Ok(Some(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?))
+}
+
+#[rocket::post("/event/<series>/<event>/practice", data = "<form>")]
+pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
+    let mut transaction = pool.begin().await?;
+    let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    Ok(Some(if form.value.is_some() {
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, form.context).await?)
+        } else {
+            macro_rules! roll_try {
+                ($res:expr) => {{
+                    match $res {
+                        Ok(v) => {
+                            transaction.commit().await?;
+                            v
+                        }
+                        Err(racetime_bot::RollError::Retries { num_retries, last_error }) => {
+                            if let Some(last_error) = last_error {
+                                eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                            } else {
+                                eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                            }
+                            let content = html! {
+                                : data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
+                                p {
+                                    : "Sorry, the seed could not be rolled because the randomizer reported an error ";
+                                    : num_retries;
+                                    : " times. Please reload this page to try again. If this error persists, please report it to ";
+                                    : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
+                                    : ".";
+                                }
+                            };
+                            return Ok(Some(RedirectOrContent::Content(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", data.display_name), content).await?)))
+                        }
+                        Err(e) => {
+                            transaction.commit().await?;
+                            return Err(PracticeError::Roll(e))
+                        }
+                    }
+                }};
+            }
+
+            if series == Series::BattleRoyale && event == "2" {
+                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                let (mut settings, plando) = ohko::s2_settings();
+                settings.remove("password_lock");
+                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
+                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                if let Some(spoiler_log_path) = spoiler_log_path {
+                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                }
+                RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
+            } else if series == Series::CopaLatinoamerica && event == "2025" {
+                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                let (mut settings, plando) = latam::settings_2025();
+                settings.remove("password_lock");
+                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
+                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                if let Some(spoiler_log_path) = spoiler_log_path {
+                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                }
+                RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
+            } else {
+                let Some((rando_version, mut settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
+                let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+                if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
+                    RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+                } else {
+                    settings.to_mut().remove("password_lock");
+                    let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings.into_owned(), serde_json::Map::default()).await);
+                    let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                    if let Some(spoiler_log_path) = spoiler_log_path {
+                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    }
+                    RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
+                }
+            }
+        }
+    } else {
+        RedirectOrContent::Content(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, form.context).await?)
+    }))
 }
 
 #[rocket::get("/event/<series>/<event>/volunteer")]
-pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Volunteer, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Volunteer, false).await?;
     let content = match data.series {
         Series::League => html! {
             @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;

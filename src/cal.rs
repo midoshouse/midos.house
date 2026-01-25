@@ -1805,7 +1805,7 @@ pub(crate) async fn for_event(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &
 }
 
 pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>, is_3p: bool) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Races, true).await?;
+    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
         let mut team_data = Vec::with_capacity(teams.len());
@@ -2075,6 +2075,7 @@ pub(crate) async fn race_table(
     http_client: &reqwest::Client,
     ootr_api_client: &ootr_web::ApiClient,
     uri: &Origin<'_>,
+    csrf: Option<&CsrfToken>,
     event: Option<&event::Data<'_>>,
     options: RaceTableOptions<'_>,
     races: &[Race],
@@ -2310,12 +2311,13 @@ pub(crate) async fn race_table(
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
                                     @if !event.has_single_settings() && race.single_settings(&mut *transaction).await?.is_some() {
-                                        a(class = "button", href = uri!(practice_seed(event.series, &*event.event, race.id))) {
-                                            @if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, http_client, ootr_api_client, race.id).await? {
-                                                : favicon(&favicon_url);
-                                            }
-                                            : "Practice";
-                                        }
+                                        @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, http_client, ootr_api_client, race.id).await? {
+                                            external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), &favicon_url, "Practice")
+                                        } else {
+                                            button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), "Practice")
+                                        };
+                                        : errors;
+                                        span(class = "button-row") : button;
                                     }
                                 }
                             }
@@ -2346,7 +2348,7 @@ pub(crate) async fn race_table(
 }
 
 pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, discord_ctx: &DiscordCtx, config: &Config, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Races, true).await?;
+    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
     let form = match event.match_source() {
         MatchSource::Manual => html! {
             article {
@@ -2382,7 +2384,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, http_client, ootr_api_client, &uri, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, http_client, ootr_api_client, &uri, csrf, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2448,7 +2450,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, http_client, ootr_api_client, &uri, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, http_client, ootr_api_client, &uri, csrf, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -3013,34 +3015,76 @@ async fn practice_seed_favicon_url(transaction: &mut Transaction<'_, Postgres>, 
     }
 }
 
-#[rocket::get("/event/<series>/<event>/races/<id>/practice")] //TODO this should probably be POST, need to turn links pointing here into buttons to support that
-pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str, id: Id<Races>) -> Result<Redirect, StatusOrError<Error>> {
-    let _ = (series, event);
+async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let errors = ctx.errors().collect_vec();
+    let content = html! {
+        : event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, false).await?;
+        //TODO link back to race page
+        h2 : "Practice";
+        @if race.single_settings(&mut transaction).await?.is_some() {
+            @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut transaction, http_client, ootr_api_client, race.id).await? {
+                external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, errors, &favicon_url, "Roll Seed")
+            } else {
+                button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, errors, "Roll Seed")
+            };
+            : errors;
+            span(class = "button-row") : button;
+        } else {
+            article {
+                p : "This race's settings are not yet known.";
+            }
+            //TODO allow making any necessary choices like draft picks
+        }
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", event.display_name), content).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/races/<id>/practice")]
+pub(crate) async fn practice_seed_get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<Option<RawHtml<String>>, event::Error> {
     let mut transaction = pool.begin().await?;
+    let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
     let race = Race::from_id(&mut transaction, http_client, id).await?;
-    let (rando_version, mut settings) = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    transaction.commit().await?;
-    let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-    if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
-        let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
-        Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+    Ok(Some(practice_seed_form(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
+}
+
+#[rocket::post("/event/<series>/<event>/races/<id>/practice", data = "<form>")]
+pub(crate) async fn practice_seed_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, StatusOrError<event::Error>> {
+    let mut transaction = pool.begin().await?;
+    let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
+    let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    Ok(Some(if form.value.is_some() {
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(practice_seed_form(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), event, race, form.context).await?)
+        } else {
+            let (rando_version, mut settings) = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+            transaction.commit().await?;
+            let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+            if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
+                RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+            } else {
+                let fs = systemstat::System::new().mount_at("/").at("/")?;
+                if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
+                    return Err(StatusOrError::Status(Status::InsufficientStorage))
+                }
+                settings.remove("password_lock");
+                let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await?;
+                let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
+                if let Some(spoiler_log_path) = spoiler_log_path {
+                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                }
+                RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
+            }
+        }
     } else {
-        let fs = systemstat::System::new().mount_at("/").at("/")?;
-        if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
-            return Err(StatusOrError::Status(Status::InsufficientStorage))
-        }
-        settings.remove("password_lock");
-        let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await?;
-        let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
-        if let Some(spoiler_log_path) = spoiler_log_path {
-            fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
-        }
-        Ok(Redirect::to(format!("/seed/{file_stem}")))
-    }
+        RedirectOrContent::Content(practice_seed_form(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), event, race, form.context).await?)
+    }))
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Races, true).await?;
+    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
     let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
@@ -3631,7 +3675,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
 }
 
 pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Races, true).await?;
+    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect();
         full_form(uri!(add_file_hash_post(event.series, &*event.event, race.id)), csrf, html! {

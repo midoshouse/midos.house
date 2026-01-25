@@ -1704,7 +1704,7 @@ pub(crate) struct RaceTimeTeamMember {
 }
 
 pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, http_client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::Enter, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         match me.racetime_user_data(http_client).await? {
             Some(Some(racetime_user)) => {
@@ -1868,7 +1868,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
 }
 
 pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), Tab::FindTeam, false).await?;
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user: Id<Users>", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
