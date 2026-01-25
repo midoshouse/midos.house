@@ -784,24 +784,24 @@ impl<'a> Data<'a> {
         let practice_seed_url = match (self.series, &*self.event) {
             (Series::TriforceBlitz, "2") => {
                 let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
-                Some((false, url.clone(), Some(url)))
+                Some((false, url.to_html(), Some(url)))
             }
             (Series::TriforceBlitz, "3") => {
                 let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
-                Some((false, url.clone(), Some(url)))
+                Some((false, url.to_html(), Some(url)))
             }
             (Series::TriforceBlitz, "4coop") => {
                 let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
-                Some((false, url.clone(), Some(url)))
+                Some((false, url.to_html(), Some(url)))
             }
             (Series::TriforceBlitz, "4") => {
                 let url = Url::parse("https://www.triforceblitz.com/generator")?;
-                Some((false, url.clone(), Some(url)))
+                Some((false, url.to_html(), Some(url)))
             }
             id => if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
                 Some((
                     true,
-                    uri!(practice_seed_post(self.series, &*self.event)).to_string().parse()?,
+                    uri!(practice_seed_post(self.series, &*self.event)).to_html(),
                     practice_seed_favicon_url(ootr_api_client, self).await?,
                 ))
             } else {
