@@ -183,6 +183,7 @@ pub(crate) enum Goal {
     CoOpS3,
     CopaDoBrasil,
     CopaLatinoamerica2025,
+    LeagueS6,
     LeagueS7,
     LeagueS8,
     LeagueS9,
@@ -240,6 +241,7 @@ impl Goal {
             Self::CoOpS3 => series == Series::CoOp && event == "3",
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::CopaLatinoamerica2025 => series == Series::CopaLatinoamerica && event == "2025",
+            Self::LeagueS6 => series == Series::League && event == "6",
             Self::LeagueS7 => series == Series::League && event == "7",
             Self::LeagueS8 => series == Series::League && event == "8",
             Self::LeagueS9 => series == Series::League && event == "9",
@@ -285,6 +287,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::LeagueS6
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
@@ -327,6 +330,7 @@ impl Goal {
             Self::CoOpS3 => "Co-op Tournament Season 3",
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::CopaLatinoamerica2025 => "Copa Latinoamerica 2025",
+            Self::LeagueS6 => "League Season 6",
             Self::LeagueS7 => "League Season 7",
             Self::LeagueS8 => "League Season 8",
             Self::LeagueS9 => "League Season 9",
@@ -369,6 +373,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::LeagueS6
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
@@ -421,6 +426,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::LeagueS6
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
@@ -459,6 +465,7 @@ impl Goal {
                 => PrerollMode::None,
             | Self::Cc7
             | Self::CoOpS3
+            | Self::LeagueS6
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
@@ -513,6 +520,7 @@ impl Goal {
                 | Self::BattleRoyaleS2
                 | Self::CopaDoBrasil
                 | Self::CopaLatinoamerica2025
+                | Self::LeagueS6
                 | Self::LeagueS7
                 | Self::LeagueS8
                 | Self::MixedPoolsS2
@@ -557,6 +565,7 @@ impl Goal {
             Self::CoOpS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::CopaDoBrasil => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 143) },
             Self::CopaLatinoamerica2025 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 3, 17, 1) },
+            Self::LeagueS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::LeagueS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::LeagueS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 57) },
             Self::LeagueS9 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 41) },
@@ -610,6 +619,7 @@ impl Goal {
             Self::CoOpS3 => Some(coop::s3_settings()),
             Self::CopaDoBrasil => Some(br::s1_settings()),
             Self::CopaLatinoamerica2025 => None, // plando
+            Self::LeagueS6 => Some(league::s6_settings()),
             Self::LeagueS7 => Some(league::s7_settings()),
             Self::LeagueS8 => Some(league::s8_settings()),
             Self::LeagueS9 => Some(league::s9_settings()),
@@ -652,6 +662,7 @@ impl Goal {
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
             | Self::BattleRoyaleS2
+            | Self::LeagueS6
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
@@ -817,6 +828,7 @@ impl Goal {
         Ok(match self {
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::LeagueS6
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
@@ -3215,6 +3227,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::LeagueS6 => ctx.send_message(
+                                "Welcome! This is a practice room for League Season 6. Learn more about the event at https://midos.house/event/league/6",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the season.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::LeagueS7 => ctx.send_message(
                                 "Welcome! This is a practice room for League Season 7. Learn more about the event at https://midos.house/event/league/7",
                                 true,
@@ -4084,6 +4108,7 @@ impl RaceHandler<GlobalState> for Handler {
                         RaceState::Init => match goal {
                             | Goal::CoOpS3
                             | Goal::CopaDoBrasil
+                            | Goal::LeagueS6
                             | Goal::LeagueS7
                             | Goal::LeagueS8
                             | Goal::LeagueS9
@@ -4858,6 +4883,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
                     | Goal::CopaLatinoamerica2025
+                    | Goal::LeagueS6
                     | Goal::LeagueS7
                     | Goal::LeagueS8
                     | Goal::LeagueS9
