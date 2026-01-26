@@ -147,6 +147,7 @@ span.button-row {
     position: relative;
 }
 
+input[type="submit"],
 button {
     font-size: unset;
     font-family: unset;

@@ -8,6 +8,17 @@ use crate::{
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
+        "7" => Some(html! {
+            article {
+                p {
+                    : "This is OoTR League season 7, organized by ";
+                    : English.join_html_opt(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1v2-Ry_GJHRzx4FrcbedGwOSfq3CzJkazamCs6lkc_Jw/edit") : "the rules document"; //TODO import text once editing functionality is added
+                    : " for details.";
+                }
+            }
+        }),
         "8" => Some(html! {
             article {
                 p {
@@ -37,9 +48,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : data.event;
                     : ", organized by ";
                     : English.join_html_opt(data.organizers(transaction).await?);
-                    : ". See ";
-                    a(href = "https://league.ootrandomizer.com/") : "the official website";
-                    : " for details.";
+                    : ".";
                 }
             }
         }),
@@ -140,6 +149,104 @@ impl User {
 pub(crate) enum MatchStatus {
     Canceled,
     Confirmed,
+}
+
+pub(crate) fn s7_settings() -> seed::Settings {
+    collect![
+        format!("user_message") => json!("OoTR League S7"),
+        format!("password_lock") => json!(true),
+        format!("reachable_locations") => json!("beatable"),
+        format!("bridge_medallions") => json!(5),
+        format!("trials") => json!(0),
+        format!("shuffle_ganon_bosskey") => json!("medallions"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("open_forest") => json!("closed_deku"),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => json!("random"),
+        format!("spawn_positions") => json!([
+            "child",
+            "adult",
+        ]),
+        format!("free_bombchu_drops") => json!(false),
+        format!("shuffle_scrubs") => json!("low"),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Song from Impa",
+            "Dodongos Cavern Deku Scrub Lobby",
+            "Dodongos Cavern Deku Scrub Near Bomb Bag Right",
+            "Dodongos Cavern Deku Scrub Near Bomb Bag Left",
+            "Dodongos Cavern Deku Scrub Side Room Near Dodongos",
+            "Jabu Jabus Belly Deku Scrub",
+            "Ganons Castle Deku Scrub Center-Left",
+            "Ganons Castle Deku Scrub Center-Right",
+            "Ganons Castle Deku Scrub Right",
+            "Ganons Castle Deku Scrub Left",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_rusted_switches",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_man_on_roof",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_dc_jump",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_songs") => json!([
+            "prelude",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "lens",
+            "farores_wind",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("skip_reward_from_rauru") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("plant_beans") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("correct_chest_appearances") => json!("both"),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("hint_dist") => json!("league"),
+        format!("misc_hints") => json!([
+            "altar",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "30_skulltulas",
+            "40_skulltulas",
+            "50_skulltulas",
+        ]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+    ]
 }
 
 pub(crate) fn s8_settings() -> seed::Settings {
