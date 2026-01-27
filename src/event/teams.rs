@@ -309,94 +309,125 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 },
                                 _ => {}
                             }
-                            for entrant in &mut entrants {
-                                let user = entrant.user.clone().map(racetime::model::UserData::try_from).transpose()?;
-                                match entrant.status.value {
-                                    | EntrantStatusValue::Requested
-                                        => {}
-                                    | EntrantStatusValue::Invited
-                                    | EntrantStatusValue::NotReady
-                                    | EntrantStatusValue::Ready
-                                    | EntrantStatusValue::InProgress
-                                        => if let Some(extrapolate_for) = worst_case_extrapolation {
-                                            let user = MemberUser::from(user);
-                                            if user == *extrapolate_for {
-                                                entrant.status.value = EntrantStatusValue::Dnf;
-                                            } else {
-                                                entrant.status.value = EntrantStatusValue::Done;
-                                                entrant.finish_time = Some(room_data.started_at.and_then(|started_at| (now - started_at).to_std().ok()).unwrap_or_default());
-                                            }
-                                        },
-                                    | EntrantStatusValue::Done
-                                        => {}
-                                    | EntrantStatusValue::Declined
-                                    | EntrantStatusValue::Dnf
-                                    | EntrantStatusValue::Dq
-                                        => entrant.finish_time = None,
-                                }
-                            }
-                            entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
                             let num_entrants = entrants.len();
-                            let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
-                            let num_finishers = finish_times.len();
                             let par_cutoff = match score_kind {
                                 QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 7u8,
                                 QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => if num_entrants < 20 { 3 } else { 4 },
                             };
-                            if worst_case_extrapolation.is_none() && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
-                                continue // scores are not yet accurate
-                            }
-                            for entrant in entrants {
-                                match entrant.status.value {
-                                    | EntrantStatusValue::Requested
-                                    | EntrantStatusValue::Invited
-                                    | EntrantStatusValue::NotReady
-                                    | EntrantStatusValue::Ready
-                                    | EntrantStatusValue::InProgress
-                                        => continue, // score not yet determined
-                                    | EntrantStatusValue::Done
-                                    | EntrantStatusValue::Declined
-                                    | EntrantStatusValue::Dnf
-                                    | EntrantStatusValue::Dq
-                                        => {}
-                                }
-                                let user = entrant.user.clone().map(racetime::model::UserData::try_from).transpose()?;
-                                scores.entry(MemberUser::from(user)).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
-                                    match score_kind {
-                                        QualifierScoreKind::StandardS4 => {
-                                            // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
-                                            let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
-                                            let par_cutoff = usize::from(par_cutoff).min(num_entrants);
-                                            let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
-                                            let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
-                                            let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) + TimeDelta::minutes(30) - t_average).div_duration_f64(TimeDelta::hours(2) + TimeDelta::minutes(30) - (TimeDelta::hours(1) + TimeDelta::minutes(40))))));
-                                            let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
-                                            let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
-                                            let sigma_finish = t_g_h.div_duration_f64(t_average);
-                                            let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
-                                            ((1.0 - (finish_time - t_average - TimeDelta::minutes(10).min(t_jet + t_gamble)).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
-                                        }
-                                        QualifierScoreKind::StandardS9 => {
-                                            // https://docs.google.com/document/d/19hqOQvXyH_7b83nHrjetRI6s6RhS-KZ1BjBBu_gqScA/edit
-                                            let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
-                                            let par_cutoff = usize::from(par_cutoff).min(num_entrants);
-                                            let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
-                                            let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
-                                            let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) - t_average).div_duration_f64(TimeDelta::hours(2) - (TimeDelta::hours(1) + TimeDelta::minutes(10))))));
-                                            let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
-                                            let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
-                                            let sigma_finish = t_g_h.div_duration_f64(t_average);
-                                            let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
-                                            ((1.0 - (finish_time - t_average).div_duration_f64(t_average + t_jet + t_gamble)) * 1000.0).clamp(100.0, 1100.0)
-                                        }
-                                        QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => {
-                                            let par_time = finish_times[0..usize::from(par_cutoff)].iter().sum::<Duration>() / u32::from(par_cutoff);
-                                            (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
-                                        }
+                            if let Some(extrapolate_for) = worst_case_extrapolation && entrants.iter().filter_map(|entrant| entrant.finish_time).count() < usize::from(par_cutoff) {
+                                for entrant in &mut entrants {
+                                    let user = entrant.user.clone().map(racetime::model::UserData::try_from).transpose()?;
+                                    match entrant.status.value {
+                                        | EntrantStatusValue::Requested
+                                            => {}
+                                        | EntrantStatusValue::Invited
+                                        | EntrantStatusValue::NotReady
+                                        | EntrantStatusValue::Ready
+                                        | EntrantStatusValue::InProgress
+                                        | EntrantStatusValue::Done
+                                            => {
+                                                let member = MemberUser::from(user);
+                                                let score = r64(if member == *extrapolate_for {
+                                                    0.0
+                                                } else {
+                                                    match score_kind {
+                                                        QualifierScoreKind::StandardS4 | QualifierScoreKind::StandardS9 => 1100.0,
+                                                        QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => 110.0,
+                                                    }
+                                                });
+                                                scores.entry(member).or_default().push(score);
+                                            }
+                                        | EntrantStatusValue::Declined
+                                        | EntrantStatusValue::Dnf
+                                        | EntrantStatusValue::Dq
+                                            => scores.entry(MemberUser::from(user)).or_default().push(r64(0.0)),
                                     }
-                                } else {
-                                    0.0
-                                }));
+                                }
+                            } else {
+                                for entrant in &mut entrants {
+                                    let user = entrant.user.clone().map(racetime::model::UserData::try_from).transpose()?;
+                                    match entrant.status.value {
+                                        | EntrantStatusValue::Requested
+                                            => {}
+                                        | EntrantStatusValue::Invited
+                                        | EntrantStatusValue::NotReady
+                                        | EntrantStatusValue::Ready
+                                        | EntrantStatusValue::InProgress
+                                            => if let Some(extrapolate_for) = worst_case_extrapolation {
+                                                let user = MemberUser::from(user);
+                                                if user == *extrapolate_for {
+                                                    entrant.status.value = EntrantStatusValue::Dnf;
+                                                } else {
+                                                    entrant.status.value = EntrantStatusValue::Done;
+                                                    entrant.finish_time = Some(room_data.started_at.and_then(|started_at| (now - started_at).to_std().ok()).unwrap_or_default());
+                                                }
+                                            },
+                                        | EntrantStatusValue::Done
+                                            => {}
+                                        | EntrantStatusValue::Declined
+                                        | EntrantStatusValue::Dnf
+                                        | EntrantStatusValue::Dq
+                                            => entrant.finish_time = None,
+                                    }
+                                }
+                                entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                                let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
+                                let num_finishers = finish_times.len();
+                                if worst_case_extrapolation.is_none() && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
+                                    continue // scores are not yet accurate
+                                }
+                                for entrant in entrants {
+                                    match entrant.status.value {
+                                        | EntrantStatusValue::Requested
+                                        | EntrantStatusValue::Invited
+                                        | EntrantStatusValue::NotReady
+                                        | EntrantStatusValue::Ready
+                                        | EntrantStatusValue::InProgress
+                                            => continue, // score not yet determined
+                                        | EntrantStatusValue::Done
+                                        | EntrantStatusValue::Declined
+                                        | EntrantStatusValue::Dnf
+                                        | EntrantStatusValue::Dq
+                                            => {}
+                                    }
+                                    let user = entrant.user.clone().map(racetime::model::UserData::try_from).transpose()?;
+                                    scores.entry(MemberUser::from(user)).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
+                                        match score_kind {
+                                            QualifierScoreKind::StandardS4 => {
+                                                // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
+                                                let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
+                                                let par_cutoff = usize::from(par_cutoff).min(num_entrants);
+                                                let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
+                                                let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
+                                                let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) + TimeDelta::minutes(30) - t_average).div_duration_f64(TimeDelta::hours(2) + TimeDelta::minutes(30) - (TimeDelta::hours(1) + TimeDelta::minutes(40))))));
+                                                let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
+                                                let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
+                                                let sigma_finish = t_g_h.div_duration_f64(t_average);
+                                                let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                                ((1.0 - (finish_time - t_average - TimeDelta::minutes(10).min(t_jet + t_gamble)).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
+                                            }
+                                            QualifierScoreKind::StandardS9 => {
+                                                // https://docs.google.com/document/d/19hqOQvXyH_7b83nHrjetRI6s6RhS-KZ1BjBBu_gqScA/edit
+                                                let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
+                                                let par_cutoff = usize::from(par_cutoff).min(num_entrants);
+                                                let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
+                                                let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
+                                                let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) - t_average).div_duration_f64(TimeDelta::hours(2) - (TimeDelta::hours(1) + TimeDelta::minutes(10))))));
+                                                let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
+                                                let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
+                                                let sigma_finish = t_g_h.div_duration_f64(t_average);
+                                                let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                                ((1.0 - (finish_time - t_average).div_duration_f64(t_average + t_jet + t_gamble)) * 1000.0).clamp(100.0, 1100.0)
+                                            }
+                                            QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => {
+                                                let par_time = finish_times[0..usize::from(par_cutoff)].iter().sum::<Duration>() / u32::from(par_cutoff);
+                                                (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
+                                            }
+                                        }
+                                    } else {
+                                        0.0
+                                    }));
+                                }
                             }
                         }
                     }
