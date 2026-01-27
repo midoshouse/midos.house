@@ -135,7 +135,7 @@ impl Guard for ShowRestreamConsent<'_> {
         })?.user;
         db!(db = ctx; {
             let event = self.0.event(&mut *db).await?;
-            if event.organizers(&mut *db).await?.contains(me) || event.restreamers(&mut *db).await?.contains(me) {
+            if event.organizers(&mut *db).await?.contains(me) || event.restream_coordinators(&mut *db).await?.contains(me) {
                 Ok(())
             } else {
                 Err("Only event organizers and restream coordinators can view restream consent info.".into())
@@ -158,7 +158,7 @@ impl Guard for EditRace {
         } else {
             let race = cal::Race::from_id(&mut *db, ctx.data_unchecked(), (&self.0).try_into()?).await?;
             let event = race.event(&mut *db).await?;
-            if event.organizers(&mut *db).await?.contains(me) || event.restreamers(&mut *db).await?.contains(me) {
+            if event.organizers(&mut *db).await?.contains(me) || event.restream_coordinators(&mut *db).await?.contains(me) {
                 Ok(())
             } else {
                 Err("Only archivists, event organizers, and restream coordinators can edit races.".into())
@@ -547,7 +547,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let is_organizer = event.organizers(&mut transaction).await?.contains(&me);
-    if !is_organizer && !event.restreamers(&mut transaction).await?.contains(&me) {
+    if !is_organizer && !event.restream_coordinators(&mut transaction).await?.contains(&me) {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let qualifier_kind = event.qualifier_kind(&mut transaction, Some(&me)).await?;

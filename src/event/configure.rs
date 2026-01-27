@@ -99,7 +99,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
                 h2 : "More options";
                 ul {
                     li {
-                        a(href = uri!(restreamers_get(event.series, &*event.event))) : "Manage restream coordinators";
+                        a(href = uri!(restream_coordinators_get(event.series, &*event.event))) : "Manage restream coordinators";
                     }
                 }
             }
@@ -196,16 +196,16 @@ pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
     })
 }
 
-enum RestreamersFormDefaults<'v> {
+enum RestreamCoordinatorsFormDefaults<'v> {
     None,
     AddContext(Context<'v>),
     RemoveContext(Id<Users>, Context<'v>),
 }
 
-impl<'v> RestreamersFormDefaults<'v> {
-    fn remove_errors(&self, for_restreamer: Id<Users>) -> Vec<&form::Error<'v>> {
+impl<'v> RestreamCoordinatorsFormDefaults<'v> {
+    fn remove_errors(&self, for_restream_coordinator: Id<Users>) -> Vec<&form::Error<'v>> {
         match self {
-            Self::RemoveContext(restreamer, ctx) if *restreamer == for_restreamer => ctx.errors().collect(),
+            Self::RemoveContext(restream_coordinator, ctx) if *restream_coordinator == for_restream_coordinator => ctx.errors().collect(),
             _ => Vec::default(),
         }
     }
@@ -218,16 +218,16 @@ impl<'v> RestreamersFormDefaults<'v> {
         }
     }
 
-    fn add_restreamer(&self) -> Option<&str> {
+    fn add_restream_coordinator(&self) -> Option<&str> {
         if let Self::AddContext(ctx) = self {
-            ctx.field_value("restreamer")
+            ctx.field_value("restream_coordinator")
         } else {
             None
         }
     }
 }
 
-async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, defaults: RestreamersFormDefaults<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn restream_coordinators_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, defaults: RestreamCoordinatorsFormDefaults<'_>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Configure, true).await?;
     let content = if event.is_ended() {
         html! {
@@ -237,11 +237,11 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_c
         }
     } else if let Some(ref me) = me {
         if event.organizers(&mut transaction).await?.contains(me) {
-            let restreamers = event.restreamers(&mut transaction).await?;
+            let restream_coordinators = event.restream_coordinators(&mut transaction).await?;
             html! {
                 h2 : "Manage restream coordinators";
                 p : "Restream coordinators can add/edit restream URLs and assign restreamers to this event's races.";
-                @if restreamers.is_empty() {
+                @if restream_coordinators.is_empty() {
                     p : "No restream coordinators so far.";
                 } else {
                     table {
@@ -252,12 +252,12 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_c
                             }
                         }
                         tbody {
-                            @for restreamer in restreamers {
+                            @for restream_coordinator in restream_coordinators {
                                 tr {
-                                    td : restreamer;
+                                    td : restream_coordinator;
                                     td {
-                                        @let errors = defaults.remove_errors(restreamer.id);
-                                        @let (errors, button) = button_form(uri!(remove_restreamer(event.series, &*event.event, restreamer.id)), csrf, errors, "Remove");
+                                        @let errors = defaults.remove_errors(restream_coordinator.id);
+                                        @let (errors, button) = button_form(uri!(remove_restream_coordinator(event.series, &*event.event, restream_coordinator.id)), csrf, errors, "Remove");
                                         : errors;
                                         div(class = "button-row") : button;
                                     }
@@ -268,10 +268,10 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_c
                 }
                 h3 : "Add restream coordinator";
                 @let mut errors = defaults.add_errors();
-                : full_form(uri!(add_restreamer(event.series, &*event.event)), csrf, html! {
-                    : form_field("restreamer", &mut errors, html! {
-                        label(for = "restreamer") : "Restream coordinator:";
-                        input(type = "text", name = "restreamer", value? = defaults.add_restreamer());
+                : full_form(uri!(add_restream_coordinator(event.series, &*event.event)), csrf, html! {
+                    : form_field("restream_coordinator", &mut errors, html! {
+                        label(for = "restream_coordinator") : "Restream coordinator:";
+                        input(type = "text", name = "restream_coordinator", value? = defaults.add_restream_coordinator());
                         label(class = "help") : "(Enter the restream coordinator's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
                     });
                 }, errors, "Add");
@@ -287,7 +287,7 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_c
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(restreamers_get(event.series, &*event.event)))))) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(restream_coordinators_get(event.series, &*event.event)))))) : "Sign in or create a Mido's House account";
                     : " to configure this event.";
                 }
             }
@@ -300,21 +300,21 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, ootr_api_c
 }
 
 #[rocket::get("/event/<series>/<event>/configure/restreamers")]
-pub(crate) async fn restreamers_get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+pub(crate) async fn restream_coordinators_get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(restreamers_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, RestreamersFormDefaults::None).await?)
+    Ok(restream_coordinators_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
-pub(crate) struct AddRestreamerForm {
+pub(crate) struct AddRestreamCoordinatorForm {
     #[field(default = String::new())]
     csrf: String,
-    restreamer: Id<Users>,
+    restream_coordinator: Id<Users>,
 }
 
 #[rocket::post("/event/<series>/<event>/configure/restreamers", data = "<form>")]
-pub(crate) async fn add_restreamer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, AddRestreamerForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_restream_coordinator(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, AddRestreamCoordinatorForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -326,27 +326,27 @@ pub(crate) async fn add_restreamer(pool: &State<PgPool>, ootr_api_client: &State
         if !data.organizers(&mut transaction).await?.contains(&me) {
             form.context.push_error(form::Error::validation("You must be an organizer to configure this event."));
         }
-        if let Some(restreamer) = User::from_id(&mut *transaction, value.restreamer).await? {
-            if data.restreamers(&mut transaction).await?.contains(&restreamer) {
-                form.context.push_error(form::Error::validation("This user is already a restream coordinator for this event.").with_name("restreamer"));
+        if let Some(restream_coordinator) = User::from_id(&mut *transaction, value.restream_coordinator).await? {
+            if data.restream_coordinators(&mut transaction).await?.contains(&restream_coordinator) {
+                form.context.push_error(form::Error::validation("This user is already a restream coordinator for this event.").with_name("restream_coordinator"));
             }
         } else {
-            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("restreamer"));
+            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("restream_coordinator"));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(restreamers_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamersFormDefaults::AddContext(form.context)).await?)
+            RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::AddContext(form.context)).await?)
         } else {
-            sqlx::query!("INSERT INTO restreamers (series, event, restreamer) VALUES ($1, $2, $3)", data.series as _, &data.event, value.restreamer as _).execute(&mut *transaction).await?;
+            sqlx::query!("INSERT INTO restreamers (series, event, restreamer) VALUES ($1, $2, $3)", data.series as _, &data.event, value.restream_coordinator as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(restreamers_get(series, event))))
+            RedirectOrContent::Redirect(Redirect::to(uri!(restream_coordinators_get(series, event))))
         }
     } else {
-        RedirectOrContent::Content(restreamers_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamersFormDefaults::AddContext(form.context)).await?)
+        RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::AddContext(form.context)).await?)
     })
 }
 
-#[rocket::post("/event/<series>/<event>/configure/restreamers/<restreamer>/remove", data = "<form>")]
-pub(crate) async fn remove_restreamer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, restreamer: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+#[rocket::post("/event/<series>/<event>/configure/restreamers/<restream_coordinator>/remove", data = "<form>")]
+pub(crate) async fn remove_restream_coordinator(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, restream_coordinator: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -358,20 +358,20 @@ pub(crate) async fn remove_restreamer(pool: &State<PgPool>, ootr_api_client: &St
         if !data.organizers(&mut transaction).await?.contains(&me) {
             form.context.push_error(form::Error::validation("You must be an organizer to configure this event."));
         }
-        if let Some(restreamer) = User::from_id(&mut *transaction, restreamer).await? {
-            if !data.restreamers(&mut transaction).await?.contains(&restreamer) {
+        if let Some(restream_coordinator) = User::from_id(&mut *transaction, restream_coordinator).await? {
+            if !data.restream_coordinators(&mut transaction).await?.contains(&restream_coordinator) {
                 form.context.push_error(form::Error::validation("This user is already not a restream coordinator for this event."));
             }
         } else {
             form.context.push_error(form::Error::validation("There is no user with this ID."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(restreamers_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamersFormDefaults::RemoveContext(restreamer, form.context)).await?)
+            RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
         } else {
-            sqlx::query!("DELETE FROM restreamers WHERE series = $1 AND event = $2 AND restreamer = $3", data.series as _, &data.event, restreamer as _).execute(&**pool).await?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(restreamers_get(series, event))))
+            sqlx::query!("DELETE FROM restreamers WHERE series = $1 AND event = $2 AND restreamer = $3", data.series as _, &data.event, restream_coordinator as _).execute(&**pool).await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(restream_coordinators_get(series, event))))
         }
     } else {
-        RedirectOrContent::Content(restreamers_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamersFormDefaults::RemoveContext(restreamer, form.context)).await?)
+        RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
     })
 }

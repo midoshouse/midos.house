@@ -3398,7 +3398,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
     if race.series != event.series || race.event != event.event {
         form.context.push_error(form::Error::validation("This race is not part of this event."));
     }
-    if !me.is_archivist && !event.organizers(&mut transaction).await?.contains(&me) && !event.restreamers(&mut transaction).await?.contains(&me) {
+    if !me.is_archivist && !event.organizers(&mut transaction).await?.contains(&me) && !event.restream_coordinators(&mut transaction).await?.contains(&me) {
         form.context.push_error(form::Error::validation("You must be an organizer, restream coordinator, or archivist to edit this race. If you would like to be a restream coordinator for this event, please contact the organizers. If you would like to become an archivist, please contact Fenhl on Discord."));
     }
     Ok(if let Some(ref value) = form.value {

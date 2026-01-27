@@ -531,10 +531,10 @@ impl<'a> Data<'a> {
         Ok(buf)
     }
 
-    pub(crate) async fn restreamers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
+    pub(crate) async fn restream_coordinators(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
         let mut buf = Vec::<User>::default();
         for id in sqlx::query_scalar!(r#"SELECT restreamer AS "restreamer: Id<Users>" FROM restreamers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
-            let user = User::from_id(&mut **transaction, id).await?.ok_or(Error::RestreamerUserData)?;
+            let user = User::from_id(&mut **transaction, id).await?.ok_or(Error::RestreamCoordinatorUserData)?;
             let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
             buf.insert(idx, user);
         }
@@ -921,8 +921,8 @@ pub(crate) enum Error {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("missing user data for an event organizer")]
     OrganizerUserData,
-    #[error("missing user data for a restreamer")]
-    RestreamerUserData,
+    #[error("missing user data for a restream coordinator")]
+    RestreamCoordinatorUserData,
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -950,7 +950,7 @@ impl IsNetworkError for Error {
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::OrganizerUserData => false,
-            Self::RestreamerUserData => false,
+            Self::RestreamCoordinatorUserData => false,
         }
     }
 }
@@ -1054,7 +1054,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
             MatchSource::League => false,
             MatchSource::Manual | MatchSource::Challonge { .. } | MatchSource::StartGG(_) => true,
         };
-        let show_restream_consent = is_organizer || data.restreamers(&mut transaction).await?.contains(me);
+        let show_restream_consent = is_organizer || data.restream_coordinators(&mut transaction).await?.contains(me);
         let can_edit = show_restream_consent || me.is_archivist;
         (can_create, show_restream_consent, can_edit)
     } else {

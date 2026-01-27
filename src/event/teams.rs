@@ -926,7 +926,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
         }
     }
     let show_restream_consent = is_organizer || if let Some(ref me) = me {
-        data.restreamers(&mut transaction).await?.contains(me)
+        data.restream_coordinators(&mut transaction).await?.contains(me)
     } else {
         false
     };
