@@ -1252,7 +1252,7 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                         if let Requirement::StartGG { optional } = requirement {
                             let discord_ctx = discord_ctx.read().await;
                             if !optional || value.startgg_radio == Some(BoolRadio::Yes) {
-                                //TODO enter event on start.gg with user ID
+                                // enter event on start.gg with user ID
                                 // this is currently not possible to automate, see conversation ending at <https://discord.com/channels/339548254704369677/541015301618401301/1346621619787006083> for details
                                 // temporary workaround until this is automated:
                                 let startgg_id = me.startgg_id.as_ref().expect("checked by requirement");
@@ -1264,9 +1264,13 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                                 if let startgg::user_slug_query::ResponseData { user: Some(startgg::user_slug_query::UserSlugQueryUser { discriminator: Some(slug) }) } = response {
                                     msg.push(" with start.gg user slug ");
                                     msg.push_mono_safe(slug);
+                                    msg.push(". Please go to the start.gg tournament settings › Attendees › Add Attendee, paste the user slug into the search field, and select the first result.");
                                 } else {
-                                    msg.push(" with start.gg user ID ");
+                                    msg.push(" with unknown start.gg user ID ");
                                     msg.push_mono_safe(&startgg_id.0);
+                                    msg.push(". ");
+                                    msg.mention(&FENHL);
+                                    msg.push(" please investigate.");
                                 }
                                 if let Some(organizer_channel) = data.discord_organizer_channel {
                                     organizer_channel.say(&*discord_ctx, msg.build()).await?;
@@ -1274,14 +1278,16 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                                     FENHL.create_dm_channel(&*discord_ctx).await?.say(&*discord_ctx, msg.build()).await?;
                                 }
                             } else {
-                                //TODO enter event on start.gg anonymously
+                                // enter event on start.gg anonymously
                                 // this is currently not possible to automate, see conversation ending at <https://discord.com/channels/339548254704369677/541015301618401301/1346621619787006083> for details
                                 // temporary workaround until this is automated:
                                 let msg = MessageBuilder::default()
                                     .mention_user(&me)
                                     .push(" signed up for ")
                                     .push_safe(&data.display_name)
-                                    .push(" without start.gg user ID ")
+                                    .push(" without start.gg account. Please go to the start.gg tournament settings › Attendees › Add Attendee, click the search field, then click “Or add someone without an account”, then enter ")
+                                    .push_mono_safe(me.display_name())
+                                    .push(" as the gamertag. Please notify Fenhl once this is done so they can connect the attendee to the Mido's House account.")
                                     .build();
                                 if let Some(organizer_channel) = data.discord_organizer_channel {
                                     organizer_channel.say(&*discord_ctx, msg).await?;
@@ -1289,7 +1295,6 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                                     FENHL.create_dm_channel(&*discord_ctx).await?.say(&*discord_ctx, msg).await?;
                                 }
                             }
-                            //TODO record participant's entrant ID for the singleton start.gg event as team.startgg_id
                         }
                     }
                     transaction.commit().await?;
