@@ -1048,30 +1048,39 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         .partition::<Vec<_>, _>(|race| race.is_ended());
     past_races.reverse();
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
-    let (can_create, show_restream_consent, can_edit) = if let Some(ref me) = me {
+    let (can_create, restreams, can_edit) = if let Some(ref me) = me {
         let is_organizer = data.organizers(&mut transaction).await?.contains(me);
         let can_create = is_organizer && match data.match_source() {
             MatchSource::League => false,
             MatchSource::Manual | MatchSource::Challonge { .. } | MatchSource::StartGG(_) => true,
         };
-        let show_restream_consent = is_organizer || data.restream_coordinators(&mut transaction).await?.contains(me);
+        let is_restream_coordinator = data.restream_coordinators(&mut transaction).await?.contains(me);
+        let show_restream_consent = is_organizer || is_restream_coordinator;
         let can_edit = show_restream_consent || me.is_archivist;
-        (can_create, show_restream_consent, can_edit)
+        (can_create, if show_restream_consent {
+            if series == Series::Standard && event == "9cc" { //TODO roll out to other events after beta
+                cal::RaceTableRestreams::Volunteers { can_restream: is_restream_coordinator }
+            } else {
+                cal::RaceTableRestreams::Consent
+            }
+        } else {
+            cal::RaceTableRestreams::None
+        }, can_edit)
     } else {
-        (false, false, false)
+        (false, cal::RaceTableRestreams::None, false)
     };
     let content = html! {
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, show_restream_consent, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, me.as_ref(), &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, restreams, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, show_restream_consent: false, challonge_import_ctx: None }, &past_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, me.as_ref(), &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, restreams: cal::RaceTableRestreams::None, challonge_import_ctx: None }, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {

@@ -124,52 +124,39 @@ pub(crate) async fn values(http_client: reqwest::Client, sheet_id: &str, range: 
 async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
     if !found_race.schedule.start_matches(&race.schedule) {
         match race.schedule {
-            RaceSchedule::Unscheduled => {
-                found_race.schedule = RaceSchedule::Unscheduled;
-                sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $1", found_race.id as _).execute(&mut **transaction).await?;
-            }
-            RaceSchedule::Live { start, .. } => {
-                match found_race.schedule {
-                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
-                    RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
-                    RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
-                }
-                sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $2", start, found_race.id as _).execute(&mut **transaction).await?;
+            RaceSchedule::Unscheduled => found_race.schedule = RaceSchedule::Unscheduled,
+            RaceSchedule::Live { start, .. } => match found_race.schedule {
+                RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
+                RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
             },
-            RaceSchedule::Async { start1, start2, start3, .. } => {
-                match found_race.schedule {
-                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
-                    RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
-                    RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, start3: ref mut old_start3, .. } => {
-                        *old_start1 = start1;
-                        *old_start2 = start2;
-                        *old_start3 = start3;
-                    }
+            RaceSchedule::Async { start1, start2, start3, .. } => match found_race.schedule {
+                RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
+                RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, start3: ref mut old_start3, .. } => {
+                    *old_start1 = start1;
+                    *old_start2 = start2;
+                    *old_start3 = start3;
                 }
-                sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2, async_start3 = $3 WHERE id = $4", start1, start2, start3, found_race.id as _).execute(&mut **transaction).await?;
-            }
+            },
         }
     }
     if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).is_none_or(|old_url| old_url != new_url)) {
         if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).is_none_or(|new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
-            sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_de = $3, video_url_pt = $4 WHERE id = $5",
-                race.video_urls.get(&English).or_else(|| found_race.video_urls.get(&English)).map(|url| url.to_string()),
-                race.video_urls.get(&French).or_else(|| found_race.video_urls.get(&French)).map(|url| url.to_string()),
-                race.video_urls.get(&German).or_else(|| found_race.video_urls.get(&German)).map(|url| url.to_string()),
-                race.video_urls.get(&Portuguese).or_else(|| found_race.video_urls.get(&Portuguese)).map(|url| url.to_string()),
-                found_race.id as _,
-            ).execute(&mut **transaction).await?;
+            for language in all() {
+                if let Some(url) = race.video_urls.get(&language) {
+                    found_race.video_urls.insert(language, url.clone());
+                }
+            }
         }
     }
     if race.restreamers.iter().any(|(language, new_restreamer)| found_race.restreamers.get(language).is_none_or(|old_restreamer| old_restreamer != new_restreamer)) {
         if found_race.restreamers.iter().all(|(language, old_restreamer)| race.restreamers.get(language).is_none_or(|new_restreamer| old_restreamer == new_restreamer)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
-            sqlx::query!("UPDATE races SET restreamer = $1, restreamer_fr = $2, restreamer_de = $3, restreamer_pt = $4 WHERE id = $5",
-                race.restreamers.get(&English).or_else(|| found_race.restreamers.get(&English)),
-                race.restreamers.get(&French).or_else(|| found_race.restreamers.get(&French)),
-                race.restreamers.get(&German).or_else(|| found_race.restreamers.get(&German)),
-                race.restreamers.get(&Portuguese).or_else(|| found_race.restreamers.get(&Portuguese)),
-                found_race.id as _,
-            ).execute(&mut **transaction).await?;
+            for language in all() {
+                if let Some(restreamer) = race.restreamers.get(&language) {
+                    found_race.restreamers.insert(language, restreamer.clone());
+                }
+            }
         }
     }
     Ok(())

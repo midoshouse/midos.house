@@ -280,7 +280,7 @@ pub(crate) struct Mutation;
     async fn set_race_restreamer(&self, ctx: &Context<'_>, id: GqlId, language: Language, restreamer: String) -> Result<Race> {
         db!(db = ctx; {
             let mut race = cal::Race::from_id(&mut *db, ctx.data_unchecked(), id.try_into()?).await?;
-            race.restreamers.insert(language, crate::racetime_bot::parse_user(&mut *db, ctx.data_unchecked(), &restreamer).await?);
+            race.restreamers.insert(language, cal::Restreamer::parse(&mut *db, ctx.data_unchecked(), &restreamer).await?);
             let me = &ctx.data::<ApiKey>().map_err(|e| Error {
                 message: format!("This query requires an API key. Provide one using the X-API-Key header."),
                 source: Some(Arc::new(e)),

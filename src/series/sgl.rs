@@ -234,10 +234,10 @@ impl Restream {
                 }
             }
             let mut video_urls = HashMap::default();
-            for lang in all() {
-                if let Some(channel) = self.channels.iter().find(|channel| channel.language == lang) {
+            for language in all() {
+                if let Some(channel) = self.channels.iter().find(|channel| channel.language == language) {
                     if channel.slug != "norestream" {
-                        video_urls.insert(lang, Url::parse(&format!("https://twitch.tv/{}", channel.slug))?);
+                        video_urls.insert(language, Url::parse(&format!("https://twitch.tv/{}", channel.slug))?);
                         //TODO register restreamer, if any
                     }
                 }

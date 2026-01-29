@@ -258,6 +258,17 @@ CREATE TYPE public.user_display_source AS ENUM (
 ALTER TYPE public.user_display_source OWNER TO mido;
 
 --
+-- Name: volunteer_role; Type: TYPE; Schema: public; Owner: mido
+--
+
+CREATE TYPE public.volunteer_role AS ENUM (
+    'restreamer'
+);
+
+
+ALTER TYPE public.volunteer_role OWNER TO mido;
+
+--
 -- Name: mhid(numeric); Type: FUNCTION; Schema: public; Owner: mido
 --
 
@@ -598,6 +609,20 @@ CREATE TABLE public.race_player_videos (
 
 
 ALTER TABLE public.race_player_videos OWNER TO mido;
+
+--
+-- Name: race_volunteers; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.race_volunteers (
+    race bigint NOT NULL,
+    language public.language NOT NULL,
+    volunteer bigint NOT NULL,
+    role public.volunteer_role NOT NULL
+);
+
+
+ALTER TABLE public.race_volunteers OWNER TO mido;
 
 --
 -- Name: races; Type: TABLE; Schema: public; Owner: mido
@@ -1154,6 +1179,22 @@ ALTER TABLE ONLY public.race_player_videos
 
 ALTER TABLE ONLY public.race_player_videos
     ADD CONSTRAINT race_videos_race_fkey FOREIGN KEY (race) REFERENCES public.races(id);
+
+
+--
+-- Name: race_volunteers race_volunteers_race_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_volunteers
+    ADD CONSTRAINT race_volunteers_race_fkey FOREIGN KEY (race) REFERENCES public.races(id);
+
+
+--
+-- Name: race_volunteers race_volunteers_volunteer_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_volunteers
+    ADD CONSTRAINT race_volunteers_volunteer_fkey FOREIGN KEY (volunteer) REFERENCES public.users(id);
 
 
 --

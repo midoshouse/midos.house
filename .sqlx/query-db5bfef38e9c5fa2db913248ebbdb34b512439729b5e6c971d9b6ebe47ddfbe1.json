@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT language AS \"language: Language\", volunteer AS \"volunteer: Id<Users>\" FROM race_volunteers WHERE race = $1 AND role = 'restreamer'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "language: Language",
+        "type_info": {
+          "Custom": {
+            "name": "language",
+            "kind": {
+              "Enum": [
+                "en",
+                "fr",
+                "de",
+                "pt",
+                "es"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "volunteer: Id<Users>",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "db5bfef38e9c5fa2db913248ebbdb34b512439729b5e6c971d9b6ebe47ddfbe1"
+}

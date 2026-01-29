@@ -154,6 +154,14 @@ impl User {
             }
         })
     }
+
+    pub(crate) async fn into_restreamer(self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client) -> Result<Option<cal::Restreamer>, cal::Error> {
+        Ok(if let Some(id) = self.discord_id && let Some(user) = user::User::from_discord(&mut **transaction, id).await? {
+            user.racetime.is_some().then(|| cal::Restreamer::MidosHouse(user.id))
+        } else {
+            self.racetime_id(http_client).await?.map(cal::Restreamer::RaceTime)
+        })
+    }
 }
 
 #[derive(Deserialize)]
