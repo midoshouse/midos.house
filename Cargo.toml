@@ -45,7 +45,7 @@ derive_more = { version = "2", features = ["display", "from", "from_str"] }
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
-git2 = "0.20" #TODO investigate replacing with gix
+gix = { version = "0.78", features = ["blocking-http-transport-reqwest"] }
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
 hyper = "1.4.1"

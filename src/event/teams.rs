@@ -915,9 +915,9 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
     let qualifier_kind = data.qualifier_kind(&mut transaction, me.as_ref()).await?;
     if let QualifierKind::Score(_) = qualifier_kind {
         if !data.is_started(&mut transaction).await? {
-            if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) {
+            if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) { //TODO also show if anyone is already eligible to sign up
                 show_status = ShowStatus::Confirmed;
-            } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO replay s/8 and s/9 qual history to check for detailed status display showing any weird-looking data at any point, then show to everyone
+            } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO replay s/8 and s/9 qual history to check for detailed status display showing any weird-looking data at any point (especially anyone's worst-case placement getting worse over time), then show to everyone
                 show_status = ShowStatus::Detailed;
             }
         }
