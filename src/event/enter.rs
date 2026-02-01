@@ -229,15 +229,18 @@ impl Requirement {
                 if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == *me));
                 if let teams::Qualification::Multiple { num_entered, num_finished, .. } = team.qualification;
                 then {
-                    teams.iter()
-                        .take(*exclude_players)
-                        .all(|team| team.members.iter().all(|member| member.is_confirmed))
+                    placement < num_players_extended.unwrap_or(*num_players)
+                    && if *need_finish { num_finished } else { num_entered } >= *min_races
+                    // for Challenge Cup: enough players have signed up for main bracket that the user is guaranteed not to overqualify
+                    && teams.iter()
+                        .take(placement)
+                        .filter(|team| team.members.iter().all(|member| member.is_confirmed))
+                        .count() >= *exclude_players
+                    // Newcomer can represent any number of teams, so the user needs to beat Newcomer to qualify
                     && teams.iter()
                         .enumerate()
                         .find(|(_, team)| team.members.iter().any(|member| member.user == teams::MemberUser::Newcomer))
-                        .is_none_or(|(newcomer_placement, _)| placement < newcomer_placement) // Newcomer can represent any number of teams
-                    && placement < num_players_extended.unwrap_or(*num_players)
-                    && if *need_finish { num_finished } else { num_entered } >= *min_races
+                        .is_none_or(|(newcomer_placement, _)| placement < newcomer_placement)
                 } else {
                     false
                 }
