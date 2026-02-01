@@ -1092,11 +1092,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li {
                             a(href = "https://www.start.gg/tournament/ocarina-of-time-randomizer-standard-tournament-season-9/event/main-tournament") : "Brackets";
                         }
-                        /*
                         li {
                             a(href = uri!(event::info(Series::Standard, "9cc"))) : "Challenge Cup";
                         }
-                        */ //TODO uncomment once the event exists
                         li {
                             a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "OoTR Standard Racing Ruleset";
                         }
@@ -1996,6 +1994,23 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 a(href = "#sometimes-hints") : "Appendix 2: Sometimes/Dual Hints";
                             }
                         }
+                    }
+                }
+            }
+        }),
+        "9cc" => Some(html! {
+            article {
+                p {
+                    : "This is the Challenge Cup portion of the 9th season of the main Ocarina of Time randomizer tournament, organized by ";
+                    : English.join_html_opt(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1e2L2Oi-8KTNt4bo87BtmtXPwbkwHXUJf4flZjYbPQtU/edit") : "the official document";
+                    : " for details.";
+                }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = uri!(event::info(Series::Standard, "9"))) : "main bracket";
                     }
                 }
             }
