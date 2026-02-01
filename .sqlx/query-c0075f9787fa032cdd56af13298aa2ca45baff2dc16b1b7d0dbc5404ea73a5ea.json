@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'tracker' AND volunteer != ANY($3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        {
+          "Custom": {
+            "name": "language",
+            "kind": {
+              "Enum": [
+                "en",
+                "fr",
+                "de",
+                "pt",
+                "es"
+              ]
+            }
+          }
+        },
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c0075f9787fa032cdd56af13298aa2ca45baff2dc16b1b7d0dbc5404ea73a5ea"
+}

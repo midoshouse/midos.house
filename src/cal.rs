@@ -11,6 +11,7 @@ use {
             URL,
         },
     },
+    nonempty_collections::NESet,
     reqwest::StatusCode,
     rocket_util::Response,
     serenity::all::{
@@ -93,6 +94,13 @@ impl Entrant {
             Self::Discord { .. } => false,
             Self::Named { .. } => false, // assume solo (e.g. League)
         }
+    }
+
+    async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.member_ids(transaction).await?.len(),
+            Self::Discord { .. } | Self::Named { .. } => 1,
+        })
     }
 
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
@@ -434,6 +442,8 @@ pub(crate) struct Race {
     pub(crate) seed: seed::Data,
     pub(crate) video_urls: HashMap<Language, Url>,
     pub(crate) restreamers: HashMap<Language, Restreamer>,
+    pub(crate) commentators: HashMap<Language, NESet<Id<Users>>>,
+    pub(crate) trackers: HashMap<Language, NESet<Id<Users>>>, //TODO double-tracking support
     pub(crate) last_edited_by: Option<Id<Users>>,
     pub(crate) last_edited_at: Option<DateTime<Utc>>,
     /// An ignored race is treated as if it didn't exist for most purposes, with the notable exception of auto-import.
@@ -614,10 +624,29 @@ impl Race {
         update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
         update_end!(async_end3, async_room3, "UPDATE races SET async_end3 = $1 WHERE id = $2");
-        let mut mh_restreamers = sqlx::query!(r#"SELECT language AS "language: Language", volunteer AS "volunteer: Id<Users>" FROM race_volunteers WHERE race = $1 AND role = 'restreamer'"#, id as _)
-            .fetch(&mut **transaction)
-            .map_ok(|row| (row.language, Restreamer::MidosHouse(row.volunteer)))
-            .try_collect::<HashMap<_, _>>().await?;
+        let mut mh_volunteers = sqlx::query!(r#"SELECT language AS "language: Language", volunteer AS "volunteer: Id<Users>", role AS "role: VolunteerRole" FROM race_volunteers WHERE race = $1"#, id as _).fetch(&mut **transaction);
+        let mut mh_restreamers = HashMap::new();
+        let mut commentators = HashMap::<_, NESet<_>>::default();
+        let mut trackers = HashMap::<_, NESet<_>>::default();
+        while let Some(row) = mh_volunteers.try_next().await? {
+            match row.role {
+                VolunteerRole::Restreamer => if mh_restreamers.insert(row.language, Restreamer::MidosHouse(row.volunteer)).is_some() {
+                    return Err(Error::DuplicateVolunteer)
+                },
+                VolunteerRole::Commentator => match commentators.entry(row.language) {
+                    hash_map::Entry::Occupied(mut entry) => if !entry.get_mut().insert(row.volunteer) {
+                        return Err(Error::DuplicateVolunteer)
+                    },
+                    hash_map::Entry::Vacant(entry) => { entry.insert(NESet::new(row.volunteer)); }
+                },
+                VolunteerRole::Tracker => match trackers.entry(row.language) {
+                    hash_map::Entry::Occupied(mut entry) => if !entry.get_mut().insert(row.volunteer) {
+                        return Err(Error::DuplicateVolunteer)
+                    },
+                    hash_map::Entry::Vacant(entry) => { entry.insert(NESet::new(row.volunteer)); }
+                },
+            }
+        }
         Ok(Self {
             series: row.series,
             event: row.event,
@@ -676,7 +705,7 @@ impl Race {
             ignored: row.ignored,
             schedule_locked: row.schedule_locked,
             notified: row.notified,
-            id, source, entrants,
+            id, source, entrants, commentators, trackers,
         })
     }
 
@@ -733,6 +762,8 @@ impl Race {
                     seed: seed::Data::default(),
                     video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
                     restreamers: HashMap::default(),
+                    commentators: HashMap::default(),
+                    trackers: HashMap::default(),
                     last_edited_by: None,
                     last_edited_at: None,
                     ignored: false,
@@ -797,6 +828,8 @@ impl Race {
                             collect![English => format!("https://twitch.tv/{restream}").parse()?]
                         },
                         restreamers: HashMap::default(),
+                        commentators: HashMap::default(),
+                        trackers: HashMap::default(),
                         last_edited_by: None,
                         last_edited_at: None,
                         ignored: false,
@@ -1045,6 +1078,16 @@ impl Race {
             Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => Some(Box::new([team1, team2, team3].into_iter())),
             Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) | Entrants::Two(_) | Entrants::Three(_) => None,
         }
+    }
+
+    async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
+        //TODO require fewer trackers for multiworld if all teams use MH MW
+        Ok(match &self.entrants {
+            Entrants::Two([team1, team2]) => team1.num_trackers(&mut *transaction).await? + team2.num_trackers(transaction).await?,
+            Entrants::Three([team1, team2, team3]) => team1.num_trackers(&mut *transaction).await? + team2.num_trackers(&mut *transaction).await? + team3.num_trackers(transaction).await?,
+            Entrants::Open | Entrants::Count { .. } => 4, //TODO 2–4?
+            Entrants::Named(_) => 0,
+        })
     }
 
     pub(crate) async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
@@ -1311,6 +1354,22 @@ impl Race {
                 sqlx::query!("INSERT INTO race_volunteers (race, language, volunteer, role) SELECT $1, $2, $3, 'restreamer' WHERE NOT EXISTS (SELECT 1 FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'restreamer')", self.id as _, language as _, restreamer as _).execute(&mut **transaction).await?;
             } else {
                 sqlx::query!("DELETE FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'restreamer'", self.id as _, language as _).execute(&mut **transaction).await?;
+            }
+            if let Some(commentators) = self.commentators.get(&language) {
+                for commentator in commentators {
+                    sqlx::query!("INSERT INTO race_volunteers (race, language, volunteer, role) SELECT $1, $2, $3, 'commentator' WHERE NOT EXISTS (SELECT 1 FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'commentator')", self.id as _, language as _, commentator as _).execute(&mut **transaction).await?;
+                }
+                sqlx::query!("DELETE FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'commentator' AND volunteer != ANY($3)", self.id as _, language as _, &commentators.iter().copied().map(i64::from).collect_vec()).execute(&mut **transaction).await?;
+            } else {
+                sqlx::query!("DELETE FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'commentator'", self.id as _, language as _).execute(&mut **transaction).await?;
+            }
+            if let Some(trackers) = self.trackers.get(&language) {
+                for tracker in trackers {
+                    sqlx::query!("INSERT INTO race_volunteers (race, language, volunteer, role) SELECT $1, $2, $3, 'tracker' WHERE NOT EXISTS (SELECT 1 FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'tracker')", self.id as _, language as _, tracker as _).execute(&mut **transaction).await?;
+                }
+                sqlx::query!("DELETE FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'tracker' AND volunteer != ANY($3)", self.id as _, language as _, &trackers.iter().copied().map(i64::from).collect_vec()).execute(&mut **transaction).await?;
+            } else {
+                sqlx::query!("DELETE FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'tracker'", self.id as _, language as _).execute(&mut **transaction).await?;
             }
         }
         Ok(())
@@ -1611,6 +1670,8 @@ pub(crate) enum Error {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("anonymized entrant in race without hidden entrants")]
     AnonymizedEntrant,
+    #[error("duplicate volunteer found in database")]
+    DuplicateVolunteer,
     #[error("no team with this ID")]
     UnknownTeam,
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
@@ -1655,6 +1716,7 @@ impl IsNetworkError for Error {
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::AnonymizedEntrant => false,
+            Self::DuplicateVolunteer => false,
             Self::UnknownTeam => false,
             Self::UnknownTeamStartGG(_) => false,
             Self::UnqualifiedEntrant { .. } => false,
@@ -2121,6 +2183,8 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                     seed: seed::Data::default(),
                     video_urls: HashMap::default(),
                     restreamers: HashMap::default(),
+                    commentators: HashMap::default(),
+                    trackers: HashMap::default(),
                     last_edited_by: None,
                     last_edited_at: None,
                     ignored: false,
@@ -2148,6 +2212,8 @@ pub(crate) enum RaceTableRestreams {
     Consent,
     Volunteers {
         can_restream: bool,
+        can_commentate: bool,
+        can_track: bool,
     },
 }
 
@@ -2427,20 +2493,103 @@ pub(crate) async fn race_table(
                                     : "?";
                                 }
                             }
-                            RaceTableRestreams::Volunteers { can_restream } => @if race.teams().all(|team| team.restream_consent) {
+                            RaceTableRestreams::Volunteers { can_restream, can_commentate, can_track } => @if race.teams().all(|team| team.restream_consent) {
                                 : "Restreamer: ";
                                 @if let Some(restreamer) = race.restreamers.get(&English) {
                                     : restreamer.to_html(transaction, http_client).await?;
                                     @if let Some(me) = me && let Restreamer::MidosHouse(id) = restreamer && *id == me.id {
                                         br;
-                                        @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, Some(uri))), csrf, Vec::default(), "Remove Signup");
+                                        @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Remove Signup");
                                         : errors;
                                         span(class = "button-row") : button;
                                     }
                                 } else {
                                     strong : "none";
-                                    @if can_restream {
-                                        @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, Some(uri))), csrf, Vec::default(), "Sign Up");
+                                    @if can_restream { //TODO and not racing
+                                        @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Sign Up");
+                                        : errors;
+                                        span(class = "button-row") : button;
+                                    }
+                                }
+                                br;
+                                : "Commentators: ";
+                                @if let Some(commentators) = race.commentators.get(&English) {
+                                    @let commentators_html = {
+                                        let mut buf = Vec::<User>::default();
+                                        for id in commentators {
+                                            let user = User::from_id(&mut **transaction, *id).await?.expect("foreign key constraint violated");
+                                            let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
+                                            buf.insert(idx, user);
+                                        }
+                                        buf
+                                    };
+                                    : English.join_html_opt(commentators_html);
+                                    @if commentators.len().get() < 3 {
+                                        @if commentators.len().get() < 2 {
+                                            strong {
+                                                : " (";
+                                                : 2 - commentators.len().get();
+                                                : "–";
+                                                : 3 - commentators.len().get();
+                                                : " more needed)";
+                                            }
+                                        } else {
+                                            @if commentators.len().get() == 2 {
+                                                : " (1 optional spot available)";
+                                            } else {
+                                                : " (";
+                                                : 3 - commentators.len().get();
+                                                : " optional spots available)";
+                                            }
+                                        }
+                                    }
+                                    @if let Some(me) = me && commentators.contains(&me.id) {
+                                        br;
+                                        @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Commentator, Some(uri))), csrf, Vec::default(), "Remove Signup");
+                                        : errors;
+                                        span(class = "button-row") : button;
+                                    }
+                                } else {
+                                    strong: "none";
+                                }
+                                @if can_commentate && let Some(me) = me && race.commentators.get(&English).is_none_or(|commentators| !commentators.contains(&me.id)) { //TODO and not racing
+                                    @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Commentator, Some(uri))), csrf, Vec::default(), "Sign Up");
+                                    : errors;
+                                    span(class = "button-row") : button;
+                                }
+                                @let num_trackers = race.num_trackers(&mut *transaction).await?;
+                                @if num_trackers > 0 {
+                                    br;
+                                    : "Trackers: ";
+                                    @if let Some(trackers) = race.trackers.get(&English) {
+                                        @let trackers_html = {
+                                            let mut buf = Vec::<User>::default();
+                                            for id in trackers {
+                                                let user = User::from_id(&mut **transaction, *id).await?.expect("foreign key constraint violated");
+                                                let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
+                                                buf.insert(idx, user);
+                                            }
+                                            buf
+                                        };
+                                        : English.join_html_opt(trackers_html);
+                                        @if trackers.len().get() < num_trackers {
+                                            strong {
+                                                : " (";
+                                                : num_trackers - trackers.len().get();
+                                                : " more needed)";
+                                            }
+                                        }
+                                        @if let Some(me) = me && trackers.contains(&me.id) {
+                                            br;
+                                            @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Tracker, Some(uri))), csrf, Vec::default(), "Remove Signup");
+                                            : errors;
+                                            span(class = "button-row") : button;
+                                        }
+                                    } else {
+                                        strong: "none";
+                                    }
+                                    @if can_track && let Some(me) = me && race.trackers.get(&English).is_none_or(|trackers| !trackers.contains(&me.id)) { //TODO and not racing
+                                        @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Tracker, Some(uri))), csrf, Vec::default(), "Sign Up");
                                         : errors;
                                         span(class = "button-row") : button;
                                     }
@@ -2798,6 +2947,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                             HashMap::default()
                                         }
                                     },
+                                    commentators: HashMap::default(), //TODO import from League website
+                                    trackers: HashMap::default(),
                                     last_edited_by: None,
                                     last_edited_at: None,
                                     ignored: match match_data.status {
@@ -4005,22 +4156,69 @@ async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
         : event.header(&mut transaction, ootr_api_client, Some(&me), csrf, Tab::Races, false).await?;
         //TODO link back to race page
         h2 : "Volunteer";
-        @let (errors, button) = if race.restreamers.get(&English).and_then(as_variant!(Restreamer::MidosHouse)).is_some_and(|english_restreamer| *english_restreamer == me.id) {
-            button_form(uri!(volunteer_retract_post(event.series, &*event.event, race.id, redirect_to)), csrf, errors, "Remove Signup")
-        } else {
-            button_form(uri!(volunteer_post(event.series, &*event.event, race.id, redirect_to)), csrf, errors, "Sign Up")
-        };
-        : errors;
-        p {
-            : "Restreamer: ";
-            span(class = "button-row") : button;
+        @for error in errors {
+            : render_form_error(error);
+        }
+        @for role in all() {
+            @match role {
+                VolunteerRole::Restreamer => {
+                    //TODO only show if eligible (approved as restreamer and not racing)
+                    @let (errors, button) = if race.restreamers.get(&English).and_then(as_variant!(Restreamer::MidosHouse)).is_some_and(|english_restreamer| *english_restreamer == me.id) {
+                        button_form(uri!(volunteer_retract_post(event.series, &*event.event, race.id, VolunteerRole::Restreamer, redirect_to.clone())), csrf, Vec::default(), "Remove Signup")
+                    } else {
+                        button_form(uri!(volunteer_post(event.series, &*event.event, race.id, VolunteerRole::Restreamer, redirect_to.clone())), csrf, Vec::default(), "Sign Up")
+                    };
+                    : errors;
+                    p {
+                        : "Restreamer: ";
+                        span(class = "button-row") : button;
+                    }
+                }
+                VolunteerRole::Commentator => {
+                    //TODO only show if eligible (approved as restreamer and not racing)
+                    @let (errors, button) = if race.commentators.get(&English).is_some_and(|english_commentators| english_commentators.contains(&me.id)) {
+                        button_form(uri!(volunteer_retract_post(event.series, &*event.event, race.id, VolunteerRole::Commentator, redirect_to.clone())), csrf, Vec::default(), "Remove Signup")
+                    } else {
+                        button_form(uri!(volunteer_post(event.series, &*event.event, race.id, VolunteerRole::Commentator, redirect_to.clone())), csrf, Vec::default(), "Sign Up")
+                    };
+                    : errors;
+                    p {
+                        : "Commentator: ";
+                        span(class = "button-row") : button;
+                    }
+                }
+                VolunteerRole::Tracker => {
+                    //TODO only show if eligible (approved as restreamer and not racing)
+                    @let (errors, button) = if race.trackers.get(&English).is_some_and(|english_trackers| english_trackers.contains(&me.id)) {
+                        button_form(uri!(volunteer_retract_post(event.series, &*event.event, race.id, VolunteerRole::Tracker, redirect_to.clone())), csrf, Vec::default(), "Remove Signup")
+                    } else {
+                        button_form(uri!(volunteer_post(event.series, &*event.event, race.id, VolunteerRole::Tracker, redirect_to.clone())), csrf, Vec::default(), "Sign Up")
+                    };
+                    : errors;
+                    p {
+                        : "Tracker: ";
+                        span(class = "button-row") : button;
+                    }
+                }
+            }
         }
     };
     Ok(page(transaction, &Some(me), &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Volunteer — {}", event.display_name), content).await?)
 }
 
-#[rocket::post("/event/<series>/<event>/races/<id>/volunteer?<redirect_to>", data = "<form>")]
-pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
+#[derive(Debug, sqlx::Type, FromFormField, UriDisplayQuery, Sequence)]
+#[sqlx(type_name = "volunteer_role", rename_all = "lowercase")]
+pub(crate) enum VolunteerRole {
+    #[field(value = "restreamer")]
+    Restreamer,
+    #[field(value = "commentator")]
+    Commentator,
+    #[field(value = "tracker")]
+    Tracker,
+}
+
+#[rocket::post("/event/<series>/<event>/races/<id>/volunteer?<role>&<redirect_to>", data = "<form>")]
+pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
     let mut transaction = pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
     let mut race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -4030,23 +4228,80 @@ pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<req
         if event.series != Series::Standard || event.event != "9cc" { //TODO roll out to other events after beta
             form.context.push_error(form::Error::validation("The new volunteer signup system is currently in beta and not yet enabled for this event."));
         }
-        if !event.restream_coordinators(&mut transaction).await?.contains(&me) {
-            form.context.push_error(form::Error::validation("You are not confirmed as a restreamer for this event. Please contact a tournament organizer to volunteer."));
+        if race.is_ended() {
+            form.context.push_error(form::Error::validation("This race has ended, so its volunteer assignments can no longer be edited."));
         }
-        if me.racetime.is_none() {
-            form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”."));
-        }
-        if let Some(restreamer) = race.restreamers.get(&English) {
-            form.context.push_error(form::Error::validation(if let Restreamer::MidosHouse(english_restreamer) = restreamer && *english_restreamer == me.id {
-                "You are already signed up as the English restreamer for this race."
-            } else {
-                "Someone else is already signed up as the English restreamer for this race."
-            }));
+        match role {
+            VolunteerRole::Restreamer => {
+                if !event.restream_coordinators(&mut transaction).await?.contains(&me) {
+                    form.context.push_error(form::Error::validation("You are not confirmed as a restreamer for this event. Please contact a tournament organizer to volunteer."));
+                }
+                if me.racetime.is_none() {
+                    form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”."));
+                }
+                if let Some(restreamer) = race.restreamers.get(&English) {
+                    form.context.push_error(form::Error::validation(if let Restreamer::MidosHouse(english_restreamer) = restreamer && *english_restreamer == me.id {
+                        "You are already signed up as the English restreamer for this race."
+                    } else {
+                        "Someone else is already signed up as the English restreamer for this race."
+                    }));
+                }
+            }
+            VolunteerRole::Commentator => {
+                if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'commentator') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await? {
+                    form.context.push_error(form::Error::validation("You are not confirmed as a commentator for this event. Please contact a tournament organizer or TSG restreamer to volunteer."));
+                }
+                if me.discord.is_none() {
+                    form.context.push_error(form::Error::validation("A Discord account is required to commentate. Go to your profile and select “Connect a Discord account”."));
+                }
+                //TODO confirm user is in TSG guild
+                if let Some(commentators) = race.commentators.get(&English) {
+                    if commentators.contains(&me.id) {
+                        form.context.push_error(form::Error::validation("You are already signed up as a commentator for this race."));
+                    }
+                    if commentators.len().get() >= 3 {
+                        form.context.push_error(form::Error::validation("There are already 3 commentators signed up for this race."));
+                    }
+                }
+            }
+            VolunteerRole::Tracker => {
+                //TODO double-tracking support
+                if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'tracker') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await? {
+                    form.context.push_error(form::Error::validation("You are not confirmed as a tracker for this event. Please contact a tournament organizer or TSG restreamer to volunteer."));
+                }
+                if me.discord.is_none() {
+                    form.context.push_error(form::Error::validation("A Discord account is required to track. Go to your profile and select “Connect a Discord account”."));
+                }
+                //TODO confirm user is in TSG guild
+                if let Some(trackers) = race.trackers.get(&English) {
+                    if trackers.contains(&me.id) {
+                        form.context.push_error(form::Error::validation("You are already signed up as a trackers for this race."));
+                    }
+                    let num_trackers = race.num_trackers(&mut transaction).await?;
+                    if trackers.len().get() >= num_trackers {
+                        form.context.push_error(form::Error::validation(if num_trackers == 1 {
+                            Cow::Borrowed("There is already a tracker signed up for this race.")
+                        } else {
+                            Cow::Owned(format!("There are already {num_trackers} trackers signed up for this race."))
+                        }));
+                    }
+                }
+            }
         }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(volunteer_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
         } else {
-            race.restreamers.insert(English, Restreamer::MidosHouse(me.id));
+            match role {
+                VolunteerRole::Restreamer => { race.restreamers.insert(English, Restreamer::MidosHouse(me.id)); }
+                VolunteerRole::Commentator => match race.commentators.entry(English) {
+                    hash_map::Entry::Occupied(mut entry) => { entry.get_mut().insert(me.id); }
+                    hash_map::Entry::Vacant(entry) => { entry.insert(NESet::new(me.id)); }
+                },
+                VolunteerRole::Tracker => match race.trackers.entry(English) {
+                    hash_map::Entry::Occupied(mut entry) => { entry.get_mut().insert(me.id); }
+                    hash_map::Entry::Vacant(entry) => { entry.insert(NESet::new(me.id)); }
+                },
+            }
             race.save(&mut transaction).await?;
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
@@ -4055,8 +4310,8 @@ pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<req
     }))
 }
 
-#[rocket::post("/event/<series>/<event>/races/<id>/volunteer-retract?<redirect_to>", data = "<form>")]
-pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
+#[rocket::post("/event/<series>/<event>/races/<id>/volunteer-retract?<role>&<redirect_to>", data = "<form>")]
+pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
     let mut transaction = pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
     let mut race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -4066,16 +4321,40 @@ pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &S
         if event.series != Series::Standard || event.event != "9cc" { //TODO roll out to other events after beta
             form.context.push_error(form::Error::validation("The new volunteer signup system is currently in beta and not yet enabled for this event."));
         }
-        if !event.restream_coordinators(&mut transaction).await?.contains(&me) {
-            form.context.push_error(form::Error::validation("You are not confirmed as a restreamer for this event. Please contact a tournament organizer to volunteer."));
+        if race.is_ended() {
+            form.context.push_error(form::Error::validation("This race has ended, so its volunteer assignments can no longer be edited."));
         }
-        if !race.restreamers.get(&English).and_then(as_variant!(Restreamer::MidosHouse)).is_some_and(|english_restreamer| *english_restreamer == me.id) {
-            form.context.push_error(form::Error::validation("You are already not signed up as the English restreamer for this race."));
+        match role {
+            VolunteerRole::Restreamer => if !race.restreamers.get(&English).and_then(as_variant!(Restreamer::MidosHouse)).is_some_and(|english_restreamer| *english_restreamer == me.id) {
+                form.context.push_error(form::Error::validation("You are already not signed up as the English restreamer for this race."));
+            },
+            VolunteerRole::Commentator => if race.commentators.get(&English).is_none_or(|commentators| !commentators.contains(&me.id)) {
+                form.context.push_error(form::Error::validation("You are already not signed up as a commentator for this race."));
+            },
+            VolunteerRole::Tracker => if race.trackers.get(&English).is_none_or(|trackers| !trackers.contains(&me.id)) {
+                form.context.push_error(form::Error::validation("You are already not signed up as a tracker for this race."));
+            },
         }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(volunteer_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
         } else {
-            race.restreamers.remove(&English);
+            match role {
+                VolunteerRole::Restreamer => { race.restreamers.remove(&English); }
+                VolunteerRole::Commentator => if let Some(commentators) = race.commentators.remove(&English) {
+                    let mut commentators = HashSet::from(commentators);
+                    commentators.remove(&me.id);
+                    if let Ok(commentators) = commentators.try_into() {
+                        race.commentators.insert(English, commentators);
+                    }
+                },
+                VolunteerRole::Tracker => if let Some(trackers) = race.trackers.remove(&English) {
+                    let mut trackers = HashSet::from(trackers);
+                    trackers.remove(&me.id);
+                    if let Ok(trackers) = trackers.try_into() {
+                        race.trackers.insert(English, trackers);
+                    }
+                },
+            }
             race.save(&mut transaction).await?;
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }

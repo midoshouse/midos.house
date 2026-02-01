@@ -1059,7 +1059,11 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         let can_edit = show_restream_consent || me.is_archivist;
         (can_create, if show_restream_consent {
             if series == Series::Standard && event == "9cc" { //TODO roll out to other events after beta
-                cal::RaceTableRestreams::Volunteers { can_restream: is_restream_coordinator }
+                cal::RaceTableRestreams::Volunteers {
+                    can_restream: is_restream_coordinator,
+                    can_commentate: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'commentator') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
+                    can_track: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'tracker') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
+                }
             } else {
                 cal::RaceTableRestreams::Consent
             }

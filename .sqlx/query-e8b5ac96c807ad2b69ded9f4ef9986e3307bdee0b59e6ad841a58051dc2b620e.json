@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO race_volunteers (race, language, volunteer, role) SELECT $1, $2, $3, 'commentator' WHERE NOT EXISTS (SELECT 1 FROM race_volunteers WHERE race = $1 AND language = $2 AND role = 'commentator')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        {
+          "Custom": {
+            "name": "language",
+            "kind": {
+              "Enum": [
+                "en",
+                "fr",
+                "de",
+                "pt",
+                "es"
+              ]
+            }
+          }
+        },
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e8b5ac96c807ad2b69ded9f4ef9986e3307bdee0b59e6ad841a58051dc2b620e"
+}

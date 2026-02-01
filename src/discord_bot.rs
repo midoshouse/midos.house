@@ -1298,6 +1298,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 race.draft
                                             },
                                             seed: if reset_schedule { seed::Data::default() } else { race.seed },
+                                            video_urls: if reset_schedule { HashMap::default() } else { race.video_urls },
+                                            restreamers: if reset_schedule { HashMap::default() } else { race.restreamers },
+                                            commentators: if reset_schedule { HashMap::default() } else { race.commentators },
+                                            trackers: if reset_schedule { HashMap::default() } else { race.trackers },
                                             notified: race.notified && !reset_schedule,
                                             // explicitly listing remaining fields here instead of using `..race` so if the fields change they're kept/reset correctly
                                             id: race.id,
@@ -1308,8 +1312,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             round: race.round,
                                             game: race.game,
                                             scheduling_thread: race.scheduling_thread,
-                                            video_urls: race.video_urls,
-                                            restreamers: race.restreamers,
                                             last_edited_by: race.last_edited_by,
                                             last_edited_at: race.last_edited_at,
                                             ignored: race.ignored,

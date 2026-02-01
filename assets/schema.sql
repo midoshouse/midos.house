@@ -258,11 +258,24 @@ CREATE TYPE public.user_display_source AS ENUM (
 ALTER TYPE public.user_display_source OWNER TO mido;
 
 --
+-- Name: volunteer_organization; Type: TYPE; Schema: public; Owner: mido
+--
+
+CREATE TYPE public.volunteer_organization AS ENUM (
+    'tsg'
+);
+
+
+ALTER TYPE public.volunteer_organization OWNER TO mido;
+
+--
 -- Name: volunteer_role; Type: TYPE; Schema: public; Owner: mido
 --
 
 CREATE TYPE public.volunteer_role AS ENUM (
-    'restreamer'
+    'restreamer',
+    'commentator',
+    'tracker'
 );
 
 
@@ -862,6 +875,20 @@ CREATE TABLE public.view_as (
 ALTER TABLE public.view_as OWNER TO mido;
 
 --
+-- Name: volunteers; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.volunteers (
+    organization public.volunteer_organization NOT NULL,
+    volunteer bigint NOT NULL,
+    role public.volunteer_role NOT NULL,
+    language public.language NOT NULL
+);
+
+
+ALTER TABLE public.volunteers OWNER TO mido;
+
+--
 -- Name: api_keys api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: mido
 --
 
@@ -1283,6 +1310,14 @@ ALTER TABLE ONLY public.view_as
 
 ALTER TABLE ONLY public.view_as
     ADD CONSTRAINT view_as_viewer_fkey FOREIGN KEY (viewer) REFERENCES public.users(id);
+
+
+--
+-- Name: volunteers volunteers_volunteer_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.volunteers
+    ADD CONSTRAINT volunteers_volunteer_fkey FOREIGN KEY (volunteer) REFERENCES public.users(id);
 
 
 --
