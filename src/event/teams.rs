@@ -1174,7 +1174,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
-                                                        enter::Requirement::QualifierPlacement { num_players, min_races, need_finish, event, exclude_players } => : if_chain! {
+                                                        enter::Requirement::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => : if_chain! {
                                                             let data = if let Some(event) = event {
                                                                 &Data::new(&mut transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
                                                             } else {
@@ -1216,6 +1216,9 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                                                                         : "Not eligible (worst-case placement: ";
                                                                         : placement + 1;
                                                                         : ")";
+                                                                        @if placement < num_players_extended.unwrap_or(*num_players) {
+                                                                            : " (but can pre-confirm)";
+                                                                        }
                                                                     }
                                                                 } else if teams.iter()
                                                                     .take(*exclude_players)

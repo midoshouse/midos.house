@@ -137,7 +137,10 @@ pub(crate) enum Requirement {
     /// Must place within the top n players after all races in the `Qualifier` phase
     #[serde(rename_all = "camelCase")]
     QualifierPlacement {
+        /// The placement required to participate.
         num_players: usize,
+        /// If this is set, players up to this placement may also opt in so they'll be confirmed in case anyone opts out or doesn't respond before the deadline.
+        num_players_extended: Option<usize>,
         #[serde(default)]
         min_races: usize,
         /// If this is set, a DNF does not count towards the minimum required races.
@@ -214,7 +217,7 @@ impl Requirement {
                 }
                 false
             }),
-            Self::QualifierPlacement { num_players, min_races, need_finish, event, exclude_players } => Some(if_chain! {
+            Self::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => Some(if_chain! {
                 let data = if let Some(event) = event {
                     &Data::new(&mut *transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
                 } else {
@@ -233,7 +236,7 @@ impl Requirement {
                         .enumerate()
                         .find(|(_, team)| team.members.iter().any(|member| member.user == teams::MemberUser::Newcomer))
                         .is_none_or(|(newcomer_placement, _)| placement < newcomer_placement) // Newcomer can represent any number of teams
-                    && placement < *num_players
+                    && placement < num_players_extended.unwrap_or(*num_players)
                     && if *need_finish { num_finished } else { num_entered } >= *min_races
                 } else {
                     false
@@ -635,7 +638,7 @@ impl Requirement {
                     }),
                 }
             }
-            &Self::QualifierPlacement { num_players, min_races, need_finish, exclude_players, event: _ } => {
+            &Self::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, exclude_players, event: _ } => {
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html! {
@@ -669,6 +672,15 @@ impl Requirement {
                             : " in this range";
                         }
                         : " due to other players opting out. You will be notified by an organizer if this is the case.";
+                        @if num_players_extended.unwrap_or(num_players) > num_players {
+                            : " If your current placement is ";
+                            @if num_players + 1 < num_players_extended.unwrap_or(num_players) {
+                                : lang::english_ordinal(num_players + 1);
+                                : " to ";
+                            }
+                            : lang::english_ordinal(num_players_extended.unwrap_or(num_players));
+                            : ", you can use this form to pre-confirm for this eventuality.";
+                        }
                     }),
                 }
             }
