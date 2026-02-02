@@ -2896,6 +2896,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
             for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
                 let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
                 if event.auto_import && event.is_started(&mut transaction).await? {
+                    println!("auto-importing races for {}/{}...", event.series.slug(), event.event);
                     match event.match_source() {
                         MatchSource::Manual => {}
                         MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
@@ -2991,6 +2992,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     break
                                 }
                                 Err(Error::UnknownTeamStartGG(entrant)) => {
+                                    println!("attempted to import from start.gg failed due to unknown team, attempting to fix...");
                                     let response = startgg::query_cached::<startgg::TeamMembersQuery>(&http_client, &config.startgg, startgg::team_members_query::Variables { entrant: entrant.clone() }).await?;
                                     let startgg::team_members_query::ResponseData {
                                         entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
@@ -3005,6 +3007,9 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
                                     let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
                                     sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant as _, team.id as _).execute(&mut *transaction).await?;
+                                    transaction.commit().await?;
+                                    transaction = db_pool.begin().await?;
+                                    println!("automatic fix successful, trying again...");
                                 }
                                 Err(e) => return Err(e.into()),
                             }
@@ -3246,6 +3251,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                 }
             }
             transaction.commit().await?;
+            println!("done auto-importing races");
         });
         select! {
             () = &mut shutdown => break,
