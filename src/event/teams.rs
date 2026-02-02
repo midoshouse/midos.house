@@ -30,6 +30,7 @@ pub(crate) enum QualifierKind {
         score_kind: QualifierScoreKind,
         series: Series,
         event: &'static str,
+        exclude_players: usize,
     },
     SongsOfHope,
 }
@@ -247,7 +248,7 @@ impl Cache {
 pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, cache: &mut Cache, me: Option<&User>, data: &Data<'_>, is_organizer: bool, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
     let now = Utc::now();
     let mut signups = match qualifier_kind {
-        QualifierKind::Score { score_kind, series, event } => {
+        QualifierKind::Score { score_kind, series, event, exclude_players: _ } => {
             let mut scores = HashMap::<_, Vec<_>>::default();
             let qual_event = Data::new(&mut *transaction, series, event).await?.expect("missing qualifier event");
             for race in Race::for_event(transaction, &cache.http_client, &qual_event).await? {
@@ -878,6 +879,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
         }
     });
+    if let QualifierKind::Score { exclude_players, .. } = qualifier_kind {
+        signups.drain(..exclude_players);
+    }
     Ok(signups)
 }
 

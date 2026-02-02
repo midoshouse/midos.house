@@ -441,6 +441,11 @@ impl<'a> Data<'a> {
                     "9" | "9cc" => "9",
                     _ => unreachable!("checked by outer match"),
                 },
+                exclude_players: match (self.series, &*self.event) {
+                    (Series::SpeedGaming, "2023onl" | "2024onl" | "2025onl") | (Series::Standard, "8" | "9") => 0,
+                    (Series::Standard, "9cc") => 32,
+                    _ => unreachable!("checked by outer match"),
+                },
             },
             (_, _) => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, self.series as _, &*self.event).fetch_one(&mut **transaction).await? {
                 QualifierKind::Rank
