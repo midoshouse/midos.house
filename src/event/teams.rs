@@ -1061,7 +1061,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                         tr(class? = is_dimmed.then_some("dimmed")) {
                             @match qualifier_kind {
                                 QualifierKind::Rank => td(class = "numeric") : team.as_ref().and_then(|team| team.qualifier_rank);
-                                QualifierKind::Score { .. } => td(class = "numeric") : signup_idx + 1;
+                                QualifierKind::Score { exclude_players, .. } => td(class = "numeric") : exclude_players + signup_idx + 1;
                                 _ => {}
                             }
                             @if !matches!(data.team_config, TeamConfig::Solo) {
