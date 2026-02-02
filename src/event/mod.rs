@@ -423,16 +423,25 @@ impl<'a> Data<'a> {
     pub(crate) async fn qualifier_kind(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>) -> Result<QualifierKind, DataError> {
         Ok(match (self.series, &*self.event) {
             (Series::SongsOfHope, "1") => QualifierKind::SongsOfHope,
-            (Series::SpeedGaming, "2023onl" | "2024onl" | "2025onl") | (Series::Standard, "8" | "9") => {
-                QualifierKind::Score(match (self.series, &*self.event) {
+            (Series::SpeedGaming, "2023onl" | "2024onl" | "2025onl") | (Series::Standard, "8" | "9" | "9cc") => QualifierKind::Score {
+                score_kind: match (self.series, &*self.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierScoreKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierScoreKind::Sgl2024Online,
                     (Series::SpeedGaming, "2025onl") => teams::QualifierScoreKind::Sgl2025Online,
                     (Series::Standard, "8") => teams::QualifierScoreKind::StandardS4,
-                    (Series::Standard, "9") => teams::QualifierScoreKind::StandardS9,
+                    (Series::Standard, "9" | "9cc") => teams::QualifierScoreKind::StandardS9,
                     _ => unreachable!("checked by outer match"),
-                })
-            }
+                },
+                series: self.series,
+                event: match &*self.event {
+                    "2023onl" => "2023onl",
+                    "2024onl" => "2024onl",
+                    "2025onl" => "2025onl",
+                    "8" => "8",
+                    "9" | "9cc" => "9",
+                    _ => unreachable!("checked by outer match"),
+                },
+            },
             (_, _) => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, self.series as _, &*self.event).fetch_one(&mut **transaction).await? {
                 QualifierKind::Rank
             } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier3') AS "exists!""#, self.series as _, &*self.event).fetch_one(&mut **transaction).await? {
