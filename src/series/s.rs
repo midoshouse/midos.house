@@ -1560,7 +1560,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p {
                         : "German Coverage:";
                         br;
-                        : "ZeldaSpeedrunsDE will coordinate this year's German restreams, courtesy of UtzStauder and other community members!";
+                        : "This year's restreams will be coordinated by the German community, with UtzStauder, other community members, and ZeldaSpeedrunsDE taking the lead.";
+                        br;
+                        a(href = "https://twitch.tv/utzstauder") : "twitch.tv/UtzStauder";
                         br;
                         a(href = "https://twitch.tv/zeldaspeedrunsde") : "twitch.tv/zeldaspeedrunsDE";
                     }
