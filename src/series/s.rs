@@ -1487,7 +1487,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                     p {
                         : "Please be courteous toward your fellow racers! Do not post information about ongoing seeds anywhere outside of the designated spoiler discussion channels. Please discuss seeds in the ";
-                        a(href = "https://discord.com/channels/274180765816848384/1444282846083547237") : "#s8-results-discussion";
+                        a(href = "https://discord.com/channels/274180765816848384/1444282846083547237") : "#s9-results-discussion";
                         : " channel of the OoTR Discord after finishing a race. ";
                         strong : "Depending on the severity of the offense, spoilers may result in disqualification from the entire tournament.";
                     }
