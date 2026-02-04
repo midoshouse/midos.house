@@ -1672,6 +1672,8 @@ pub(crate) enum Error {
     AnonymizedEntrant,
     #[error("duplicate volunteer found in database")]
     DuplicateVolunteer,
+    #[error("attempted to rewrite start.gg phase/round name with pool placeholder, but start.gg didn't report a pool name")]
+    PoolPlaceholder,
     #[error("no team with this ID")]
     UnknownTeam,
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
@@ -1717,6 +1719,7 @@ impl IsNetworkError for Error {
             Self::Wheel(e) => e.is_network_error(),
             Self::AnonymizedEntrant => false,
             Self::DuplicateVolunteer => false,
+            Self::PoolPlaceholder => false,
             Self::UnknownTeam => false,
             Self::UnknownTeamStartGG(_) => false,
             Self::UnqualifiedEntrant { .. } => false,

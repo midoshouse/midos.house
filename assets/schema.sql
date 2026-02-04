@@ -794,6 +794,22 @@ CREATE TABLE public.speedgaming_onsite_disambiguation_messages (
 ALTER TABLE public.speedgaming_onsite_disambiguation_messages OWNER TO mido;
 
 --
+-- Name: startgg_phase_round_mappings; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.startgg_phase_round_mappings (
+    series character varying(8) NOT NULL,
+    event character varying(8) NOT NULL,
+    original_phase text,
+    original_round text,
+    mapped_phase text,
+    mapped_round text
+);
+
+
+ALTER TABLE public.startgg_phase_round_mappings OWNER TO mido;
+
+--
 -- Name: team_members; Type: TABLE; Schema: public; Owner: mido
 --
 
@@ -1270,6 +1286,14 @@ ALTER TABLE ONLY public.restreamers
 
 ALTER TABLE ONLY public.restreamers
     ADD CONSTRAINT restreamers_series_fkey FOREIGN KEY (series, event) REFERENCES public.events(series, event);
+
+
+--
+-- Name: startgg_phase_round_mappings startgg_phase_round_mappings_series_event_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.startgg_phase_round_mappings
+    ADD CONSTRAINT startgg_phase_round_mappings_series_event_fkey FOREIGN KEY (series, event) REFERENCES public.events(series, event);
 
 
 --
