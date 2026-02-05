@@ -588,7 +588,7 @@ impl<'a> Data<'a> {
                     ),
                     (Series::Rsl, "5") => (Some(Version::new(2, 3, 8)), None),
                     (Series::Rsl, "6") => (Some(Version::new(2, 5, 11)), None),
-                    (_, _) => unreachable!(), // checked by outer match
+                    (_, _) => unreachable!("checked by outer match"),
                 };
                 let rsl_script_path = rsl::VersionedPreset::Xopar {
                     version: rsl_version,
@@ -739,13 +739,16 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @match self.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await? {
-                    [None, None] => {}
-                    [None, Some(button)] | [Some(button), None] => : button;
-                    [Some(practice_seed_button), Some(practice_race_button)] => div(class = "popover-wrapper") {
+                @let PracticeButtons { practice_seed_buttons, practice_race_button } = self.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await?;
+                @match (&*practice_seed_buttons, &practice_race_button) {
+                    ([], None) => {}
+                    ([], Some(button)) | ([button], None) => : button;
+                    (practice_seed_buttons, practice_race_button) => div(class = "popover-wrapper") {
                         div(id = "practice-menu", popover); //HACK workaround for lack of cross-browser support for CSS overlay property
                         div(class = "menu") {
-                            : practice_seed_button;
+                            @for practice_seed_button in practice_seed_buttons {
+                                : practice_seed_button;
+                            }
                             : practice_race_button;
                         }
                         button(popovertarget = "practice-menu") : "Practice ⯆";
@@ -794,32 +797,39 @@ impl<'a> Data<'a> {
         })
     }
 
-    async fn practice_buttons(&self, ootr_api_client: &ootr_web::ApiClient, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<[Option<RawHtml<String>>; 2], Error> {
-        let practice_seed_url = match (self.series, &*self.event) {
+    async fn practice_buttons(&self, ootr_api_client: &ootr_web::ApiClient, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<PracticeButtons, Error> {
+        let practice_seed_urls = match (self.series, &*self.event) {
             (Series::TriforceBlitz, "2") => {
                 let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
-                Some((false, url.to_html(), Some(url)))
+                vec![(false, url.to_html(), Some(url), "Roll Seed")]
             }
             (Series::TriforceBlitz, "3") => {
                 let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
-                Some((false, url.to_html(), Some(url)))
+                vec![(false, url.to_html(), Some(url), "Roll Seed")]
             }
             (Series::TriforceBlitz, "4coop") => {
                 let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
-                Some((false, url.to_html(), Some(url)))
+                vec![(false, url.to_html(), Some(url), "Roll Seed")]
             }
             (Series::TriforceBlitz, "4") => {
                 let url = Url::parse("https://www.triforceblitz.com/generator")?;
-                Some((false, url.to_html(), Some(url)))
+                vec![(false, url.to_html(), Some(url), "Roll Seed")]
             }
-            id => if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
-                Some((
+            id => if self.draft_kind().is_some() {
+                vec![
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, "Roll Seed (Base Settings)"),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, "Roll Seed (Random Settings)"),
+                    //TODO random (advanced) for Tournoi Francophone, replace with League and Lite options for RSL (no draft)
+                ]
+            } else if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
+                vec![(
                     true,
-                    uri!(practice_seed_post(self.series, &*self.event)).to_html(),
+                    uri!(practice_seed_post(self.series, &*self.event, _)).to_html(),
                     practice_seed_favicon_url(ootr_api_client, self).await?,
-                ))
+                    "Roll Seed",
+                )]
             } else {
-                None
+                Vec::default()
             },
         };
         let practice_race_url = if let Some(mut goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
@@ -841,8 +851,9 @@ impl<'a> Data<'a> {
         } else {
             None
         };
-        let practice_seed_button = practice_seed_url.map(|(post, url, favicon_url)| {
-            let content = if matches!(ctx, PracticeButtonsContext::Content) || practice_race_url.is_some() { "Roll Seed" } else { "Practice" };
+        let num_practice_seed_buttons = practice_seed_urls.len();
+        let practice_seed_buttons = practice_seed_urls.into_iter().map(|(post, url, favicon_url, label)| {
+            let content = if matches!(ctx, PracticeButtonsContext::Content) || num_practice_seed_buttons > 1 || practice_race_url.is_some() { label } else { "Practice" };
             if post && match ctx { PracticeButtonsContext::Navbar { tab, is_subpage } => !matches!(tab, Tab::Practice) || is_subpage, PracticeButtonsContext::Content => true } {
                 let (new_errors, form) = if let Some(favicon_url) = favicon_url {
                     external_button_form(url, csrf, Vec::default(), &favicon_url, content)
@@ -870,18 +881,18 @@ impl<'a> Data<'a> {
                     }
                 }
             }
-        });
+        }).collect_vec();
         let practice_race_button = practice_race_url.map(|url| html! {
             a(class = "button", href = url) {
                 : favicon(&url);
-                @if matches!(ctx, PracticeButtonsContext::Content) || practice_seed_button.is_some() {
+                @if matches!(ctx, PracticeButtonsContext::Content) || !practice_seed_buttons.is_empty() {
                     : "Start Race";
                 } else {
                     : "Practice";
                 }
             }
         });
-        Ok([practice_seed_button, practice_race_button])
+        Ok(PracticeButtons { practice_seed_buttons, practice_race_button })
     }
 }
 
@@ -891,6 +902,11 @@ enum PracticeButtonsContext {
         is_subpage: bool,
     },
     Content,
+}
+
+struct PracticeButtons {
+    practice_seed_buttons: Vec<RawHtml<String>>,
+    practice_race_button: Option<RawHtml<String>>,
 }
 
 impl ToHtml for Data<'_> {
@@ -2372,16 +2388,29 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwe
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PracticeError {
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Draft(#[from] draft::Error),
     #[error(transparent)] Event(#[from] Error),
+    #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+    #[error(transparent)] RandoVersion(#[from] ootr_utils::VersionParseError),
     #[error(transparent)] Roll(#[from] racetime_bot::RollError),
+    #[error(transparent)] RslScriptPath(#[from] rsl::ScriptPathError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
 async fn practice_seed_favicon_url(ootr_api_client: &ootr_web::ApiClient, data: &Data<'_>) -> Result<Option<Url>, Error> {
-    if data.series == Series::BattleRoyale && data.event == "2" {
+    if data.draft_kind().is_some() {
+        let Some(rando_version) = &data.rando_version else { return Ok(None) };
+        if ootr_api_client.can_roll_on_web(true, None, rando_version, 1, false, UnlockSpoilerLog::Now).await.is_some() {
+            Ok(Some(Url::parse("https://ootrandomizer.com/")?))
+        } else {
+            Ok(None)
+        }
+    } else if data.series == Series::BattleRoyale && data.event == "2" {
         Ok(None)
     } else if data.series == Series::CopaLatinoamerica && data.event == "2025" {
         Ok(None)
@@ -2403,13 +2432,15 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, ootr_api
             : render_form_error(error);
         }
         @let mut errors = RawHtml(String::default());
-        @let [practice_seed_button, practice_race_button] = data.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Content).await?;
+        @let PracticeButtons { practice_seed_buttons, practice_race_button } = data.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Content).await?;
         : errors;
-        @if let Some(practice_seed_button) = practice_seed_button {
-            : practice_seed_button;
-        } else {
+        @if practice_seed_buttons.is_empty() {
             article {
                 p : "Sorry, rolling practice seeds for this event is not yet supported.";
+            }
+        } else {
+            @for practice_seed_button in practice_seed_buttons {
+                : practice_seed_button;
             }
             //TODO allow making any necessary choices like draft picks
         }
@@ -2431,13 +2462,24 @@ pub(crate) async fn practice_seed_get(pool: &State<PgPool>, ootr_api_client: &St
     Ok(Some(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?))
 }
 
-#[rocket::post("/event/<series>/<event>/practice", data = "<form>")]
-pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
+#[derive(FromFormField, UriDisplayQuery)]
+pub(crate) enum PracticeSeedKind {
+    #[field(value = "base")]
+    Base,
+    #[field(value = "random")]
+    Random,
+}
+
+#[rocket::post("/event/<series>/<event>/practice?<kind>", data = "<form>")]
+pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
     let mut transaction = pool.begin().await?;
     let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(Some(if form.value.is_some() {
+        if data.draft_kind().is_some() && kind.is_none() {
+            form.context.push_error(form::Error::validation("The seed kind is required."));
+        }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, form.context).await?)
         } else {
@@ -2474,7 +2516,102 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
                 }};
             }
 
-            if series == Series::BattleRoyale && event == "2" {
+            if let Some(draft_kind) = data.draft_kind() {
+                let picks = match kind {
+                    None => unreachable!("form error"),
+                    Some(PracticeSeedKind::Base) => HashMap::default(),
+                    Some(PracticeSeedKind::Random) => Draft {
+                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: HashMap::default(),
+                    }.complete_randomly(draft_kind).await?,
+                };
+                #[allow(unused_parens)] // false positive
+                let (rando_version, mut settings) = match (Draft {
+                    high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                    went_first: Some(true),
+                    skipped_bans: u8::MAX,
+                    settings: picks,
+                }.next_step(draft_kind, None, &mut draft::MessageContext::None).await?).kind {
+                    draft::StepKind::Done(settings) => {
+                        let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                        (rando_version.clone(), settings)
+                    }
+                    draft::StepKind::DoneRsl { preset, world_count } => {
+                        #[derive(Deserialize)]
+                        struct Plando {
+                            settings: seed::Settings,
+                        }
+
+                        let rsl_script_path = preset.script_path().await?;
+                        // check RSL script version
+                        let rsl_version = Command::new(racetime_bot::PYTHON)
+                            .arg("-c")
+                            .arg("import rslversion; print(rslversion.__version__)")
+                            .current_dir(&rsl_script_path)
+                            .check(racetime_bot::PYTHON).await?
+                            .stdout;
+                        let rsl_version = String::from_utf8(rsl_version)?;
+                        let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
+                            (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
+                        } else {
+                            rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                        };
+                        // check required randomizer version
+                        let randomizer_version = Command::new(racetime_bot::PYTHON)
+                            .arg("-c")
+                            .arg("import rslversion; print(rslversion.randomizer_version)")
+                            .current_dir(&rsl_script_path)
+                            .check(racetime_bot::PYTHON).await?
+                            .stdout;
+                        let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<ootr_utils::Version>()?;
+                        // run the RSL script
+                        let mut rsl_cmd = Command::new(racetime_bot::PYTHON);
+                        rsl_cmd.arg("RandomSettingsGenerator.py");
+                        rsl_cmd.arg("--no_log_errors");
+                        if supports_plando_filename_base {
+                            // add a sequence ID to the names of temporary plando files to prevent name collisions
+                            rsl_cmd.arg(format!("--plando_filename_base=mh_{}", rsl::SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
+                        }
+                        rsl_cmd.stdin(Stdio::piped());
+                        rsl_cmd.arg("--no_seed");
+                        let rsl_process = rsl_cmd
+                            .current_dir(&rsl_script_path)
+                            .stdout(Stdio::piped())
+                            .spawn().at_command("RandomSettingsGenerator.py")?;
+                        let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
+                        match output.status.code() {
+                            Some(0) => {}
+                            Some(2) => return Err(racetime_bot::RollError::Retries { num_retries: 1, last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()) }.into()),
+                            _ => return Err(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output }.into()),
+                        }
+                        let plando_filename = BufRead::lines(&*output.stdout)
+                            .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
+                            .next().ok_or(racetime_bot::RollError::RslScriptOutput { regex: "^Plando File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
+                        let plando_path = rsl_script_path.join("data").join(plando_filename);
+                        let plando_file = fs::read_to_string(&plando_path).await?;
+                        let mut settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
+                        fs::remove_file(plando_path).await?;
+                        settings.insert(format!("world_count"), json!(world_count));
+                        (VersionedBranch::Pinned { version: randomizer_version }, settings)
+                    }
+                    draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } => unreachable!("draft should be done at this point"),
+                };
+                let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+                if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
+                    RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+                } else {
+                    settings.remove("password_lock");
+                    let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await);
+                    let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                    if let Some(spoiler_log_path) = spoiler_log_path {
+                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    }
+                    RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
+                }
+            } else if series == Series::BattleRoyale && event == "2" {
                 let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
                 let (mut settings, plando) = ohko::s2_settings();
                 settings.remove("password_lock");
