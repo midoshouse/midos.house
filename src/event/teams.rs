@@ -884,7 +884,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
         }
     });
-    if let QualifierKind::Score { exclude_players, .. } = qualifier_kind {
+    if let QualifierKind::Score { exclude_players, .. } = qualifier_kind && !data.is_started(&mut *transaction).await? {
         signups.drain(..exclude_players);
     }
     Ok(signups)
@@ -927,8 +927,9 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
         false
     };
     let qualifier_kind = data.qualifier_kind(&mut transaction, me.as_ref()).await?;
+    let is_started = data.is_started(&mut transaction).await?;
     if let QualifierKind::Score { series, event, .. } = qualifier_kind {
-        if !data.is_started(&mut transaction).await? {
+        if !is_started {
             let qual_event = Data::new(&mut transaction, series, event).await?.expect("missing qualifier event");
             if Race::for_event(&mut transaction, http_client, &qual_event).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) { //TODO also show if anyone is already eligible to sign up
                 show_status = ShowStatus::Confirmed;
@@ -1066,7 +1067,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
                         tr(class? = is_dimmed.then_some("dimmed")) {
                             @match qualifier_kind {
                                 QualifierKind::Rank => td(class = "numeric") : team.as_ref().and_then(|team| team.qualifier_rank);
-                                QualifierKind::Score { exclude_players, .. } => td(class = "numeric") : exclude_players + signup_idx + 1;
+                                QualifierKind::Score { exclude_players, .. } => td(class = "numeric") : if is_started { 0 } else { exclude_players } + signup_idx + 1;
                                 _ => {}
                             }
                             @if !matches!(data.team_config, TeamConfig::Solo) {
