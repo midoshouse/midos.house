@@ -2496,109 +2496,111 @@ pub(crate) async fn race_table(
                                     : "?";
                                 }
                             }
-                            RaceTableRestreams::Volunteers { can_restream, can_commentate, can_track } => @if race.teams().all(|team| team.restream_consent) {
-                                : "Restreamer: ";
-                                @if let Some(restreamer) = race.restreamers.get(&English) {
-                                    : restreamer.to_html(transaction, http_client).await?;
-                                    @if let Some(me) = me && let Restreamer::MidosHouse(id) = restreamer && *id == me.id {
-                                        br;
-                                        @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Remove Signup");
-                                        : errors;
-                                        span(class = "button-row") : button;
-                                    }
-                                } else {
-                                    strong : "none";
-                                    @if can_restream { //TODO and not racing
-                                        @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Sign Up");
-                                        : errors;
-                                        span(class = "button-row") : button;
-                                    }
-                                }
-                                br;
-                                : "Commentators: ";
-                                @if let Some(commentators) = race.commentators.get(&English) {
-                                    @let commentators_html = {
-                                        let mut buf = Vec::<User>::default();
-                                        for id in commentators {
-                                            let user = User::from_id(&mut **transaction, *id).await?.expect("foreign key constraint violated");
-                                            let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
-                                            buf.insert(idx, user);
+                            RaceTableRestreams::Volunteers { can_restream, can_commentate, can_track } => td {
+                                @if race.teams().all(|team| team.restream_consent) {
+                                    : "Restreamer: ";
+                                    @if let Some(restreamer) = race.restreamers.get(&English) {
+                                        : restreamer.to_html(transaction, http_client).await?;
+                                        @if let Some(me) = me && let Restreamer::MidosHouse(id) = restreamer && *id == me.id {
+                                            br;
+                                            @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Remove Signup");
+                                            : errors;
+                                            span(class = "button-row") : button;
                                         }
-                                        buf
-                                    };
-                                    : English.join_html_opt(commentators_html);
-                                    @if commentators.len().get() < 3 {
-                                        @if commentators.len().get() < 2 {
-                                            strong {
-                                                : " (";
-                                                : 2 - commentators.len().get();
-                                                : "–";
-                                                : 3 - commentators.len().get();
-                                                : " more needed)";
-                                            }
-                                        } else {
-                                            @if commentators.len().get() == 2 {
-                                                : " (1 optional spot available)";
-                                            } else {
-                                                : " (";
-                                                : 3 - commentators.len().get();
-                                                : " optional spots available)";
-                                            }
+                                    } else {
+                                        strong : "none";
+                                        @if can_restream { //TODO and not racing
+                                            @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Sign Up");
+                                            : errors;
+                                            span(class = "button-row") : button;
                                         }
                                     }
-                                    @if let Some(me) = me && commentators.contains(&me.id) {
-                                        br;
-                                        @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Commentator, Some(uri))), csrf, Vec::default(), "Remove Signup");
-                                        : errors;
-                                        span(class = "button-row") : button;
-                                    }
-                                } else {
-                                    strong: "none";
-                                }
-                                @if can_commentate && let Some(me) = me && race.commentators.get(&English).is_none_or(|commentators| !commentators.contains(&me.id)) { //TODO and not racing
-                                    @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Commentator, Some(uri))), csrf, Vec::default(), "Sign Up");
-                                    : errors;
-                                    span(class = "button-row") : button;
-                                }
-                                @let num_trackers = race.num_trackers(&mut *transaction).await?;
-                                @if num_trackers > 0 {
                                     br;
-                                    : "Trackers: ";
-                                    @if let Some(trackers) = race.trackers.get(&English) {
-                                        @let trackers_html = {
+                                    : "Commentators: ";
+                                    @if let Some(commentators) = race.commentators.get(&English) {
+                                        @let commentators_html = {
                                             let mut buf = Vec::<User>::default();
-                                            for id in trackers {
+                                            for id in commentators {
                                                 let user = User::from_id(&mut **transaction, *id).await?.expect("foreign key constraint violated");
                                                 let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
                                                 buf.insert(idx, user);
                                             }
                                             buf
                                         };
-                                        : English.join_html_opt(trackers_html);
-                                        @if trackers.len().get() < num_trackers {
-                                            strong {
-                                                : " (";
-                                                : num_trackers - trackers.len().get();
-                                                : " more needed)";
+                                        : English.join_html_opt(commentators_html);
+                                        @if commentators.len().get() < 3 {
+                                            @if commentators.len().get() < 2 {
+                                                strong {
+                                                    : " (";
+                                                    : 2 - commentators.len().get();
+                                                    : "–";
+                                                    : 3 - commentators.len().get();
+                                                    : " more needed)";
+                                                }
+                                            } else {
+                                                @if commentators.len().get() == 2 {
+                                                    : " (1 optional spot available)";
+                                                } else {
+                                                    : " (";
+                                                    : 3 - commentators.len().get();
+                                                    : " optional spots available)";
+                                                }
                                             }
                                         }
-                                        @if let Some(me) = me && trackers.contains(&me.id) {
+                                        @if let Some(me) = me && commentators.contains(&me.id) {
                                             br;
-                                            @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Tracker, Some(uri))), csrf, Vec::default(), "Remove Signup");
+                                            @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Commentator, Some(uri))), csrf, Vec::default(), "Remove Signup");
                                             : errors;
                                             span(class = "button-row") : button;
                                         }
                                     } else {
                                         strong: "none";
                                     }
-                                    @if can_track && let Some(me) = me && race.trackers.get(&English).is_none_or(|trackers| !trackers.contains(&me.id)) { //TODO and not racing
-                                        @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Tracker, Some(uri))), csrf, Vec::default(), "Sign Up");
+                                    @if can_commentate && let Some(me) = me && race.commentators.get(&English).is_none_or(|commentators| !commentators.contains(&me.id)) { //TODO and not racing
+                                        @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Commentator, Some(uri))), csrf, Vec::default(), "Sign Up");
                                         : errors;
                                         span(class = "button-row") : button;
                                     }
+                                    @let num_trackers = race.num_trackers(&mut *transaction).await?;
+                                    @if num_trackers > 0 {
+                                        br;
+                                        : "Trackers: ";
+                                        @if let Some(trackers) = race.trackers.get(&English) {
+                                            @let trackers_html = {
+                                                let mut buf = Vec::<User>::default();
+                                                for id in trackers {
+                                                    let user = User::from_id(&mut **transaction, *id).await?.expect("foreign key constraint violated");
+                                                    let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
+                                                    buf.insert(idx, user);
+                                                }
+                                                buf
+                                            };
+                                            : English.join_html_opt(trackers_html);
+                                            @if trackers.len().get() < num_trackers {
+                                                strong {
+                                                    : " (";
+                                                    : num_trackers - trackers.len().get();
+                                                    : " more needed)";
+                                                }
+                                            }
+                                            @if let Some(me) = me && trackers.contains(&me.id) {
+                                                br;
+                                                @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Tracker, Some(uri))), csrf, Vec::default(), "Remove Signup");
+                                                : errors;
+                                                span(class = "button-row") : button;
+                                            }
+                                        } else {
+                                            strong: "none";
+                                        }
+                                        @if can_track && let Some(me) = me && race.trackers.get(&English).is_none_or(|trackers| !trackers.contains(&me.id)) { //TODO and not racing
+                                            @let (errors, button) = button_form(uri!(volunteer_post(race.series, &race.event, race.id, VolunteerRole::Tracker, Some(uri))), csrf, Vec::default(), "Sign Up");
+                                            : errors;
+                                            span(class = "button-row") : button;
+                                        }
+                                    }
+                                } else {
+                                    span(class = "dimmed") : "no restream";
                                 }
-                            } else {
-                                span(class = "dimmed") : "no restream";
                             }
                         }
                         @if has_buttons {
