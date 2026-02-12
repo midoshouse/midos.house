@@ -1088,19 +1088,19 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         let is_restream_coordinator = data.restream_coordinators(&mut transaction).await?.contains(me);
         let show_restream_consent = is_organizer || is_restream_coordinator;
         let can_edit = show_restream_consent || me.is_archivist;
-        (can_create, if show_restream_consent {
-            if series == Series::Standard && event == "9cc" { //TODO roll out to other events after beta
-                cal::RaceTableRestreams::Volunteers {
-                    can_restream: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'restreamer') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
-                    can_commentate: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'commentator') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
-                    can_track: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'tracker') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
-                }
-            } else {
-                cal::RaceTableRestreams::Consent
-            }
+        let restreams = if series == Series::Standard && event == "9cc" //TODO roll out to other events after beta
+            && let can_restream = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'restreamer') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?
+            && let can_commentate = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'commentator') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?
+            && let can_track = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'tracker') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?
+            && (can_restream || can_commentate || can_track)
+        {
+            cal::RaceTableRestreams::Volunteers { can_restream, can_commentate, can_track }
+        } else if show_restream_consent {
+            cal::RaceTableRestreams::Consent
         } else {
             cal::RaceTableRestreams::None
-        }, can_edit)
+        };
+        (can_create, restreams, can_edit)
     } else {
         (false, cal::RaceTableRestreams::None, false)
     };
