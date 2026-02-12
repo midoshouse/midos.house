@@ -84,7 +84,7 @@ impl Environment {
         if self.is_dev() { "racetime.midos.house" } else { "racetime.gg" }
     }
 
-    fn base_uri(&self) -> rocket::http::uri::Absolute<'static> {
+    fn base_uri(&self) -> uri::Absolute<'static> {
         match self {
             Self::Production => uri!("https://midos.house"),
             Self::Dev => uri!("https://dev.midos.house"),
@@ -101,7 +101,7 @@ fn racetime_host() -> &'static str {
     Environment::default().racetime_host()
 }
 
-fn base_uri() -> rocket::http::uri::Absolute<'static> {
+fn base_uri() -> uri::Absolute<'static> {
     Environment::default().base_uri()
 }
 

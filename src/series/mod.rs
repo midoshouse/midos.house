@@ -4,10 +4,7 @@ use {
         impl_from_uri_param_identity,
         uri::{
             self,
-            fmt::{
-                Path,
-                UriDisplay,
-            },
+            fmt::Path,
         },
     },
     sqlx::{
@@ -177,9 +174,9 @@ impl<'a> FromParam<'a> for Series {
     }
 }
 
-impl UriDisplay<Path> for Series {
+impl uri::fmt::UriDisplay<Path> for Series {
     fn fmt(&self, f: &mut uri::fmt::Formatter<'_, Path>) -> fmt::Result {
-        UriDisplay::fmt(self.slug(), f) // assume all series names are URI safe
+        uri::fmt::UriDisplay::fmt(self.slug(), f) // assume all series names are URI safe
     }
 }
 

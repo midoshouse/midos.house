@@ -117,6 +117,7 @@ pub(crate) use {
         http::{
             Status,
             ext::IntoOwned as _,
+            uri,
         },
         request::{
             self,
@@ -234,6 +235,7 @@ pub(crate) use {
             AsyncKind,
             MatchSource,
             TeamConfig,
+            VolunteerRole,
             teams::QualifierKind,
         },
         favicon::{

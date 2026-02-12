@@ -152,7 +152,7 @@ pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
         if data.is_ended() {
-            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured"));
+            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured."));
         }
         if !data.organizers(&mut transaction).await?.contains(&me) {
             form.context.push_error(form::Error::validation("You must be an organizer to configure this event."));
@@ -321,7 +321,7 @@ pub(crate) async fn add_restream_coordinator(pool: &State<PgPool>, ootr_api_clie
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
         if data.is_ended() {
-            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured"));
+            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured."));
         }
         if !data.organizers(&mut transaction).await?.contains(&me) {
             form.context.push_error(form::Error::validation("You must be an organizer to configure this event."));
@@ -353,7 +353,7 @@ pub(crate) async fn remove_restream_coordinator(pool: &State<PgPool>, ootr_api_c
     form.verify(&csrf);
     Ok(if form.value.is_some() {
         if data.is_ended() {
-            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured"));
+            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured."));
         }
         if !data.organizers(&mut transaction).await?.contains(&me) {
             form.context.push_error(form::Error::validation("You must be an organizer to configure this event."));
@@ -369,6 +369,7 @@ pub(crate) async fn remove_restream_coordinator(pool: &State<PgPool>, ootr_api_c
             RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
         } else {
             sqlx::query!("DELETE FROM restreamers WHERE series = $1 AND event = $2 AND restreamer = $3", data.series as _, &data.event, restream_coordinator as _).execute(&**pool).await?;
+            transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(restream_coordinators_get(series, event))))
         }
     } else {

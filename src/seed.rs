@@ -8,7 +8,6 @@ use {
         fs::NamedFile,
         http::Header,
         response::content::RawJson,
-        uri,
     },
     rocket_util::OptSuffix,
     crate::{
@@ -243,7 +242,7 @@ enum SpoilerStatus {
     NotFound,
 }
 
-pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     //TODO show seed password when appropriate (like show_seed but at race start instead of 15 minutes before)
     let extra = seed.extra(now).await?;
     let mut seed_links = match seed.files {

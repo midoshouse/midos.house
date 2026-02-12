@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        {
+          "Custom": {
+            "name": "volunteer_role",
+            "kind": {
+              "Enum": [
+                "restreamer",
+                "commentator",
+                "tracker"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2d9bd77dddc11b78768eae0ff24aa5fa3321ed8500a1da014457994f0b11efde"
+}

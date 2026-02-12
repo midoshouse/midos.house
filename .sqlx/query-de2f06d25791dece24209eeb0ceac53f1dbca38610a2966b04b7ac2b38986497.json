@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT role AS \"role: VolunteerRole\" FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role: VolunteerRole",
+        "type_info": {
+          "Custom": {
+            "name": "volunteer_role",
+            "kind": {
+              "Enum": [
+                "restreamer",
+                "commentator",
+                "tracker"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "de2f06d25791dece24209eeb0ceac53f1dbca38610a2966b04b7ac2b38986497"
+}

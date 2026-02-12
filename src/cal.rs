@@ -4213,17 +4213,6 @@ async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
     Ok(page(transaction, &Some(me), &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Volunteer — {}", event.display_name), content).await?)
 }
 
-#[derive(Debug, sqlx::Type, FromFormField, UriDisplayQuery, Sequence)]
-#[sqlx(type_name = "volunteer_role", rename_all = "lowercase")]
-pub(crate) enum VolunteerRole {
-    #[field(value = "restreamer")]
-    Restreamer,
-    #[field(value = "commentator")]
-    Commentator,
-    #[field(value = "tracker")]
-    Tracker,
-}
-
 #[rocket::post("/event/<series>/<event>/races/<id>/volunteer?<role>&<redirect_to>", data = "<form>")]
 pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
     let mut transaction = pool.begin().await?;

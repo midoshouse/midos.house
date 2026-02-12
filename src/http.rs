@@ -637,6 +637,8 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::practice_seed_get,
         event::practice_seed_post,
         event::volunteer,
+        event::add_volunteer,
+        event::remove_volunteer,
         event::enter::get,
         event::enter::post,
         event::teams::get,

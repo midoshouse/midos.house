@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO volunteers (organization, language, volunteer, role) VALUES ('tsg', 'en', $1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        {
+          "Custom": {
+            "name": "volunteer_role",
+            "kind": {
+              "Enum": [
+                "restreamer",
+                "commentator",
+                "tracker"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "26f5d702beb0aaf9554ce4acd40415c64832ce6d68ea06b2ae7e46d2ee378d47"
+}

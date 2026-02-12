@@ -421,7 +421,7 @@ pub(crate) enum RaceTimeCallbackError {
 pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, http_client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
     let mut transaction = pool.begin().await?;
     let racetime_user = handle_racetime_token_response(http_client, cookies, &token).await?;
-    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(&mut *transaction, &racetime_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
     } else {
@@ -443,7 +443,7 @@ pub(crate) enum DiscordCallbackError {
 pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, http_client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, DiscordCallbackError> {
     let mut transaction = pool.begin().await?;
     let discord_user = handle_discord_token_response(http_client, cookies, &token).await?;
-    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_discord(&mut *transaction, discord_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
     } else {
@@ -463,7 +463,7 @@ pub(crate) async fn challonge_callback(pool: &State<PgPool>, me: User, http_clie
     let challonge_user = handle_challonge_token_response(http_client, &token).await?;
     sqlx::query!("UPDATE users SET challonge_id = $1 WHERE id = $2", challonge_user.id, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
-    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(Redirect::to(redirect_uri))
 }
 
@@ -479,7 +479,7 @@ pub(crate) async fn startgg_callback(pool: &State<PgPool>, me: User, http_client
     let startgg_id = handle_startgg_token_response(http_client, &token).await?;
     sqlx::query!("UPDATE users SET startgg_id = $1 WHERE id = $2", startgg_id as _, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
-    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(Redirect::to(redirect_uri))
 }
 
@@ -493,7 +493,7 @@ pub(crate) enum RegisterError {
     ExistsRaceTime,
 }
 
-async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>, redirect_uri: Option<rocket::http::uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
+async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>, redirect_uri: Option<uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(racetime_user) = racetime_user {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut *transaction).await? {
@@ -513,7 +513,7 @@ async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetim
     })
 }
 
-async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>, redirect_uri: Option<rocket::http::uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
+async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>, redirect_uri: Option<uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(discord_user) = discord_user {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, PgSnowflake(discord_user.id) as _).fetch_one(&mut *transaction).await? {

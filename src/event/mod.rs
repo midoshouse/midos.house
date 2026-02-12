@@ -1,5 +1,6 @@
 use {
     std::io::BufRead,
+    rocket::http::impl_from_uri_param_identity,
     serenity::all::{
         CreateMessage,
         EditMember,
@@ -754,7 +755,7 @@ impl<'a> Data<'a> {
                         button(popovertarget = "practice-menu") : "Practice ⯆";
                     }
                 }
-                @if matches!(self.series, Series::League | Series::TriforceBlitz) && !self.is_ended() {
+                @if matches!((self.series, &*self.event), (Series::League, _) | (Series::Standard, "9cc") | (Series::TriforceBlitz, _)) && !self.is_ended() {
                     @if let Tab::Volunteer = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(volunteer(self.series, &*self.event)))) : "Volunteer";
                     } else {
@@ -949,7 +950,7 @@ pub(crate) enum Error {
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("missing user data for an event organizer")]
+    #[error("missing user data for an organizer")]
     OrganizerUserData,
     #[error("missing user data for a restream coordinator")]
     RestreamCoordinatorUserData,
@@ -1090,7 +1091,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         (can_create, if show_restream_consent {
             if series == Series::Standard && event == "9cc" { //TODO roll out to other events after beta
                 cal::RaceTableRestreams::Volunteers {
-                    can_restream: is_restream_coordinator,
+                    can_restream: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'restreamer') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
                     can_commentate: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'commentator') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
                     can_track: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = 'tracker') as "exists!""#, me.id as _).fetch_one(&mut *transaction).await?,
                 }
@@ -1588,7 +1589,7 @@ pub(crate) async fn status_post(pool: &State<PgPool>, http_client: &State<reqwes
         if row.restream_consent && !value.restream_consent {
             //TODO check if restream consent can still be revoked according to tournament rules, offer to resign if not
             if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().any(|race| !race.is_ended() && !race.video_urls.is_empty()) {
-                form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an event organizer if you would like to cancel.").with_name("restream_consent"));
+                form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an organizer if you would like to cancel.").with_name("restream_consent"));
             }
         }
         if form.context.errors().next().is_some() {
@@ -2653,11 +2654,78 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
     }))
 }
 
-#[rocket::get("/event/<series>/<event>/volunteer")]
-pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Volunteer, false).await?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, FromFormField, UriDisplayQuery, Sequence)]
+#[sqlx(type_name = "volunteer_role", rename_all = "lowercase")]
+pub(crate) enum VolunteerRole {
+    #[field(value = "restreamer")]
+    Restreamer,
+    #[field(value = "commentator")]
+    Commentator,
+    #[field(value = "tracker")]
+    Tracker,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("unknown volunteer role")]
+pub(crate) struct VolunteerRoleFromParamError;
+
+impl<'a> FromParam<'a> for VolunteerRole {
+    type Error = VolunteerRoleFromParamError;
+
+    fn from_param(param: &'a str) -> Result<Self, VolunteerRoleFromParamError> {
+        match param {
+            "restreamer" => Ok(Self::Restreamer),
+            "commentator" => Ok(Self::Commentator),
+            "tracker" => Ok(Self::Tracker),
+            _ => Err(VolunteerRoleFromParamError),
+        }
+    }
+}
+
+impl uri::fmt::UriDisplay<uri::fmt::Path> for VolunteerRole {
+    fn fmt(&self, f: &mut uri::fmt::Formatter<'_, uri::fmt::Path>) -> fmt::Result {
+        match self {
+            Self::Restreamer => uri::fmt::UriDisplay::fmt("restreamer", f),
+            Self::Commentator => uri::fmt::UriDisplay::fmt("commentator", f),
+            Self::Tracker => uri::fmt::UriDisplay::fmt("tracker", f),
+        }
+    }
+}
+
+impl_from_uri_param_identity!([uri::fmt::Path] VolunteerRole);
+
+enum VolunteersFormDefaults<'v> {
+    None,
+    AddContext(VolunteerRole, Context<'v>),
+    RemoveContext(VolunteerRole, Id<Users>, Context<'v>),
+}
+
+impl<'v> VolunteersFormDefaults<'v> {
+    fn remove_errors(&self, for_role: VolunteerRole, for_volunteer: Id<Users>) -> Vec<&form::Error<'v>> {
+        match self {
+            Self::RemoveContext(role, volunteer, ctx) if *role == for_role && *volunteer == for_volunteer => ctx.errors().collect(),
+            _ => Vec::default(),
+        }
+    }
+
+    fn add_errors(&self, for_role: VolunteerRole) -> Vec<&form::Error<'v>> {
+        match self {
+            Self::AddContext(role, ctx) if *role == for_role => ctx.errors().collect(),
+            _ => Vec::default(),
+        }
+    }
+
+    fn add_volunteer(&self, for_role: VolunteerRole) -> Option<&str> {
+        match self {
+            Self::AddContext(role, ctx) if *role == for_role => ctx.field_value("volunteer"),
+            _ => None,
+        }
+    }
+}
+
+//(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>)
+async fn volunteer_page(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: &Data<'_>, defaults: VolunteersFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Volunteer, false).await?;
     let content = match data.series {
         Series::League => html! {
             @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;
@@ -2668,6 +2736,102 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<
                     : " (only one person from the team needs to complete it), then DM ";
                     : chuckles;
                     : " on Discord.";
+                }
+            }
+        },
+        Series::Standard if &*data.event == "9cc" => html! {
+            @if let Some(me) = &me {
+                @if data.organizers(&mut transaction).await?.contains(me) {
+                    p : "English restreams for this event are organized by The Silver Gauntlets. The volunteer lists below are synced across events.";
+                    @for role in all() {
+                        h2 {
+                            @match role {
+                                VolunteerRole::Restreamer => : "Manage restreamers";
+                                VolunteerRole::Commentator => : "Manage commentators";
+                                VolunteerRole::Tracker => : "Manage trackers";
+                            }
+                        }
+                        @let volunteers = sqlx::query_scalar!(r#"SELECT volunteer AS "volunteer: Id<Users>" FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND role = $1"#, role as _).fetch_all(&mut *transaction).await?;
+                        @if volunteers.is_empty() {
+                            @match role {
+                                VolunteerRole::Restreamer => p : "No restreamers so far.";
+                                VolunteerRole::Commentator => p : "No commentators so far.";
+                                VolunteerRole::Tracker => p : "No trackers so far.";
+                            }
+                        } else {
+                            table {
+                                thead {
+                                    tr {
+                                        @match role {
+                                            VolunteerRole::Restreamer => th : "Restreamer";
+                                            VolunteerRole::Commentator => th : "Commentator";
+                                            VolunteerRole::Tracker => th : "Tracker";
+                                        }
+                                        th;
+                                    }
+                                }
+                                tbody {
+                                    @for volunteer in volunteers {
+                                        @let volunteer = User::from_id(&mut *transaction, volunteer).await?.expect("foreign key constraint violated");
+                                        tr {
+                                            td : volunteer;
+                                            td {
+                                                @let errors = defaults.remove_errors(role, volunteer.id);
+                                                @let (errors, button) = button_form(uri!(remove_volunteer(data.series, &*data.event, role, volunteer.id)), csrf, errors, "Remove");
+                                                : errors;
+                                                div(class = "button-row") : button;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        @match role {
+                            VolunteerRole::Restreamer => h3 : "Add restreamer";
+                            VolunteerRole::Commentator => h3 : "Add commentator";
+                            VolunteerRole::Tracker => h3 : "Add tracker";
+                        }
+                        @let mut errors = defaults.add_errors(role);
+                        : full_form(uri!(add_volunteer(data.series, &*data.event, role)), csrf, html! {
+                            : form_field("volunteer", &mut errors, html! {
+                                label(for = "volunteer") {
+                                    @match role {
+                                        VolunteerRole::Restreamer => : "Restreamer:";
+                                        VolunteerRole::Commentator => : "Commentator:";
+                                        VolunteerRole::Tracker => : "Tracker:";
+                                    }
+                                }
+                                input(type = "text", name = "volunteer", value? = defaults.add_volunteer(role));
+                                label(class = "help") : "(Enter the volunteer's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
+                            });
+                        }, errors, "Add");
+                    }
+                } else {
+                    article {
+                        p {
+                            : "English restreams for this event are organized by The Silver Gauntlets. ";
+                            @let roles = sqlx::query_scalar!(r#"SELECT role AS "role: VolunteerRole" FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1"#, me.id as _).fetch_all(&mut *transaction).await?;
+                            @if let Ok(roles) = NEVec::try_from(roles) {
+                                : "You are approved as ";
+                                : English.join_html(roles.into_nonempty_iter().map(|role| match role {
+                                    VolunteerRole::Restreamer => "restreamer",
+                                    VolunteerRole::Commentator => "commentator",
+                                    VolunteerRole::Tracker => "tracker",
+                                }));
+                                : ". Please go to the races tab to volunteer for a race, or contact an organizer of this event to volunteer in other roles.";
+                            } else {
+                                : "Please contact an organizer of this event to volunteer.";
+                            }
+                        }
+                        p : "For other languages, please contact an organizer of this event if you would like to coordinate restreams, or contact the respective restream coordinators to volunteer in other roles.";
+                    }
+                }
+            } else {
+                article {
+                    p : "English restreams for this event are organized by The Silver Gauntlets. ";
+                    a(href = uri!(auth::login(Some(uri!(status(data.series, &*data.event)))))) : "Sign in or create a Mido's House account";
+                    : " to view your volunteer status.";
+                    p : "For other languages, please contact an organizer of this event if you would like to coordinate restreams, or contact the respective restream coordinators to volunteer in other roles.";
                 }
             }
         },
@@ -2690,4 +2854,88 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<
         : header;
         : content;
     }).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/volunteer")]
+pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    Ok(volunteer_page(transaction, ootr_api_client, me, uri, csrf.as_ref(), &data, VolunteersFormDefaults::None).await?)
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct AddVolunteerForm {
+    #[field(default = String::new())]
+    csrf: String,
+    volunteer: Id<Users>,
+}
+
+#[rocket::post("/event/<series>/<event>/volunteer/<role>", data = "<form>")]
+pub(crate) async fn add_volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, role: VolunteerRole, form: Form<Contextual<'_, AddVolunteerForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    Ok(if let Some(ref value) = form.value {
+        if data.series != Series::Standard || data.event != "9cc" { //TODO roll out to other events after beta
+            form.context.push_error(form::Error::validation("The new volunteer signup system is currently in beta and not yet enabled for this event."));
+        }
+        if data.is_ended() {
+            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured."));
+        }
+        if !data.organizers(&mut transaction).await?.contains(&me) {
+            form.context.push_error(form::Error::validation("You must be an organizer to manage volunteers."));
+        }
+        if let Some(volunteer) = User::from_id(&mut *transaction, value.volunteer).await? {
+            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = $2) AS "exists!""#, volunteer.id as _, role as _).fetch_one(&mut *transaction).await? {
+                form.context.push_error(form::Error::validation("This user already has this role.").with_name("volunteer"));
+            }
+        } else {
+            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("volunteer"));
+        }
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::AddContext(role, form.context)).await?)
+        } else {
+            sqlx::query!("INSERT INTO volunteers (organization, language, volunteer, role) VALUES ('tsg', 'en', $1, $2)", value.volunteer as _, role as _).execute(&mut *transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(volunteer(series, event))))
+        }
+    } else {
+        RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::AddContext(role, form.context)).await?)
+    })
+}
+
+#[rocket::post("/event/<series>/<event>/volunteer/<role>/remove/<volunteer>", data = "<form>")]
+pub(crate) async fn remove_volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, role: VolunteerRole, volunteer: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    Ok(if form.value.is_some() {
+        if data.series != Series::Standard || data.event != "9cc" { //TODO roll out to other events after beta
+            form.context.push_error(form::Error::validation("The new volunteer signup system is currently in beta and not yet enabled for this event."));
+        }
+        if data.is_ended() {
+            form.context.push_error(form::Error::validation("This event has ended and can no longer be configured."));
+        }
+        if !data.organizers(&mut transaction).await?.contains(&me) {
+            form.context.push_error(form::Error::validation("You must be an organizer to manage volunteers."));
+        }
+        if let Some(volunteer) = User::from_id(&mut *transaction, volunteer).await? {
+            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = $2) AS "exists!""#, volunteer.id as _, role as _).fetch_one(&mut *transaction).await? {
+                form.context.push_error(form::Error::validation("This user already does not have this role."));
+            }
+        } else {
+            form.context.push_error(form::Error::validation("There is no user with this ID."));
+        }
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::RemoveContext(role, volunteer, form.context)).await?)
+        } else {
+            sqlx::query!("DELETE FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = $2", volunteer as _, role as _).execute(&mut *transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(volunteer(series, event))))
+        }
+    } else {
+        RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::RemoveContext(role, volunteer, form.context)).await?)
+    })
 }
