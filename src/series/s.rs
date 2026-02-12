@@ -1,11 +1,9 @@
 use {
-    /*
     chrono::Days,
     derive_more::{
         Display,
         FromStr,
     },
-    */ // regular weekly schedule suspended during s/9 qualifiers
     crate::{
         event::{
             Data,
@@ -157,7 +155,6 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> seed::Settings 
     settings
 }
 
-/*
 #[derive(FromStr, Display, PartialEq, Eq, Hash, Sequence)]
 pub(crate) enum WeeklyKind {
     Kokiri,
@@ -194,7 +191,6 @@ impl WeeklyKind {
         time
     }
 }
-*/ // regular weekly schedule suspended during s/9 qualifiers
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
 pub(crate) const RANDOBOT_CAN_ROLL_WEEKLY: bool = true;
@@ -205,7 +201,6 @@ pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
 pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "S9";
-/*
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
@@ -219,7 +214,6 @@ fn long_weekly_settings() -> RawHtml<String> {
         }
     }
 }
-*/ // regular weekly schedule suspended during s/9 qualifiers
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
@@ -233,7 +227,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             let main_tournament = Data::new(transaction, Series::Standard, main_tournament_season.to_string()).await?.expect("database changed during transaction");
             let main_tournament_organizers = main_tournament.organizers(transaction).await?;
             let (main_tournament_organizers, race_mods) = organizers.into_iter().partition::<Vec<_>, _>(|organizer| main_tournament_organizers.contains(organizer));
-            //let now = Utc::now(); // regular weekly schedule suspended during s/9 qualifiers
+            let now = Utc::now();
             Some(html! {
                 article {
                     p {
@@ -245,7 +239,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "the Standard ruleset";
                         : ".";
                     }
-                    /*
                     p : "The race schedule runs on a 2-week cycle:";
                     ol {
                         li {
@@ -270,12 +263,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                     }
                     : long_weekly_settings();
-                    */ // regular weekly schedule suspended during s/9 qualifiers
-                    p {
-                        : "The weeklies are on hiatus until the end of ";
-                        a(href = uri!(event::info(Series::Standard, "9"))) : "Standard Tournament Season 9";
-                        : "'s qualifier phase — you can join the qualifiers instead, even if you don't intend to participate in later phases of the tournament.";
-                    } // regular weekly schedule suspended during s/9 qualifiers
                 }
             })
         }
