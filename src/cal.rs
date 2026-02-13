@@ -3264,7 +3264,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
     loop {
         match auto_import_races_inner(db_pool.clone(), http_client.clone(), config.clone(), shutdown.clone(), discord_ctx.clone(), new_room_lock.clone()).await {
             Ok(()) => break Ok(()),
-            Err(AutoImportError::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id))) => {
+            Err(AutoImportError::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)) | AutoImportError::Event(event::Error::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)))) => {
                 let wait_time = Duration::from_secs(60);
                 eprintln!("failed to auto-import races for uninitialized Discord guild {guild_id} (retrying in {})", English.format_duration(wait_time, true));
                 sleep(wait_time).await;
