@@ -4349,6 +4349,7 @@ pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &S
                 },
             }
             race.save(&mut transaction).await?;
+            transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
     } else {
