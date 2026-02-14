@@ -356,6 +356,7 @@ impl<'a> Data<'a> {
             (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
             (Series::Standard, "8" | "8cc") => from_file!("../../assets/event/s/chests-8-8.2.json"),
             (Series::Standard, "9" | "9cc") => from_file!("../../assets/event/s/chests-9-8.3.63.json"),
+            (Series::TournamentOfTruth, "2") => from_file!("../../assets/event/tot/chests-2-9.0.2-rob.15.json"),
             (Series::TournoiFrancophone, "3") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"),
             (Series::TournoiFrancophone, "4") => from_file!("../../assets/event/fr/chests-4-8.1.45-rob.105.json"),
             (Series::TournoiFrancophone, "5") => from_file!("../../assets/event/fr/chests-5-8.2.64-rob.135.json"),
