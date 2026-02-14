@@ -3,10 +3,16 @@ name = "midos-house"
 version = "0.1.0"
 edition = "2024"
 
+[profile.dev.build-override]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true
 strip = true
+
+[profile.release.build-override]
+opt-level = 3
 
 [lints.rust]
 rust_2018_idioms = "deny"
@@ -24,7 +30,8 @@ production = []
 local = []
 
 [build-dependencies]
-git2 = "0.20" # gix is much slower here
+gix = "0.75" # much slower than git2 but avoids a C dependency on openssl-sys
+itertools = "0.14"
 semver = "1"
 thiserror = "2"
 
@@ -96,7 +103,6 @@ yup-oauth2 = "12"
 
 [target.'cfg(unix)'.dependencies]
 async-proto = { version = "0.26", features = ["chrono", "serde_json", "serenity", "uuid"] }
-openssl = { version = "0.10", features = ["vendored"] }
 xdg = "3"
 
 [target.'cfg(windows)'.dependencies]

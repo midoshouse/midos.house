@@ -18,7 +18,6 @@ use {
 };
 #[cfg(unix)] use {
     mhstatus::PrepareStopUpdate,
-    openssl as _, // `vendored` feature required to fix release build
     tokio::{
         io::stdout,
         net::UnixStream,
