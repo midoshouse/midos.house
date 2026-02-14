@@ -886,6 +886,7 @@ impl Race {
             | Series::PotsOfTime
             | Series::SongsOfHope
             | Series::SpeedGaming
+            | Series::TournamentOfTruth //TODO add archive of season 1?
             | Series::TournoiFrancophone
             | Series::TriforceBlitz
             | Series::WeTryToBeBetter

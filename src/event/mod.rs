@@ -399,6 +399,7 @@ impl<'a> Data<'a> {
             Series::SongsOfHope => false,
             Series::SpeedGaming => false,
             Series::Standard => false,
+            Series::TournamentOfTruth => false,
             Series::TournoiFrancophone => false,
             Series::TriforceBlitz => false,
             Series::WeTryToBeBetter => false,
@@ -1038,6 +1039,7 @@ pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(&mut transaction, &data).await?,
+        Series::TournamentOfTruth => tot::info(&mut transaction, &data).await?,
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
         Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
         Series::WeTryToBeBetter => wttbb::info(&mut transaction, &data).await?,
@@ -1425,6 +1427,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
                             | Series::PotsOfTime
                             | Series::Rsl
                             | Series::Standard
+                            | Series::TournamentOfTruth
                             | Series::TournoiFrancophone
                             | Series::WeTryToBeBetter
                                 => @if let French = data.language {

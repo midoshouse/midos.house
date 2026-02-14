@@ -37,6 +37,7 @@ pub(crate) mod scrubs;
 pub(crate) mod sgl;
 pub(crate) mod soh;
 pub(crate) mod tfb;
+pub(crate) mod tot;
 pub(crate) mod wttbb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Sequence)]
@@ -57,6 +58,7 @@ pub(crate) enum Series {
     SongsOfHope,
     SpeedGaming,
     Standard,
+    TournamentOfTruth,
     TournoiFrancophone,
     TriforceBlitz,
     WeTryToBeBetter,
@@ -81,6 +83,7 @@ impl Series {
             Self::SongsOfHope => "soh",
             Self::SpeedGaming => "sgl",
             Self::Standard => "s",
+            Self::TournamentOfTruth => "tot",
             Self::TournoiFrancophone => "fr",
             Self::TriforceBlitz => "tfb",
             Self::WeTryToBeBetter => "wttbb",
@@ -105,6 +108,7 @@ impl Series {
             Self::SongsOfHope => "Songs of Hope",
             Self::SpeedGaming => "SpeedGaming Live",
             Self::Standard => "Standard Tournaments",
+            Self::TournamentOfTruth => "Tournaments of Truth",
             Self::TournoiFrancophone => "Tournois Francophones",
             Self::TriforceBlitz => "Triforce Blitz",
             Self::WeTryToBeBetter => "WeTryToBeBetter",
@@ -116,7 +120,7 @@ impl Series {
             Self::TriforceBlitz => TimeDelta::hours(2),
             Self::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
-            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
+            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
             Self::PotsOfTime | Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
         }
