@@ -225,6 +225,7 @@ pub(crate) enum Goal {
     SongsOfHope,
     StandardRuleset,
     StandardWeeklies,
+    TournamentOfTruthS2,
     TournoiFrancoS3,
     TournoiFrancoS4,
     TournoiFrancoS5,
@@ -283,6 +284,7 @@ impl Goal {
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
             Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "9" | "9cc"),
             Self::StandardWeeklies => false, // practice only
+            Self::TournamentOfTruthS2 => series == Series::TournamentOfTruth && event == "2",
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TournoiFrancoS5 => series == Series::TournoiFrancophone && event == "5",
@@ -327,6 +329,7 @@ impl Goal {
             | Self::Sgl2025
             | Self::SongsOfHope
             | Self::StandardWeeklies
+            | Self::TournamentOfTruthS2
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
@@ -372,6 +375,7 @@ impl Goal {
             Self::SongsOfHope => "Songs of Hope",
             Self::StandardRuleset => "Standard Ruleset",
             Self::StandardWeeklies => "Standard Weeklies",
+            Self::TournamentOfTruthS2 => "Tournament of Truth Season 2",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TournoiFrancoS5 => "Tournoi Francophone Saison 5",
@@ -418,6 +422,7 @@ impl Goal {
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
                 => English,
+            | Self::TournamentOfTruthS2
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
                 => English, //TODO change to bilingual English/French
@@ -463,6 +468,7 @@ impl Goal {
             | Self::SongsOfHope
             | Self::StandardRuleset
             | Self::StandardWeeklies
+            | Self::TournamentOfTruthS2
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
@@ -503,6 +509,7 @@ impl Goal {
             | Self::Rsl
             | Self::ScrubsS6
             | Self::SongsOfHope
+            | Self::TournamentOfTruthS2
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
@@ -553,6 +560,7 @@ impl Goal {
                 | Self::Sgl2023
                 | Self::Sgl2024
                 | Self::SongsOfHope
+                | Self::TournamentOfTruthS2
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
                 | Self::TournoiFrancoS5
@@ -616,6 +624,7 @@ impl Goal {
                 }
             },
             Self::StandardWeeklies => event.expect("event must be set for Goal::StandardWeeklies").rando_version.clone().expect("no randomizer version configured for weeklies"), //TODO allow weekly organizers to configure this
+            Self::TournamentOfTruthS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 9, 0, 2, 15) },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
             Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105) },
             Self::TournoiFrancoS5 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 2, 64, 135) },
@@ -661,6 +670,7 @@ impl Goal {
             Self::SongsOfHope => Some(soh::settings()),
             Self::StandardRuleset => None, // per-event settings
             Self::StandardWeeklies => None, // read from database
+            Self::TournamentOfTruthS2 => Some(tot::s2_settings()),
             Self::TournoiFrancoS3 => None, // settings draft
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TournoiFrancoS5 => None, // settings draft
@@ -697,6 +707,7 @@ impl Goal {
             | Self::Sgl2024
             | Self::Sgl2025
             | Self::SongsOfHope
+            | Self::TournamentOfTruthS2
                 => ctx.say("!seed: The settings used for the tournament").await?,
             | Self::PotsOfTime
                 => ctx.say("!seed: The weights used for the tournament").await?,
@@ -860,6 +871,7 @@ impl Goal {
             | Self::Sgl2024
             | Self::Sgl2025
             | Self::SongsOfHope
+            | Self::TournamentOfTruthS2
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
@@ -3667,6 +3679,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::TournamentOfTruthS2 => ctx.send_message(
+                                "Welcome! This is a practice room for the 2nd season of the Tournament of Truth. Learn more about the tournament at https://midos.house/event/tot/2",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::TournoiFrancoS3 => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
                                 true,
@@ -4148,6 +4172,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Sgl2024
                             | Goal::Sgl2025
                             | Goal::SongsOfHope
+                            | Goal::TournamentOfTruthS2
                             | Goal::TriforceBlitzProgressionSpoiler
                                 => this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetterS1
@@ -4931,6 +4956,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::SongsOfHope
                     | Goal::StandardRuleset
                     | Goal::StandardWeeklies
+                    | Goal::TournamentOfTruthS2
                     | Goal::TournoiFrancoS3
                     | Goal::TournoiFrancoS4
                     | Goal::TournoiFrancoS5

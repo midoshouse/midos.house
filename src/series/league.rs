@@ -433,7 +433,6 @@ pub(crate) fn s8_settings() -> seed::Settings {
         format!("ruto_already_f1_jabu") => json!(true),
         format!("chicken_count") => json!(3),
         format!("big_poe_count") => json!(1),
-        format!("hint_dist") => json!("custom"),
         format!("hint_dist_user") => json!({
             "name":                  "league",
             "gui_name":              "League",
