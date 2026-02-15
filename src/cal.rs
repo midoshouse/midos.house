@@ -26,7 +26,6 @@ use {
         Platform as _,
     },
     crate::{
-        discord_bot,
         event::Tab,
         prelude::*,
         racetime_bot::roll_seed_locally,
@@ -315,45 +314,24 @@ impl RaceSchedule {
         }
     }
 
-    pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) -> Option<DateTime<Utc>> {
-        match *self {
-            Self::Unscheduled => {
-                *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
-                None
-            }
-            Self::Live { start, .. } => {
-                *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
-                Some(start)
-            }
-            Self::Async { ref mut start1, .. } => start1.replace(new_start),
+    pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Async { start1, .. } => *start1 = Some(new_start),
+            _ => *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
 
-    pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) -> Option<DateTime<Utc>> {
-        match *self {
-            Self::Unscheduled => {
-                *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
-                None
-            }
-            Self::Live { start, .. } => {
-                *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
-                Some(start)
-            }
-            Self::Async { ref mut start2, .. } => start2.replace(new_start),
+    pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Async { start2, .. } => *start2 = Some(new_start),
+            _ => *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
 
-    pub(crate) fn set_async_start3(&mut self, new_start: DateTime<Utc>) -> Option<DateTime<Utc>> {
-        match *self {
-            Self::Unscheduled => {
-                *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
-                None
-            }
-            Self::Live { start, .. } => {
-                *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
-                Some(start)
-            }
-            Self::Async { ref mut start3, .. } => start3.replace(new_start),
+    pub(crate) fn set_async_start3(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Async { start3, .. } => *start3 = Some(new_start),
+            _ => *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
 }
@@ -1641,6 +1619,146 @@ impl Event {
             // the organizers of this event didn't request for Mido to handle official races, so we ignore this race even if it would otherwise not be handled on racetime.gg
             RaceHandleMode::None
         })
+    }
+
+    pub(crate) async fn format_discord(&self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, language: Language, msg: &mut MessageBuilder) -> sqlx::Result<()> {
+        if_chain! {
+            if let French = language;
+            if let (Some(phase), Some(round)) = (self.race.phase.as_ref(), self.race.round.as_ref());
+            if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", self.race.series as _, &self.race.event, phase, round).fetch_optional(&mut **transaction).await?;
+            if self.race.game.is_none();
+            then {
+                match self.race.entrants {
+                    Entrants::Open | Entrants::Count { .. } => {
+                        msg.push_safe(phase_round);
+                    },
+                    Entrants::Named(ref entrants) => {
+                        msg.push_safe(phase_round);
+                        msg.push(" : ");
+                        msg.push_safe(entrants);
+                    }
+                    Entrants::Two([ref team1, ref team2]) => {
+                        msg.push_safe(phase_round);
+                        //TODO adjust for asyncs
+                        msg.push(" : ");
+                        msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                        msg.push(" vs ");
+                        msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                    }
+                    Entrants::Three([ref team1, ref team2, ref team3]) => {
+                        msg.push_safe(phase_round);
+                        //TODO adjust for asyncs
+                        msg.push(" : ");
+                        msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                        msg.push(" vs ");
+                        msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                        msg.push(" vs ");
+                        msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                    }
+                }
+            } else {
+                let info_prefix = match (&self.race.phase, &self.race.round) {
+                    (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                    (Some(phase), None) => Some(phase.clone()),
+                    (None, Some(round)) => Some(round.clone()),
+                    (None, None) => None,
+                };
+                match self.race.entrants {
+                    Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
+                        msg.push_safe(prefix);
+                    },
+                    Entrants::Named(ref entrants) => {
+                        if let Some(prefix) = info_prefix {
+                            msg.push_safe(prefix);
+                            msg.push(": ");
+                        }
+                        msg.push_safe(entrants);
+                    }
+                    Entrants::Two([ref team1, ref team2]) => {
+                        if let Some(prefix) = info_prefix {
+                            msg.push_safe(prefix);
+                            match self.kind {
+                                EventKind::Normal => {
+                                    msg.push(": ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                }
+                                EventKind::Async1 => {
+                                    msg.push(" (async): ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                }
+                                EventKind::Async2 => {
+                                    msg.push(" (async): ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                }
+                                EventKind::Async3 => unreachable!(),
+                            }
+                        } else {
+                            //TODO adjust for asyncs
+                            msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                        }
+                    }
+                    Entrants::Three([ref team1, ref team2, ref team3]) => {
+                        if let Some(prefix) = info_prefix {
+                            msg.push_safe(prefix);
+                            match self.kind {
+                                EventKind::Normal => {
+                                    msg.push(": ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                }
+                                EventKind::Async1 => {
+                                    msg.push(" (async): ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                }
+                                EventKind::Async2 => {
+                                    msg.push(" (async): ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                }
+                                EventKind::Async3 => {
+                                    msg.push(" (async): ");
+                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                }
+                            }
+                        } else {
+                            //TODO adjust for asyncs
+                            msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                        }
+                    }
+                }
+                if let Some(game) = self.race.game {
+                    msg.push(", game ");
+                    msg.push(game.to_string());
+                }
+            }
+        }
+        Ok(())
     }
 }
 

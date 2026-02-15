@@ -30,6 +30,8 @@ use {
 };
 
 pub(crate) const FENHL: UserId = UserId::new(86841168427495424);
+pub(crate) const OOTR_GUILD: GuildId = GuildId::new(274180765816848384);
+const S9_RESTREAM_PLANNING: ChannelId = ChannelId::new(1444282780489093170);
 const BUTTONS_PER_PAGE: usize = 25;
 
 /// A wrapper around serenity's Discord snowflake types that can be stored in a PostgreSQL database as a BIGINT.
@@ -1352,7 +1354,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game, false, None).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
-                                let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
+                                let was_scheduled = match race.schedule {
+                                    RaceSchedule::Unscheduled => None,
+                                    RaceSchedule::Live { start, .. } => Some(Some(start)),
+                                    RaceSchedule::Async { .. } => Some(None),
+                                };
                                 match event.scheduling_backend(&mut transaction).await? {
                                     SchedulingBackend::MidosHouse => if team.is_some() || is_organizer {
                                         let start = match interaction.data.options[0].value {
@@ -1382,6 +1388,18 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 race.schedule.set_live_start(start);
                                                 race.schedule_updated_at = Some(Utc::now());
                                                 let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                                if let Some(was_scheduled) = was_scheduled && event.series == Series::Standard && event.event == "9" {
+                                                    let mut content = MessageBuilder::default();
+                                                    cal_event.format_discord(&mut transaction, Some(OOTR_GUILD), English, &mut content).await?;
+                                                    content.push(" was rescheduled");
+                                                    if let Some(old_start) = was_scheduled {
+                                                        content.push(" from ");
+                                                        content.push_timestamp(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    }
+                                                    content.push(" to ");
+                                                    content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
+                                                }
                                                 if start - Utc::now() < TimeDelta::minutes(30) {
                                                     let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                                                         let data = ctx.data.read().await;
@@ -1406,7 +1424,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         } else {
                                                             let mut response_content = MessageBuilder::default();
                                                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
                                                             response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             let response_content = response_content
                                                                 .push(". The race room will be opened momentarily.")
@@ -1446,7 +1464,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         } else {
                                                             let mut response_content = MessageBuilder::default();
                                                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
                                                             response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             response_content.push('.');
                                                             for (window, kind) in overlapping_maintenance_windows {
@@ -1492,7 +1510,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         transaction.rollback().await?;
                                     },
                                     SchedulingBackend::SpeedGamingOnline(speedgaming_slug) => {
-                                        let response_content = if was_scheduled {
+                                        let response_content = if was_scheduled.is_some() {
                                             format!("Please contact a tournament organizer to reschedule this race.")
                                         } else {
                                             MessageBuilder::default()
@@ -1508,7 +1526,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         transaction.rollback().await?;
                                     }
                                     SchedulingBackend::SpeedGamingInPerson => {
-                                        let response_content = if was_scheduled {
+                                        let response_content = if was_scheduled.is_some() {
                                             format!("Please contact a tournament organizer to reschedule this race.")
                                         } else {
                                             format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
@@ -1556,16 +1574,21 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 )).await?;
                                                 transaction.rollback().await?;
                                             } else {
-                                                let (kind, was_scheduled) = match race.entrants {
+                                                let was_scheduled = match race.schedule {
+                                                    RaceSchedule::Unscheduled => None,
+                                                    RaceSchedule::Live { start, .. } => Some(Some(start)),
+                                                    RaceSchedule::Async { .. } => Some(None),
+                                                };
+                                                let kind = match race.entrants {
                                                     Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
-                                                            let was_scheduled = race.schedule.set_async_start1(start).is_some();
+                                                            race.schedule.set_async_start1(start);
                                                             race.schedule_updated_at = Some(Utc::now());
-                                                            (cal::EventKind::Async1, was_scheduled)
+                                                            cal::EventKind::Async1
                                                         } else if team.as_ref().is_some_and(|team| team2 == team) {
-                                                            let was_scheduled = race.schedule.set_async_start2(start).is_some();
+                                                            race.schedule.set_async_start2(start);
                                                             race.schedule_updated_at = Some(Utc::now());
-                                                            (cal::EventKind::Async2, was_scheduled)
+                                                            cal::EventKind::Async2
                                                         } else {
                                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                                 .ephemeral(true)
@@ -1577,17 +1600,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     }
                                                     Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
-                                                            let was_scheduled = race.schedule.set_async_start1(start).is_some();
+                                                            race.schedule.set_async_start1(start);
                                                             race.schedule_updated_at = Some(Utc::now());
-                                                            (cal::EventKind::Async1, was_scheduled)
+                                                            cal::EventKind::Async1
                                                         } else if team.as_ref().is_some_and(|team| team2 == team) {
-                                                            let was_scheduled = race.schedule.set_async_start2(start).is_some();
+                                                            race.schedule.set_async_start2(start);
                                                             race.schedule_updated_at = Some(Utc::now());
-                                                            (cal::EventKind::Async2, was_scheduled)
+                                                            cal::EventKind::Async2
                                                         } else if team.as_ref().is_some_and(|team| team3 == team) {
-                                                            let was_scheduled = race.schedule.set_async_start3(start).is_some();
+                                                            race.schedule.set_async_start3(start);
                                                             race.schedule_updated_at = Some(Utc::now());
-                                                            (cal::EventKind::Async3, was_scheduled)
+                                                            cal::EventKind::Async3
                                                         } else {
                                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                                 .ephemeral(true)
@@ -1600,6 +1623,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
                                                 };
                                                 let mut cal_event = cal::Event { race, kind };
+                                                if let Some(Some(old_start)) = was_scheduled && event.series == Series::Standard && event.event == "9" {
+                                                    let mut content = MessageBuilder::default();
+                                                    cal_event.format_discord(&mut transaction, Some(OOTR_GUILD), English, &mut content).await?;
+                                                    content.push(" was rescheduled from ");
+                                                    content.push_timestamp(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    content.push(" to async");
+                                                    S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
+                                                }
                                                 if start - Utc::now() < TimeDelta::minutes(30) {
                                                     let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                                                         let data = ctx.data.read().await;
@@ -1642,7 +1673,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             let mut response_content = MessageBuilder::default();
                                                             response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
                                                             response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
                                                             response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             let response_content = response_content
                                                                 .push(". The race room will be opened momentarily.")
@@ -1683,7 +1714,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             let mut response_content = MessageBuilder::default();
                                                             response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
                                                             response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
                                                             response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             response_content.push('.');
                                                             for (window, kind) in overlapping_maintenance_windows {
@@ -1788,9 +1819,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 )).await?;
                                                 transaction.rollback().await?;
                                             }
-                                            RaceSchedule::Live { .. } => {
+                                            RaceSchedule::Live { start: old_start, .. } => {
                                                 sqlx::query!("UPDATE races SET start = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                transaction.commit().await?;
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(false)
                                                     .content(if let Some(game) = race.game {
@@ -1803,6 +1833,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         }
                                                     })
                                                 )).await?;
+                                                if event.series == Series::Standard && event.event == "9" {
+                                                    let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                                    let mut content = MessageBuilder::default();
+                                                    cal_event.format_discord(&mut transaction, Some(OOTR_GUILD), English, &mut content).await?;
+                                                    content.push(" (previous starting time: ");
+                                                    content.push_timestamp(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    content.push(") was removed from the schedule");
+                                                    S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
+                                                }
+                                                transaction.commit().await?;
                                             }
                                             RaceSchedule::Async { .. } => match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {

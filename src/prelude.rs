@@ -222,6 +222,7 @@ pub(crate) use {
             ConfigRaceTime,
         },
         discord_bot::{
+            self,
             CommandIds,
             MessageBuilderExt as _,
             PgSnowflake,

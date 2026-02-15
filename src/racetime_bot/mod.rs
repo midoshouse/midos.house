@@ -46,8 +46,6 @@ mod report;
 
 pub(crate) const CATEGORY: &str = "ootr";
 
-const OOTR_DISCORD_GUILD: GuildId = GuildId::new(274180765816848384);
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ParseUserError {
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -4787,7 +4785,7 @@ impl RaceHandler<GlobalState> for Handler {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
                         if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
-                            if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+                            if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
                                 // post password on Discord as a contingency for racetime.gg issues in large qualifiers
                                 //TODO implement custom emoji preloading on racetime.gg, then retire this feature
                                 let channel = match &*event.event {
@@ -5212,7 +5210,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     let cal_event = cal_event.clone();
                     tokio::spawn(async move {
                         println!("Discord race handler started");
-                        let res = tokio::spawn(crate::discord_bot::handle_race()).await;
+                        let res = tokio::spawn(discord_bot::handle_race()).await;
                         lock!(clean_shutdown = task_clean_shutdown; {
                             let room = OpenRoom::Discord { id: cal_event.race.id.into(), kind: cal_event.kind };
                             assert!(clean_shutdown.open_rooms.remove(&room));
@@ -5240,58 +5238,25 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
         if let French = event.language;
         if let Ok(ref room_url_fr) = room_url;
         if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?;
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4 AND display_fr IS NOT NULL) AS "exists!""#, event.series as _, &event.event, phase, round).fetch_one(&mut **transaction).await.to_racetime()?;
         if cal_event.race.game.is_none();
         then {
             let mut msg = MessageBuilder::default();
             msg.push("La race commence ");
             msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
             msg.push(" : ");
-            match cal_event.race.entrants {
-                Entrants::Open | Entrants::Count { .. } => {
-                    msg.push_safe(phase_round);
-                },
-                Entrants::Named(ref entrants) => {
-                    msg.push_safe(phase_round);
-                    msg.push(" : ");
-                    msg.push_safe(entrants);
-                }
-                Entrants::Two([ref team1, ref team2]) => {
-                    msg.push_safe(phase_round);
-                    //TODO adjust for asyncs
-                    msg.push(" : ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                }
-                Entrants::Three([ref team1, ref team2, ref team3]) => {
-                    msg.push_safe(phase_round);
-                    //TODO adjust for asyncs
-                    msg.push(" : ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
-                }
-            }
+            cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
             msg.push(" <");
             msg.push(room_url_fr.to_string());
             msg.push('>');
             msg.build()
         } else {
-            let ping_role = if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+            let ping_role = if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
                 Some(RoleId::new(640750480246571014)) // @Standard
-            } else if event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+            } else if event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
                 Some(RoleId::new(1208091436608921730)) // @battle royale
             } else {
                 None
-            };
-            let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                (Some(phase), None) => Some(phase.clone()),
-                (None, Some(round)) => Some(round.clone()),
-                (None, None) => None,
             };
             let mut msg = MessageBuilder::default();
             if let Some(ping_role) = ping_role {
@@ -5301,99 +5266,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             msg.push("race starting ");
             msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
             msg.push(": ");
-            match cal_event.race.entrants {
-                Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
-                    msg.push_safe(prefix);
-                },
-                Entrants::Named(ref entrants) => {
-                    if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                        msg.push(": ");
-                    }
-                    msg.push_safe(entrants);
-                }
-                Entrants::Two([ref team1, ref team2]) => {
-                    if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                        match cal_event.kind {
-                            cal::EventKind::Normal => {
-                                msg.push(": ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                            }
-                            cal::EventKind::Async1 => {
-                                msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                            }
-                            cal::EventKind::Async2 => {
-                                msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                            }
-                            cal::EventKind::Async3 => unreachable!(),
-                        }
-                    } else {
-                        //TODO adjust for asyncs
-                        msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                        msg.push(" vs ");
-                        msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                    }
-                }
-                Entrants::Three([ref team1, ref team2, ref team3]) => {
-                    if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                        match cal_event.kind {
-                            cal::EventKind::Normal => {
-                                msg.push(": ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
-                            }
-                            cal::EventKind::Async1 => {
-                                msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
-                            }
-                            cal::EventKind::Async2 => {
-                                msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
-                            }
-                            cal::EventKind::Async3 => {
-                                msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                                msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                            }
-                        }
-                    } else {
-                        //TODO adjust for asyncs
-                        msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                        msg.push(" vs ");
-                        msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                        msg.push(" vs ");
-                        msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
-                    }
-                }
-            }
-            if let Some(game) = cal_event.race.game {
-                msg.push(", game ");
-                msg.push(game.to_string());
-            }
+            cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await.to_racetime()?;
             match room_url {
                 Ok(room_url) => {
                     msg.push(' ');

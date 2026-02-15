@@ -939,7 +939,7 @@ pub(crate) enum Tab {
 pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
-    #[error(transparent)] Discord(#[from] crate::discord_bot::Error),
+    #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
