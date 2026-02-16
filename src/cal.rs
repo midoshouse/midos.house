@@ -61,6 +61,10 @@ pub(crate) enum Source {
 #[derive(Clone)]
 pub(crate) enum Entrant {
     MidosHouseTeam(Team),
+    MidosHouseTeamMember {
+        team: Team,
+        member: User,
+    },
     Discord {
         id: UserId,
         racetime_id: Option<String>,
@@ -77,6 +81,7 @@ impl Entrant {
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx) -> Result<Option<Cow<'_, str>>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.name(transaction).await?,
+            Self::MidosHouseTeamMember { team, member } => Some(Cow::Owned(format!("{member} ({})", team.name(transaction).await?.unwrap_or_else(|| Cow::Borrowed("unnamed team"))))),
             Self::Discord { id, .. } => if let Some(user) = User::from_discord(&mut **transaction, *id).await? {
                 Some(Cow::Owned(user.discord.unwrap().display_name))
             } else {
@@ -90,6 +95,7 @@ impl Entrant {
     pub(crate) fn name_is_plural(&self) -> bool {
         match self {
             Self::MidosHouseTeam(team) => team.name_is_plural(),
+            Self::MidosHouseTeamMember { .. } => false,
             Self::Discord { .. } => false,
             Self::Named { .. } => false, // assume solo (e.g. League)
         }
@@ -98,13 +104,30 @@ impl Entrant {
     async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.member_ids(transaction).await?.len(),
-            Self::Discord { .. } | Self::Named { .. } => 1,
+            Self::MidosHouseTeamMember { .. } | Self::Discord { .. } | Self::Named { .. } => 1,
         })
     }
 
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, running_text).await?,
+            Self::MidosHouseTeamMember { team, member } => html! {
+                : member;
+                : " (";
+                @let inner = html! {
+                    @if let Some(ref name) = team.name {
+                        bdi : name;
+                    } else {
+                        : "unnamed team";
+                    }
+                };
+                @if let Some(ref racetime_slug) = team.racetime_slug {
+                    a(href = format!("https://{}/team/{racetime_slug}", racetime_host())) : inner;
+                } else {
+                    : inner;
+                }
+                : ")";
+            },
             Self::Discord { id, racetime_id, .. } => {
                 let url = if let Some(racetime_id) = racetime_id {
                     format!("https://{}/user/{racetime_id}", racetime_host())
@@ -142,11 +165,13 @@ impl PartialEq for Entrant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::MidosHouseTeam(lhs), Self::MidosHouseTeam(rhs)) => lhs == rhs,
+            (Self::MidosHouseTeamMember { team: team1, member: member1 }, Self::MidosHouseTeamMember { team: team2, member: member2 }) => team1 == team2 && member1 == member2,
             (Self::Discord { id: lhs, .. }, Self::Discord { id: rhs, .. }) => lhs == rhs,
             (Self::Named { name: lhs, .. }, Self::Named { name: rhs, .. }) => lhs == rhs,
-            (Self::MidosHouseTeam(_), Self::Discord { .. } | Self::Named { .. }) |
-            (Self::Discord { .. }, Self::MidosHouseTeam(_) | Self::Named { .. }) |
-            (Self::Named { .. }, Self::MidosHouseTeam(_) | Self::Discord { .. }) => false,
+            (Self::MidosHouseTeam(_), Self::MidosHouseTeamMember { .. } | Self::Discord { .. } | Self::Named { .. }) |
+            (Self::MidosHouseTeamMember { .. }, Self::MidosHouseTeam(_) | Self::Discord { .. } | Self::Named { .. }) |
+            (Self::Discord { .. }, Self::MidosHouseTeam(_) | Self::MidosHouseTeamMember { .. } | Self::Named { .. }) |
+            (Self::Named { .. }, Self::MidosHouseTeam(_) | Self::MidosHouseTeamMember { .. } | Self::Discord { .. }) => false,
         }
     }
 }
@@ -174,11 +199,13 @@ impl Entrants {
             Entrants::Two([ref p1, ref p2]) => {
                 let (team1, p1, p1_discord, p1_racetime, p1_twitch) = match p1 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None, None),
+                    Entrant::MidosHouseTeamMember { team, member } => (Some(team.id), None, None, member.racetime.as_ref().map(|racetime| &racetime.id), None),
                     Entrant::Discord { id, racetime_id, twitch_username } => (None, None, Some(*id), racetime_id.as_ref(), twitch_username.as_ref()),
                     Entrant::Named { name, racetime_id, twitch_username } => (None, Some(name), None, racetime_id.as_ref(), twitch_username.as_ref()),
                 };
                 let (team2, p2, p2_discord, p2_racetime, p2_twitch) = match p2 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None, None),
+                    Entrant::MidosHouseTeamMember { team, member } => (Some(team.id), None, None, member.racetime.as_ref().map(|racetime| &racetime.id), None),
                     Entrant::Discord { id, racetime_id, twitch_username } => (None, None, Some(*id), racetime_id.as_ref(), twitch_username.as_ref()),
                     Entrant::Named { name, racetime_id, twitch_username } => (None, Some(name), None, racetime_id.as_ref(), twitch_username.as_ref()),
                 };
@@ -522,7 +549,18 @@ impl Race {
         };
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
-                Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))
+                let team = Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
+                Some(if let Some(racetime_id) = row.p1_racetime {
+                    Entrant::MidosHouseTeamMember {
+                        member: team.members(&mut *transaction).await?
+                            .into_iter()
+                            .find(|member| member.racetime.as_ref().is_some_and(|racetime| racetime.id == racetime_id))
+                            .ok_or(Error::UnknownMember)?,
+                        team,
+                    }
+                } else {
+                    Entrant::MidosHouseTeam(team)
+                })
             } else if let Some(PgSnowflake(id)) = row.p1_discord {
                 Some(Entrant::Discord {
                     racetime_id: row.p1_racetime,
@@ -539,7 +577,18 @@ impl Race {
                 None
             };
             let p2 = if let Some(team2) = row.team2 {
-                Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?))
+                let team = Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
+                Some(if let Some(racetime_id) = row.p2_racetime {
+                    Entrant::MidosHouseTeamMember {
+                        member: team.members(&mut *transaction).await?
+                            .into_iter()
+                            .find(|member| member.racetime.as_ref().is_some_and(|racetime| racetime.id == racetime_id))
+                            .ok_or(Error::UnknownMember)?,
+                        team,
+                    }
+                } else {
+                    Entrant::MidosHouseTeam(team)
+                })
             } else if let Some(PgSnowflake(id)) = row.p2_discord {
                 Some(Entrant::Discord {
                     racetime_id: row.p2_racetime,
@@ -862,6 +911,7 @@ impl Race {
             | Series::MixedPools
             | Series::Mq
             | Series::PotsOfTime
+            | Series::SlugOpen
             | Series::SongsOfHope
             | Series::SpeedGaming
             | Series::TournamentOfTruth //TODO add archive of season 1?
@@ -1045,16 +1095,16 @@ impl Race {
     pub(crate) fn teams(&self) -> impl Iterator<Item = &Team> + Send {
         match self.entrants {
             Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
-            Entrants::Two([ref team1, ref team2]) => Box::new([team1, team2].into_iter().filter_map(as_variant!(Entrant::MidosHouseTeam))),
-            Entrants::Three([ref team1, ref team2, ref team3]) => Box::new([team1, team2, team3].into_iter().filter_map(as_variant!(Entrant::MidosHouseTeam))),
+            Entrants::Two([ref team1, ref team2]) => Box::new([team1, team2].into_iter().filter_map(|entrant| match entrant { Entrant::MidosHouseTeam(team) | Entrant::MidosHouseTeamMember { team, .. } => Some(team), _ => None })),
+            Entrants::Three([ref team1, ref team2, ref team3]) => Box::new([team1, team2, team3].into_iter().filter_map(|entrant| match entrant { Entrant::MidosHouseTeam(team) | Entrant::MidosHouseTeamMember { team, .. } => Some(team), _ => None })),
         }
     }
 
     /// If all entrants are Mido's House teams, returns `Some` with an iterator over them.
     pub(crate) fn teams_opt(&self) -> Option<impl Iterator<Item = &Team> + Send> {
         match self.entrants {
-            Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => Some(Box::new([team1, team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>),
-            Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => Some(Box::new([team1, team2, team3].into_iter())),
+            Entrants::Two([Entrant::MidosHouseTeam(ref team1) | Entrant::MidosHouseTeamMember { team: ref team1, .. }, Entrant::MidosHouseTeam(ref team2) | Entrant::MidosHouseTeamMember { team: ref team2, .. }]) => Some(Box::new([team1, team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>),
+            Entrants::Three([Entrant::MidosHouseTeam(ref team1) | Entrant::MidosHouseTeamMember { team: ref team1, .. }, Entrant::MidosHouseTeam(ref team2) | Entrant::MidosHouseTeamMember { team: ref team2, .. }, Entrant::MidosHouseTeam(ref team3) | Entrant::MidosHouseTeamMember { team: ref team3, .. }]) => Some(Box::new([team1, team2, team3].into_iter())),
             Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) | Entrants::Two(_) | Entrants::Three(_) => None,
         }
     }
@@ -1069,87 +1119,14 @@ impl Race {
         })
     }
 
-    pub(crate) async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
-        async fn entrant_twitch_names<'a>(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>, entrant: &'a Entrant) -> Result<Option<Vec<Cow<'a, str>>>, Error> {
-            let mut channels = Vec::default();
-            match entrant {
-                Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
-                    if event.team_config.role_is_racing(role) {
-                        if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_name) {
-                            channels.push(Cow::Owned(twitch_name));
-                        } else {
-                            return Ok(None)
-                        }
-                    }
-                },
-                Entrant::Discord { twitch_username: Some(twitch_name), .. } | Entrant::Named { twitch_username: Some(twitch_name), .. } => channels.push(Cow::Borrowed(&**twitch_name)),
-                Entrant::Discord { twitch_username: None, racetime_id: Some(racetime_id), .. } | Entrant::Named { twitch_username: None, racetime_id: Some(racetime_id), .. } => {
-                    let racetime_user_data = racetime_bot::user_data(http_client, racetime_id).await?;
-                    if let Some(twitch_name) = racetime_user_data.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
-                        channels.push(Cow::Owned(twitch_name));
-                    } else {
-                        return Ok(None)
-                    }
-                }
-                Entrant::Discord { twitch_username: None, racetime_id: None, id } => if_chain! {
-                    if let Some(user) = User::from_discord(&mut **transaction, *id).await?;
-                    if let Some(Some(racetime_user_data)) = user.racetime_user_data(http_client).await?;
-                    if let Some(twitch_name) = racetime_user_data.twitch_name;
-                    then {
-                        channels.push(Cow::Owned(twitch_name));
-                    } else {
-                        return Ok(None)
-                    }
-                },
-                Entrant::Named { twitch_username: None, racetime_id: None, .. } => return Ok(None),
+    pub(crate) async fn multistream_urls(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Vec<Url>, Error> {
+        let mut urls = Vec::default();
+        for cal_event in self.cal_events() {
+            if let Some(url) = cal_event.multistream_url(&mut *transaction, http_client, event).await? {
+                urls.push(url);
             }
-            Ok(Some(channels))
         }
-
-        Ok(if let RaceSchedule::Live { room: Some(_), .. } = self.schedule {
-            match self.entrants {
-                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => None,
-                Entrants::Two(ref entrants) => {
-                    let mut channels = Vec::default();
-                    for entrant in entrants {
-                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, http_client, event, entrant).await? {
-                            channels.extend(twitch_names);
-                        } else {
-                            return Ok(None)
-                        }
-                    }
-                    let mut url = Url::parse("https://multistre.am/").unwrap();
-                    url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
-                        0 => return Ok(None),
-                        2 => "layout4",
-                        4 => "layout12",
-                        6 => "layout18",
-                        _ => unimplemented!(),
-                    });
-                    Some(url)
-                }
-                Entrants::Three(ref entrants) => {
-                    let mut channels = Vec::default();
-                    for entrant in entrants {
-                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, http_client, event, entrant).await? {
-                            channels.extend(twitch_names);
-                        } else {
-                            return Ok(None)
-                        }
-                    }
-                    let mut url = Url::parse("https://multistre.am/").unwrap();
-                    url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
-                        0 => return Ok(None),
-                        3 => "layout7",
-                        6 => "layout17",
-                        _ => unimplemented!(),
-                    });
-                    Some(url)
-                }
-            }
-        } else {
-            None
-        })
+        Ok(urls)
     }
 
     pub(crate) async fn player_video_urls(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<(User, Url)>, Error> {
@@ -1492,6 +1469,17 @@ impl Event {
                         });
                     }
                 },
+                Entrant::MidosHouseTeamMember { member, .. } => buf.push(if let Some(member) = &member.racetime {
+                    Ok(member.id.clone())
+                } else {
+                    Err(format!(
+                        "Warning: {member} could not be invited because {subj} {has_not} linked {poss} racetime.gg account to {poss} Mido's House account. Please contact an organizer to invite {obj} manually for now.",
+                        subj = member.subjective_pronoun(),
+                        has_not = if member.subjective_pronoun_uses_plural_form() { "haven't" } else { "hasn't" },
+                        poss = member.possessive_determiner(),
+                        obj = member.objective_pronoun(),
+                    ))
+                }),
                 Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => {
                     assert!(matches!(event.team_config, TeamConfig::Solo));
                     buf.push(if let Some(racetime_id) = racetime_id {
@@ -1570,6 +1558,16 @@ impl Event {
         }
     }
 
+    pub(crate) fn estimated_duration(&self) -> TimeDelta {
+        //TODO use actual duration if public
+        //TODO better fallback duration estimates depending on participants
+        if let Some(format) = sco::Format::for_race(&self.race) {
+            format.default_race_duration()
+        } else {
+            self.race.series.default_race_duration()
+        }
+    }
+
     pub(crate) fn is_private_async_part(&self) -> bool {
         match self.race.schedule {
             RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
@@ -1618,6 +1616,94 @@ impl Event {
         } else {
             // the organizers of this event didn't request for Mido to handle official races, so we ignore this race even if it would otherwise not be handled on racetime.gg
             RaceHandleMode::None
+        })
+    }
+
+    async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
+        async fn entrant_twitch_names<'a>(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>, entrant: &'a Entrant) -> Result<Option<Vec<Cow<'a, str>>>, Error> {
+            let mut channels = Vec::default();
+            match entrant {
+                Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
+                    if event.team_config.role_is_racing(role) {
+                        if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                            channels.push(Cow::Owned(twitch_name));
+                        } else {
+                            return Ok(None)
+                        }
+                    }
+                },
+                Entrant::MidosHouseTeamMember { member, .. } => if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                    channels.push(Cow::Owned(twitch_name));
+                } else {
+                    return Ok(None)
+                },
+                Entrant::Discord { twitch_username: Some(twitch_name), .. } | Entrant::Named { twitch_username: Some(twitch_name), .. } => channels.push(Cow::Borrowed(&**twitch_name)),
+                Entrant::Discord { twitch_username: None, racetime_id: Some(racetime_id), .. } | Entrant::Named { twitch_username: None, racetime_id: Some(racetime_id), .. } => {
+                    let racetime_user_data = racetime_bot::user_data(http_client, racetime_id).await?;
+                    if let Some(twitch_name) = racetime_user_data.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                        channels.push(Cow::Owned(twitch_name));
+                    } else {
+                        return Ok(None)
+                    }
+                }
+                Entrant::Discord { twitch_username: None, racetime_id: None, id } => if_chain! {
+                    if let Some(user) = User::from_discord(&mut **transaction, *id).await?;
+                    if let Some(Some(racetime_user_data)) = user.racetime_user_data(http_client).await?;
+                    if let Some(twitch_name) = racetime_user_data.twitch_name;
+                    then {
+                        channels.push(Cow::Owned(twitch_name));
+                    } else {
+                        return Ok(None)
+                    }
+                },
+                Entrant::Named { twitch_username: None, racetime_id: None, .. } => return Ok(None),
+            }
+            Ok(Some(channels))
+        }
+
+        Ok(if let RaceSchedule::Live { room: Some(_), .. } = self.race.schedule { //TODO also show for public async parts
+            match self.race.entrants {
+                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => None,
+                Entrants::Two(ref entrants) => {
+                    let mut channels = Vec::default();
+                    for entrant in entrants {
+                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, http_client, event, entrant).await? {
+                            channels.extend(twitch_names);
+                        } else {
+                            return Ok(None)
+                        }
+                    }
+                    let mut url = Url::parse("https://multistre.am/").unwrap();
+                    url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
+                        0 => return Ok(None),
+                        2 => "layout4",
+                        4 => "layout12",
+                        6 => "layout18",
+                        _ => unimplemented!(),
+                    });
+                    Some(url)
+                }
+                Entrants::Three(ref entrants) => {
+                    let mut channels = Vec::default();
+                    for entrant in entrants {
+                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, http_client, event, entrant).await? {
+                            channels.extend(twitch_names);
+                        } else {
+                            return Ok(None)
+                        }
+                    }
+                    let mut url = Url::parse("https://multistre.am/").unwrap();
+                    url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
+                        0 => return Ok(None),
+                        3 => "layout7",
+                        6 => "layout17",
+                        _ => unimplemented!(),
+                    });
+                    Some(url)
+                }
+            }
+        } else {
+            None
         })
     }
 
@@ -1793,6 +1879,8 @@ pub(crate) enum Error {
     DuplicateVolunteer,
     #[error("attempted to rewrite start.gg phase/round name with pool placeholder, but start.gg didn't report a pool name")]
     PoolPlaceholder,
+    #[error("no team member with this racetime.gg ID")]
+    UnknownMember,
     #[error("no team with this ID")]
     UnknownTeam,
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
@@ -1839,6 +1927,7 @@ impl IsNetworkError for Error {
             Self::AnonymizedEntrant => false,
             Self::DuplicateVolunteer => false,
             Self::PoolPlaceholder => false,
+            Self::UnknownMember => false,
             Self::UnknownTeam => false,
             Self::UnknownTeamStartGG(_) => false,
             Self::UnqualifiedEntrant { .. } => false,
@@ -1956,7 +2045,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     summary_prefix
                 })));
                 cal_event.push(dtstart(start));
-                cal_event.push(dtend(race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + event.series.default_race_duration()))); //TODO better fallback duration estimates depending on participants
+                cal_event.push(dtend(race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + race_event.estimated_duration())));
                 let mut urls = Vec::default();
                 for (language, video_url) in &race.video_urls {
                     urls.push((Cow::Owned(format!("{language} restream")), video_url.clone()));
@@ -2566,7 +2655,7 @@ pub(crate) async fn race_table(
                                     a(class = "favicon", title = format!("{language} restream"), href = video_url.to_string()) : favicon(video_url);
                                 }
                                 @if options.show_multistreams && race.video_urls.is_empty() {
-                                    @if let Some(multistream_url) = race.multistream_url(&mut *transaction, http_client, &event).await? {
+                                    @for multistream_url in race.multistream_urls(&mut *transaction, http_client, &event).await? {
                                         a(class = "favicon", title = "multistream", href = multistream_url.to_string()) : favicon(&multistream_url);
                                     }
                                 }

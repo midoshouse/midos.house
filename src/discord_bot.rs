@@ -92,6 +92,12 @@ impl MessageBuilderExt for MessageBuilder {
     async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
         match entrant {
             Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
+            Entrant::MidosHouseTeamMember { team, member } => {
+                self.mention_user(member);
+                self.push(" (");
+                self.mention_team(transaction, guild, team).await?;
+                self.push(')');
+            }
             Entrant::Discord { id,  .. } => { self.mention(id); }
             Entrant::Named { name, .. } => { self.push_safe(name); }
         }
@@ -325,7 +331,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interactio
         }
         Ok(Some(race)) => {
             let mut team = None;
-            for iter_team in race.teams() {
+            for iter_team in race.teams() { //TODO adjust for SlugCentral open
                 if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.is_some_and(|discord| discord.id == interaction.user_id())) {
                     team = Some(iter_team.clone());
                     break
@@ -1441,11 +1447,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     cal_event.race.save(&mut transaction).await?;
                                                     let overlapping_maintenance_windows = match cal_event.should_create_room(&mut transaction, &event).await? {
                                                         RaceHandleMode::None | RaceHandleMode::Notify => Vec::default(),
-                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
-                                                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
@@ -1690,11 +1696,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     cal_event.race.save(&mut transaction).await?;
                                                     let overlapping_maintenance_windows = match cal_event.should_create_room(&mut transaction, &event).await? {
                                                         RaceHandleMode::None | RaceHandleMode::Notify => Vec::default(),
-                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
-                                                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + event.series.default_race_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,

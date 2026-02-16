@@ -95,6 +95,7 @@ pub(crate) enum TeamConfig {
     TfbCoOp,
     Pictionary,
     Multiworld,
+    SlugOpen,
 }
 
 impl TeamConfig {
@@ -120,6 +121,11 @@ impl TeamConfig {
                 (Role::Wisdom, "World 2"),
                 (Role::Courage, "World 3"),
             ],
+            Self::SlugOpen => &[
+                (Role::Power, "Player 1"),
+                (Role::Wisdom, "Player 2"),
+                (Role::Courage, "Player 3"),
+            ],
         }
     }
 
@@ -129,13 +135,14 @@ impl TeamConfig {
     }
 
     pub(crate) fn is_racetime_team_format(&self) -> bool {
-        self.roles().iter().filter(|&&(role, _)| self.role_is_racing(role)).count() > 1
+        !matches!(self, Self::SlugOpen) && self.roles().iter().filter(|&&(role, _)| self.role_is_racing(role)).count() > 1
     }
 
     pub(crate) fn has_distinct_roles(&self) -> bool {
         match self {
             | Self::Solo
             | Self::CoOp
+            | Self::SlugOpen
                 => false,
             | Self::TfbCoOp
             | Self::Pictionary
@@ -384,26 +391,29 @@ impl<'a> Data<'a> {
 
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
-            Series::BattleRoyale => false,
-            Series::CoOp => false,
-            Series::CopaDoBrasil => false,
-            Series::CopaLatinoamerica => false,
-            Series::League => false,
-            Series::MixedPools => false,
-            Series::Mq => false,
-            Series::Multiworld => false,
-            Series::NineDaysOfSaws => true,
-            Series::Pictionary => true,
-            Series::PotsOfTime => false,
-            Series::Rsl => false,
-            Series::Scrubs => false,
-            Series::SongsOfHope => false,
-            Series::SpeedGaming => false,
-            Series::Standard => false,
-            Series::TournamentOfTruth => false,
-            Series::TournoiFrancophone => false,
-            Series::TriforceBlitz => false,
-            Series::WeTryToBeBetter => false,
+            | Series::BattleRoyale
+            | Series::CoOp
+            | Series::CopaDoBrasil
+            | Series::CopaLatinoamerica
+            | Series::League
+            | Series::MixedPools
+            | Series::Mq
+            | Series::Multiworld
+            | Series::PotsOfTime
+            | Series::Rsl
+            | Series::Scrubs
+            | Series::SlugOpen
+            | Series::SongsOfHope
+            | Series::SpeedGaming
+            | Series::Standard
+            | Series::TournamentOfTruth
+            | Series::TournoiFrancophone
+            | Series::TriforceBlitz
+            | Series::WeTryToBeBetter
+                => false,
+            | Series::NineDaysOfSaws
+            | Series::Pictionary
+                => true,
         }
     }
 
@@ -1037,6 +1047,7 @@ pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
         Series::PotsOfTime => pot::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
+        Series::SlugOpen => None, //TODO
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(&mut transaction, &data).await?,
@@ -1343,6 +1354,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
                                                         label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
                                                     });
                                                 }
+                                                TeamConfig::SlugOpen => @unimplemented
                                             }
                                             : form_field("fpa", &mut errors, html! {
                                                 label(for = "fpa") {
@@ -1427,6 +1439,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
                             | Series::Mq
                             | Series::PotsOfTime
                             | Series::Rsl
+                            | Series::SlugOpen
                             | Series::Standard
                             | Series::TournamentOfTruth
                             | Series::TournoiFrancophone
@@ -1435,7 +1448,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
                                     p : "Planifiez vos matches dans les fils du canal dédié.";
                                 } else {
                                     p : "Please schedule your matches using the Discord match threads.";
-                                }
+                                } //TODO more detailed status depending on event format and upcoming races
                             | Series::BattleRoyale
                             | Series::League
                             | Series::Scrubs
@@ -1635,7 +1648,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
             }).await?
         }
         TeamConfig::Pictionary => pic::find_team_form(transaction, ootr_api_client, me, uri, csrf, data, ctx).await?,
-        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld => mw::find_team_form(transaction, ootr_api_client, me, uri, csrf, data, ctx).await?,
+        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld | TeamConfig::SlugOpen => mw::find_team_form(transaction, ootr_api_client, me, uri, csrf, data, ctx).await?,
     })
 }
 

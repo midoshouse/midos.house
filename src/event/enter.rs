@@ -1070,7 +1070,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                     }
                 }
                 TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, ootr_api_client, me, uri, csrf, data, defaults).await?),
-                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, ootr_api_client, me, uri, csrf, data, defaults.into_context(), http_client).await?),
+                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld | TeamConfig::SlugOpen => return Ok(mw::enter_form(transaction, ootr_api_client, me, uri, csrf, data, defaults.into_context(), http_client).await?),
             },
         }
     };

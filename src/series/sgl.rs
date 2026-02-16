@@ -94,6 +94,15 @@ impl OnlinePlayer {
                     false
                 }
             },
+            Entrant::MidosHouseTeamMember { member, .. } => if_chain! {
+                if let Some(Some(user_data)) = member.racetime_user_data(http_client).await?;
+                if let Some(twitch_name) = user_data.twitch_name;
+                then {
+                    twitch_name.eq_ignore_ascii_case(&self.streaming_from)
+                } else {
+                    false
+                }
+            },
             Entrant::Discord { twitch_username: None, .. } | Entrant::Named { twitch_username: None, .. } => false,
             Entrant::Discord { twitch_username: Some(username), .. } | Entrant::Named { twitch_username: Some(username), .. } => username.eq_ignore_ascii_case(&self.streaming_from),
         })
@@ -187,11 +196,11 @@ impl Restream {
                     cal_event.race.save(&mut transaction).await?;
                     let overlapping_maintenance_windows = match cal_event.should_create_room(&mut transaction, &event).await? {
                         RaceHandleMode::None | RaceHandleMode::Notify => Vec::default(),
-                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, self.when_countdown + event.series.default_race_duration(), self.when_countdown - TimeDelta::minutes(30))
+                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, self.when_countdown + cal_event.estimated_duration(), self.when_countdown - TimeDelta::minutes(30))
                             .fetch(&mut *transaction)
                             .map_ok(|row| (row.start..row.end_time, row.kind))
                             .try_collect().await?,
-                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, self.when_countdown + event.series.default_race_duration(), self.when_countdown - TimeDelta::minutes(30))
+                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, self.when_countdown + cal_event.estimated_duration(), self.when_countdown - TimeDelta::minutes(30))
                             .fetch(&mut *transaction)
                             .map_ok(|row| (row.start..row.end_time, row.kind))
                             .try_collect().await?,
@@ -400,6 +409,11 @@ impl InPersonPlayer {
                 } else {
                     false
                 }
+            },
+            Entrant::MidosHouseTeamMember { member, .. } => if let Some(ref discord) = member.discord {
+                discord.id == self.user.discord_id
+            } else {
+                false
             },
             Entrant::Discord { id, .. } => *id == self.user.discord_id,
             Entrant::Named { .. } => false,

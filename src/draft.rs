@@ -195,7 +195,7 @@ pub(crate) enum MessageContext<'a> {
         transaction: Transaction<'a, Postgres>,
         guild_id: GuildId,
         command_ids: CommandIds,
-        teams: Vec<team::Team>,
+        teams: Vec<team::Team>, //TODO use entrants instead to allow drafting for Franco format in SlugCentral Open
         team: team::Team,
     },
     RaceTime {

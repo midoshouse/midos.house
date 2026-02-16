@@ -284,10 +284,12 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
             cal::Source::League { id } => if let (Some(winner), Some(loser), Some(winning_time), Some(losing_time)) = (
                 match &winner {
                     Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
+                    Entrant::MidosHouseTeamMember { member, .. } => member.racetime.as_ref().map(|racetime| racetime.id.clone()),
                     Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
                 },
                 match &loser {
                     Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
+                    Entrant::MidosHouseTeamMember { member, .. } => member.racetime.as_ref().map(|racetime| racetime.id.clone()),
                     Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
                 },
                 winning_time.as_duration(),

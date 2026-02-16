@@ -146,7 +146,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : " (";
                 @match event.team_config {
                     TeamConfig::Solo => @unreachable // team invite for solo event
-                    TeamConfig::CoOp => {}
+                    TeamConfig::CoOp | TeamConfig::SlugOpen => {}
                     TeamConfig::TfbCoOp => {
                         : tfb::CoOpRole::try_from(member.role).expect("non-coop role in coop team");
                         : ", ";
@@ -176,7 +176,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : event;
                 : ".";
             }
-            TeamConfig::CoOp => {
+            TeamConfig::CoOp | TeamConfig::SlugOpen => {
                 @let (creator, _) = creator.ok_or(Error::UnknownUser)?;
                 : creator;
                 : " invited you to join ";
