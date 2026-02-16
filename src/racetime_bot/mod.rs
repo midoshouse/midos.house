@@ -622,7 +622,7 @@ impl Goal {
                 }
             },
             Self::StandardWeeklies => event.expect("event must be set for Goal::StandardWeeklies").rando_version.clone().expect("no randomizer version configured for weeklies"), //TODO allow weekly organizers to configure this
-            Self::TournamentOfTruthS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 9, 0, 2, 15) },
+            Self::TournamentOfTruthS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 9, 0, 2, 17) },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
             Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105) },
             Self::TournoiFrancoS5 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 2, 64, 135) },
