@@ -1343,7 +1343,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("{teams_label} — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]

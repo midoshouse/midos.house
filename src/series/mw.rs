@@ -1705,7 +1705,7 @@ pub(crate) struct RaceTimeTeamMember {
 
 pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, http_client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, false).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         match me.racetime_user_data(http_client).await? {
             Some(Some(racetime_user)) => {
                 let mut errors = ctx.errors().collect_vec();
@@ -1911,7 +1911,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, o
             }
         })
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {

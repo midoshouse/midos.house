@@ -120,7 +120,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Configure — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Configure — {}", event.display_name), html! {
         : header;
         : content;
     }).await?)
@@ -293,7 +293,7 @@ async fn restream_coordinators_form(mut transaction: Transaction<'_, Postgres>, 
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Manage restream coordinators — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Manage restream coordinators — {}", event.display_name), html! {
         : header;
         : content;
     }).await?)

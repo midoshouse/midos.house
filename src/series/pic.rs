@@ -501,7 +501,7 @@ impl<'v> EnterFormDefaults<'v> {
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
 pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, false).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         html! {
             : header;
@@ -603,7 +603,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, o
             },
         })))
         .collect_vec();
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {

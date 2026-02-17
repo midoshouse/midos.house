@@ -2098,7 +2098,7 @@ pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Orig
     }
     let chests_event = events.choose(&mut rng());
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
-    page(transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Calendar — Mido's House", html! {
+    page(transaction, &me, &uri, PageStyle::new(chests), "Calendar — Mido's House", html! {
         p {
             : "A calendar of all races across all events can be found at ";
             code : uri!(base_uri(), index);
@@ -2257,7 +2257,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("New Race — {}", event.display_name), html! {
         : header;
         h2 : "Create race";
         : form;
@@ -2942,7 +2942,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         },
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Import Races — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Import Races — {}", event.display_name), html! {
         : header;
         h2 : "Import races";
         : form;
@@ -3536,7 +3536,7 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, http_cli
             //TODO allow making any necessary choices like draft picks
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Practice — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/practice")]
@@ -3862,7 +3862,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit?<redirect_to>")]
@@ -4277,7 +4277,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
@@ -4414,7 +4414,7 @@ async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
             }
         }
     };
-    Ok(page(transaction, &Some(me), &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Volunteer — {}", event.display_name), content).await?)
+    Ok(page(transaction, &Some(me), &uri, PageStyle::new(event.chests().await?), &format!("Volunteer — {}", event.display_name), content).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/volunteer?<role>&<redirect_to>", data = "<form>")]

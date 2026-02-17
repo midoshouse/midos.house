@@ -1080,7 +1080,7 @@ pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &data.display_name, content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
@@ -1143,7 +1143,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Races — {}", data.display_name), content).await?)
 }
 
 pub(crate) enum StatusContext<'v> {
@@ -1568,7 +1568,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
@@ -1642,7 +1642,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
     Ok(match data.team_config {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::FindTeam, false).await?;
-            page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+            page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await?
@@ -1858,7 +1858,7 @@ async fn resign_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let is_started = data.is_started(&mut transaction).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Resign — {}", data.display_name), html! {
         p {
             @if is_started {
                 @if let TeamConfig::Solo = data.team_config {
@@ -2010,7 +2010,7 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
-        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+        return Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
             p {
                 : "You can no longer opt out of participating in ";
                 : data;
@@ -2023,7 +2023,7 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
             return Err(StatusOrError::Status(Status::Forbidden)) //TODO ask to connect a racetime.gg account
         }
     } else {
-        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+        return Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
             p {
                 a(href = uri!(auth::login(Some(uri!(opt_out(series, event)))))) : "Sign in or create a Mido's House account";
                 : " to opt out of participating in ";
@@ -2048,7 +2048,7 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
     } else {
         false
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
         @if opted_out {
             p : "You have already opted out.";
         } else if entered {
@@ -2470,7 +2470,7 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, ootr_api
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/practice")]
@@ -2524,7 +2524,7 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
                                     : ".";
                                 }
                             };
-                            return Ok(Some(RedirectOrContent::Content(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Practice — {}", data.display_name), content).await?)))
+                            return Ok(Some(RedirectOrContent::Content(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)))
                         }
                         Err(e) => {
                             transaction.commit().await?;
@@ -2867,7 +2867,7 @@ async fn volunteer_page(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
         },
         _ => unimplemented!(), //TODO ask other events' organizers if they want to show the Volunteer tab
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Volunteer — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Volunteer — {}", data.display_name), html! {
         : header;
         : content;
     }).await?)

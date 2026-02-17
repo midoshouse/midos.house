@@ -113,12 +113,12 @@ pub(crate) struct PageStyle {
     pub(crate) mw_footer: bool,
 }
 
-impl Default for PageStyle {
-    fn default() -> Self {
+impl PageStyle {
+    pub(crate) fn new(chests: ChestAppearances) -> Self {
         Self {
             kind: PageKind::Other,
-            chests: ChestAppearances::random(),
             mw_footer: false,
+            chests,
         }
     }
 }
@@ -388,7 +388,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
             : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, me.as_ref(), &uri, csrf.as_ref(), None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), restreams: cal::RaceTableRestreams::None, challonge_import_ctx: None }, &races).await?;
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, ..PageStyle::new(chests) }, "Mido's House", page_content).await?)
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, FromFormField, UriDisplayQuery)]
@@ -462,14 +462,14 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", page_content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle::new(chests), "Event Archive — Mido's House", page_content).await?)
 }
 
 #[rocket::get("/new")]
 async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let mut transaction = pool.begin().await?;
     let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
-    page(transaction, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
+    page(transaction, &me, &uri, PageStyle::new(ChestAppearances::random()), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
             : fenhl;
@@ -489,7 +489,7 @@ async fn bad_request(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::SMALL_KEYS, ..PageStyle::default() }, "Bad Request — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::SMALL_KEYS), "Bad Request — Mido's House", html! {
         h1 : "Error 400: Bad Request";
         p : "Login failed. If you need help, contact Fenhl on Discord.";
     }).await
@@ -500,7 +500,7 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::new(ChestAppearances::INVISIBLE) }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -513,7 +513,7 @@ async fn unprocessable_content(request: &Request<'_>) -> Result<(Status, RawHtml
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    Ok((Status::NotFound, page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    Ok((Status::NotFound, page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::new(ChestAppearances::INVISIBLE) }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -529,7 +529,7 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Internal Server Error — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await
@@ -540,7 +540,7 @@ async fn bad_gateway(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Bad Gateway — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Bad Gateway — Mido's House", html! {
         h1 : "Error 502: Bad Gateway";
         p : "Sorry, there was a network error. Please try again. If this error persists, please contact Fenhl on Discord.";
     }).await
@@ -551,7 +551,7 @@ async fn insufficient_storage(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Insufficient Storage — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Insufficient Storage — Mido's House", html! {
         h1 : "Error 507: Insufficient Storage";
         p : "Sorry, the Mido's House server's disk is almost full, so rolling practice seeds with settings not supported by ootrandomizer.com is temporarily disabled. Please try again later. If this error persists, please contact Fenhl on Discord.";
     }).await
@@ -566,7 +566,7 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, &format!("{} — Mido's House", status.reason_lossy()), html! {
+    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), &format!("{} — Mido's House", status.reason_lossy()), html! {
         h1 {
             : "Error ";
             : status.code;

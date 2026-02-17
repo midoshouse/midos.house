@@ -55,7 +55,7 @@ futures = "0.3"
 gix = { version = "0.79", features = ["blocking-http-transport-reqwest"] }
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
-hyper = "1.4.1"
+hyper = "1"
 ics = "0.5"
 if_chain = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -65,7 +65,7 @@ lazy-regex = "3"
 log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock" }
 mhstatus = { git = "https://github.com/midoshouse/status.midos.house" }
-#mimalloc = "0.1.43" # fails to compile on Ubuntu
+#mimalloc = "0.1" # fails to compile on Ubuntu
 noisy_float = "0.2"
 nonempty-collections = "1"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", features = ["sqlx"] }
@@ -76,7 +76,7 @@ rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
 rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "forms", features = ["ics", "image", "rocket_csrf"] }
 rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "forms" }
 rocket_oauth2 = { git = "https://github.com/fenhl/rocket_oauth2", branch = "forms" }
-rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { package = "serde_json_path_to_error", version = "0.1" }
@@ -84,14 +84,14 @@ serde_json_inner = { package = "serde_json", version = "1", features = [
     "preserve_order", # required to correctly render progression spoilers
 ] }
 serde_plain = "1"
-serde_urlencoded = "0.7.1"
+serde_urlencoded = "0.7"
 serde_with = { version = "3", features = ["json"] }
-serenity = { version = "0.12.4", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] }
 serenity-utils = { git = "https://github.com/fenhl/serenity-utils" }
-smart-default = "0.7.1"
-sqlx = { version = "0.8.3", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
-systemstat = "0.2.5"
-tempfile = "3.20.0"
+smart-default = "0.7"
+sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
+systemstat = "0.2"
+tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["io"] }

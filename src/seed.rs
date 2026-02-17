@@ -472,7 +472,7 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
             } else {
                 "zpf"
             };
-            GetResponse::Page(page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, chests: extra.chests, ..PageStyle::default() }, "Seed — Mido's House", html! {
+            GetResponse::Page(page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::new(extra.chests) }, "Seed — Mido's House", html! {
                 @if let Some(hash) = extra.file_hash {
                     h1(class = "hash") {
                         @for hash_icon in hash {

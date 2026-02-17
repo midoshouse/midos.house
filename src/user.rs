@@ -295,20 +295,26 @@ impl User {
         })
     }
 
-    async fn events_organized(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<event::Data<'_>>, event::DataError> {
+    pub(crate) async fn events_organized(&self, transaction: &mut Transaction<'_, Postgres>, include_unlisted: bool) -> Result<Vec<event::Data<'_>>, event::DataError> {
         let ids = sqlx::query!(r#"SELECT series AS "series: Series", event FROM organizers WHERE organizer = $1"#, self.id as _).fetch_all(&mut **transaction).await?;
         let mut buf = Vec::with_capacity(ids.len());
         for row in ids {
-            buf.push(event::Data::new(&mut *transaction, row.series, row.event).await?.expect("event disappeared during transaction"));
+            let event = event::Data::new(&mut *transaction, row.series, row.event).await?.expect("event disappeared during transaction");
+            if include_unlisted || event.listed {
+                buf.push(event);
+            }
         }
         Ok(buf)
     }
 
-    async fn events_participated(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<event::Data<'static>>, event::DataError> {
+    pub(crate) async fn events_participated(&self, transaction: &mut Transaction<'_, Postgres>, include_unlisted: bool) -> Result<Vec<event::Data<'static>>, event::DataError> {
         let teams = Team::for_member(&mut *transaction, self.id).await?;
         let mut buf = Vec::with_capacity(teams.len());
         for team in teams {
-            buf.push(team.into_event(&mut *transaction).await?);
+            let event = team.into_event(&mut *transaction).await?;
+            if include_unlisted || event.listed {
+                buf.push(event);
+            }
         }
         Ok(buf)
     }
@@ -505,11 +511,9 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else {
         html! {}
     };
-    let mut events_organized = user.events_organized(&mut transaction).await?;
-    events_organized.retain(|event| event.listed);
+    let mut events_organized = user.events_organized(&mut transaction, false).await?;
     events_organized.sort_by_key(|event| (event.base_start.is_some(), Reverse(event.base_start)));
-    let mut events_participated = user.events_participated(&mut transaction).await?;
-    events_participated.retain(|event| event.listed);
+    let mut events_participated = user.events_participated(&mut transaction, false).await?;
     events_participated.sort_by_key(|event| (event.base_start.is_some(), Reverse(event.base_start)));
     let mut chests_events = events_organized.clone();
     chests_events.extend_from_slice(&events_participated);
@@ -517,7 +521,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     chests_events.dedup_by(|e1, e2| e1.series == e2.series && e1.event == e2.event);
     let chests_event = chests_events.choose(&mut rng());
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
-    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, chests, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::new(chests) }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 {
             bdi : user.display_name();
         }
