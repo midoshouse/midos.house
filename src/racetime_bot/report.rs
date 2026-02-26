@@ -1,4 +1,5 @@
 use {
+    nonempty_collections::nev,
     tokio::sync::RwLockReadGuard,
     crate::{
         prelude::*,
@@ -282,42 +283,45 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
             };
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
-        match cal_event.race.source {
-            cal::Source::Manual | cal::Source::Sheet { .. } | cal::Source::SpeedGamingOnline { .. } | cal::Source::SpeedGamingInPerson { .. } => {}
-            cal::Source::Challonge { .. } => {} //TODO
-            cal::Source::League { id } => if let (Some(winner), Some(loser), Some(winning_time), Some(losing_time)) = (
-                match &winner {
-                    Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
-                    Entrant::MidosHouseTeamMember { member, .. } => member.racetime.as_ref().map(|racetime| racetime.id.clone()),
-                    Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
-                },
-                match &loser {
-                    Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
-                    Entrant::MidosHouseTeamMember { member, .. } => member.racetime.as_ref().map(|racetime| racetime.id.clone()),
-                    Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
-                },
-                winning_time.as_duration(),
-                losing_time.as_duration(),
-            ) {
-                let mut form = collect![as HashMap<_, _>:
-                    "id" => id.to_string(),
-                    "racetimeRoom" => format!("https://{}{}", racetime_host(), ctx.data().await.url),
-                    "fpa" => format!("0"), //TODO also report races with FPA calls
-                    "winner" => winner,
-                    "loser" => loser,
-                ];
-                if let Some(winning_time) = winning_time {
-                    form.insert("winningTime", winning_time.as_secs().to_string());
+        let match_decided = match cal_event.race.source {
+            cal::Source::Manual | cal::Source::Sheet { .. } | cal::Source::SpeedGamingOnline { .. } | cal::Source::SpeedGamingInPerson { .. } => None,
+            cal::Source::Challonge { .. } => None, //TODO
+            cal::Source::League { id } => {
+                if let (Some(winner), Some(loser), Some(winning_time), Some(losing_time)) = (
+                    match &winner {
+                        Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member.racetime.as_ref().map(|racetime| racetime.id.clone()),
+                        Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
+                    },
+                    match &loser {
+                        Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member.racetime.as_ref().map(|racetime| racetime.id.clone()),
+                        Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
+                    },
+                    winning_time.as_duration(),
+                    losing_time.as_duration(),
+                ) {
+                    let mut form = collect![as HashMap<_, _>:
+                        "id" => id.to_string(),
+                        "racetimeRoom" => format!("https://{}{}", racetime_host(), ctx.data().await.url),
+                        "fpa" => format!("0"), //TODO also report races with FPA calls
+                        "winner" => winner,
+                        "loser" => loser,
+                    ];
+                    if let Some(winning_time) = winning_time {
+                        form.insert("winningTime", winning_time.as_secs().to_string());
+                    }
+                    if let Some(losing_time) = losing_time {
+                        form.insert("losingTime", losing_time.as_secs().to_string());
+                    }
+                    let request = ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportResultFromMidoHouse")
+                        .bearer_auth(&ctx.global_state.league_api_key)
+                        .form(&form);
+                    println!("reporting result to League website: {:?}", serde_urlencoded::to_string(&form));
+                    request.send().await?.detailed_error_for_status().await.to_racetime()?;
                 }
-                if let Some(losing_time) = losing_time {
-                    form.insert("losingTime", losing_time.as_secs().to_string());
-                }
-                let request = ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportResultFromMidoHouse")
-                    .bearer_auth(&ctx.global_state.league_api_key)
-                    .form(&form);
-                println!("reporting result to League website: {:?}", serde_urlencoded::to_string(&form));
-                request.send().await?.detailed_error_for_status().await.to_racetime()?;
-            },
+                None
+            }
             cal::Source::StartGG { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
                 if let Some(game) = cal_event.race.game {
                     let startgg::set_scores_query::ResponseData {
@@ -351,20 +355,23 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     });
                     let game_count = cal_event.race.game_count(&mut transaction).await.to_racetime()?;
                     let (overall_winner, overall_won_games) = game_data.iter().map(|game| game.winner_id.as_ref().expect("missing game winner ID")).counts().into_iter().max_by_key(|(_, count)| *count).expect("no game winners");
+                    let match_decided = match set_games_type {
+                        1 => i16::try_from(overall_won_games).ok().is_none_or(|overall_won_games| overall_won_games > game_count / 2), // best of
+                        2 => i16::try_from(game_data.len()).ok().is_none_or(|overall_games| overall_games >= game_count), // total games
+                        _ => return Err(GraphQLQueryResponseError).to_racetime(),
+                    };
                     startgg::query_uncached::<startgg::ReportMultiGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_multi_game_result_mutation::Variables {
                         set_id: set.clone(),
-                        winner_entrant_id: match set_games_type {
-                            1 => i16::try_from(overall_won_games).ok().is_none_or(|overall_won_games| overall_won_games > game_count / 2), // best of
-                            2 => i16::try_from(game_data.len()).ok().is_none_or(|overall_games| overall_games >= game_count), // total games
-                            _ => return Err(GraphQLQueryResponseError).to_racetime(),
-                        }.then(|| overall_winner.clone()),
+                        winner_entrant_id: match_decided.then(|| overall_winner.clone()),
                         game_data,
                     }).await.to_racetime()?;
+                    Some(match_decided)
                 } else {
                     startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_one_game_result_mutation::Variables {
                         set_id: set.clone(),
                         winner_entrant_id: winner_entrant_id.clone(),
                     }).await.to_racetime()?;
+                    Some(true)
                 }
             } else {
                 if let Some(organizer_channel) = event.discord_organizer_channel {
@@ -375,34 +382,42 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     msg.push("> (winner has no start.gg entrant ID)");
                     organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                 }
+                None
             },
-        }
-        if_chain! {
-            if let Entrant::MidosHouseTeam(winner) = winner;
-            if let Entrant::MidosHouseTeam(loser) = loser;
-            if let Some(draft_kind) = event.draft_kind();
-            if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()?;
-            then {
-                //TODO if this game decides the match, delete next game instead of initializing draft
-                let draft = Draft::for_next_game(&mut transaction, draft_kind, loser.id, winner.id).await.to_racetime()?;
-                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(&draft) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
-                if_chain! {
-                    if let Some(guild_id) = event.discord_guild;
-                    if let Some(scheduling_thread) = next_game.scheduling_thread;
-                    // not automatically posting if the match might already be decided
-                    //TODO remove this condition after implementing handling for decided matches (see TODO comment above)
-                    if cal_event.race.game.expect("found next game for race without game number") <= cal_event.race.game_count(&mut transaction).await.to_racetime()? / 2;
-                    let discord_ctx = ctx.global_state.discord_ctx.read().await;
-                    let data = discord_ctx.data.read().await;
-                    if let Some(Some(command_ids)) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
-                    then {
-                        let mut msg_ctx = draft::MessageContext::Discord {
-                            teams: next_game.teams().cloned().collect(),
-                            team: Team::dummy(),
-                            transaction, guild_id, command_ids,
-                        };
-                        scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, next_game.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
-                        transaction = msg_ctx.into_transaction();
+        };
+        if let Some(true) = match_decided {
+            if let Some(next_race) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()? {
+                let mut races_to_delete = nev![next_race];
+                while let Some(next_race) = races_to_delete.last().next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()? {
+                    races_to_delete.push(next_race);
+                }
+                sqlx::query_scalar!(r#"UPDATE races SET ignored = TRUE WHERE id = ANY($1)"#, &races_to_delete.into_iter().map(|race| i64::from(race.id)).collect_vec()).execute(&mut *transaction).await.to_racetime()?;
+            }
+        } else {
+            if_chain! {
+                if let Entrant::MidosHouseTeam(winner) = winner;
+                if let Entrant::MidosHouseTeam(loser) = loser;
+                if let Some(draft_kind) = event.draft_kind();
+                if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()?;
+                then {
+                    let draft = Draft::for_next_game(&mut transaction, draft_kind, loser.id, winner.id).await.to_racetime()?;
+                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(&draft) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
+                    if_chain! {
+                        if let Some(guild_id) = event.discord_guild;
+                        if let Some(scheduling_thread) = next_game.scheduling_thread;
+                        if match_decided == Some(false) || cal_event.race.game.expect("found next game for race without game number") <= cal_event.race.game_count(&mut transaction).await.to_racetime()? / 2;
+                        let discord_ctx = ctx.global_state.discord_ctx.read().await;
+                        let data = discord_ctx.data.read().await;
+                        if let Some(Some(command_ids)) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
+                        then {
+                            let mut msg_ctx = draft::MessageContext::Discord {
+                                teams: next_game.teams().cloned().collect(),
+                                team: Team::dummy(),
+                                transaction, guild_id, command_ids,
+                            };
+                            scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, next_game.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
+                            transaction = msg_ctx.into_transaction();
+                        }
                     }
                 }
             }
