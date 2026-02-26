@@ -1,0 +1,9 @@
+query SetScoresQuery($setID: ID!) {
+  set(id: $setID) {
+    games {
+      orderNum
+      winnerId
+    }
+    setGamesType
+  }
+}

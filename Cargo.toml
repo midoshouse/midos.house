@@ -2,6 +2,7 @@
 name = "midos-house"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.91" # nixpkgs stable
 
 [profile.dev.build-override]
 opt-level = 3

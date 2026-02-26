@@ -6,6 +6,10 @@ use {
     },
 };
 
+#[derive(Debug, thiserror::Error)]
+#[error("missing field in GraphQL query response")]
+struct GraphQLQueryResponseError;
+
 trait Score {
     type SortKey: Ord;
 
@@ -314,21 +318,62 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 println!("reporting result to League website: {:?}", serde_urlencoded::to_string(&form));
                 request.send().await?.detailed_error_for_status().await.to_racetime()?;
             },
-            cal::Source::StartGG { ref set, .. } => if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
-                if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
+            cal::Source::StartGG { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
+                if let Some(game) = cal_event.race.game {
+                    let startgg::set_scores_query::ResponseData {
+                        set: Some(startgg::set_scores_query::SetScoresQuerySet {
+                            games: Some(games),
+                            set_games_type: Some(set_games_type),
+                        }),
+                    } = startgg::query_uncached::<startgg::SetScoresQuery>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::set_scores_query::Variables {
+                        set_id: set.clone(),
+                    }).await.to_racetime()? else {
+                        return Err(GraphQLQueryResponseError).to_racetime()
+                    };
+                    let mut game_data = games.into_iter().map(|game| {
+                        let Some(startgg::set_scores_query::SetScoresQuerySetGames { order_num: Some(game_num), winner_id: Some(winner_id) }) = game else { return Err(GraphQLQueryResponseError) };
+                        Ok(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
+                            winner_id: Some(startgg::ID(winner_id.to_string())),
+                            entrant1_score: None,
+                            entrant2_score: None,
+                            stage_id: None,
+                            selections: None,
+                            game_num,
+                        })
+                    }).try_collect::<_, Vec<_>, _>().to_racetime()?;
+                    game_data.push(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
+                        winner_id: Some(winner_entrant_id.clone()),
+                        game_num: game.into(),
+                        entrant1_score: None,
+                        entrant2_score: None,
+                        stage_id: None,
+                        selections: None,
+                    });
+                    let game_count = cal_event.race.game_count(&mut transaction).await.to_racetime()?;
+                    let (overall_winner, overall_won_games) = game_data.iter().map(|game| game.winner_id.as_ref().expect("missing game winner ID")).counts().into_iter().max_by_key(|(_, count)| *count).expect("no game winners");
+                    startgg::query_uncached::<startgg::ReportMultiGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_multi_game_result_mutation::Variables {
+                        set_id: set.clone(),
+                        winner_entrant_id: match set_games_type {
+                            1 => i16::try_from(overall_won_games).ok().is_none_or(|overall_won_games| overall_won_games > game_count / 2), // best of
+                            2 => i16::try_from(game_data.len()).ok().is_none_or(|overall_games| overall_games >= game_count), // total games
+                            _ => return Err(GraphQLQueryResponseError).to_racetime(),
+                        }.then(|| overall_winner.clone()),
+                        game_data,
+                    }).await.to_racetime()?;
+                } else {
                     startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_one_game_result_mutation::Variables {
                         set_id: set.clone(),
                         winner_entrant_id: winner_entrant_id.clone(),
                     }).await.to_racetime()?;
-                } else {
-                    if let Some(organizer_channel) = event.discord_organizer_channel {
-                        let mut msg = MessageBuilder::default();
-                        msg.push("failed to report race result to start.gg: <https://");
-                        msg.push(racetime_host());
-                        msg.push(&ctx.data().await.url);
-                        msg.push("> (winner has no start.gg entrant ID)");
-                        organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
-                    }
+                }
+            } else {
+                if let Some(organizer_channel) = event.discord_organizer_channel {
+                    let mut msg = MessageBuilder::default();
+                    msg.push("failed to report race result to start.gg: <https://");
+                    msg.push(racetime_host());
+                    msg.push(&ctx.data().await.url);
+                    msg.push("> (winner has no start.gg entrant ID)");
+                    organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                 }
             },
         }
