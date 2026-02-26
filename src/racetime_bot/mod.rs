@@ -675,7 +675,7 @@ impl Goal {
         }
     }
 
-    async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
+    async fn send_presets(&self, ctx: &RaceContext<BotState>) -> Result<(), Error> {
         match self {
             | Self::Pic7
                 => ctx.say("!seed: The settings used for the race").await?,
@@ -844,7 +844,7 @@ impl Goal {
         }
     }
 
-    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global_state: &GlobalState, is_official: bool, spoiler_seed: bool, no_password: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
+    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global_state: &BotState, is_official: bool, spoiler_seed: bool, no_password: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
         let unlock_spoiler_log = self.unlock_spoiler_log(is_official, spoiler_seed);
         Ok(match self {
             | Self::CoOpS3
@@ -1494,7 +1494,7 @@ pub(crate) struct SeedMetadata {
     pub(crate) progression_spoiler: bool,
 }
 
-pub(crate) struct GlobalState {
+pub(crate) struct BotState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Arc<Mutex<()>>,
     host_info: racetime::HostInfo,
@@ -1512,7 +1512,7 @@ pub(crate) struct GlobalState {
     seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>,
 }
 
-impl GlobalState {
+impl BotState {
     pub(crate) async fn new(
         new_room_lock: Arc<Mutex<()>>,
         racetime_config: ConfigRaceTime,
@@ -2193,7 +2193,7 @@ pub(crate) enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<BotState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -2487,7 +2487,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
     }
 }
 
-async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
+async fn set_bot_raceinfo(ctx: &RaceContext<BotState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
     let extra = seed.extra(Utc::now()).await.to_racetime()?;
     ctx.set_bot_raceinfo(&format!(
         "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}",
@@ -2585,7 +2585,7 @@ struct Handler {
 
 impl Handler {
     /// For `existing_state`, `Some(None)` means this is an existing race room with unknown state, while `None` means this is a new race room.
-    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> bool {
+    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<BotState>, existing_state: Option<Option<&Self>>) -> bool {
         if Goal::from_race_data(race_data).is_none() { return false }
         if let Some(existing_state) = existing_state {
             if let Some(existing_state) = existing_state {
@@ -2621,7 +2621,7 @@ impl Handler {
 
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
-    async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Result<Goal, GoalFromStrError> {
+    async fn goal(&self, ctx: &RaceContext<BotState>) -> Result<Goal, GoalFromStrError> {
         if let Some(OfficialRaceData { goal, .. }) = self.official_data {
             Ok(goal)
         } else {
@@ -2629,7 +2629,7 @@ impl Handler {
         }
     }
 
-    async fn can_monitor(&self, ctx: &RaceContext<GlobalState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
+    async fn can_monitor(&self, ctx: &RaceContext<BotState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
         if is_monitor { return Ok(true) }
         if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
             if let Some(UserData { ref id, .. }) = msg.user {
@@ -2641,7 +2641,7 @@ impl Handler {
         Ok(false)
     }
 
-    async fn send_settings(&self, ctx: &RaceContext<GlobalState>, preface: &str, reply_to: &str) -> Result<(), Error> {
+    async fn send_settings(&self, ctx: &RaceContext<BotState>, preface: &str, reply_to: &str) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(draft_kind) = goal.draft_kind() {
             let available_settings = lock!(@read state = self.race_state; if let RaceState::Draft { state: ref draft, .. } = *state {
@@ -2684,7 +2684,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn advance_draft(&self, ctx: &RaceContext<GlobalState>, state: &RaceState) -> Result<(), Error> {
+    async fn advance_draft(&self, ctx: &RaceContext<BotState>, state: &RaceState) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         let Some(draft_kind) = goal.draft_kind() else { unreachable!() };
         let RaceState::Draft { state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
@@ -2712,7 +2712,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn draft_action(&self, ctx: &RaceContext<GlobalState>, sender: Option<&UserData>, action: draft::Action) -> Result<(), Error> {
+    async fn draft_action(&self, ctx: &RaceContext<BotState>, sender: Option<&UserData>, action: draft::Action) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -2784,7 +2784,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
+    async fn roll_seed_inner(&self, ctx: &RaceContext<BotState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
@@ -2830,19 +2830,19 @@ impl Handler {
         });
     }
 
-    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_seed(&self, ctx: &RaceContext<BotState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_seed(preroll, true, delay_until, version, settings, plando, unlock_spoiler_log), language, article, description).await;
     }
 
-    async fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_rsl_seed(&self, ctx: &RaceContext<BotState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log), language, article, description).await;
     }
 
-    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, version: &'static str, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<BotState>, version: &'static str, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         // Triforce Blitz website's auto unlock doesn't know about async parts so has to be disabled for asyncs
@@ -2850,7 +2850,7 @@ impl Handler {
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_seed(delay_until, version, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
     }
 
-    async fn roll_tfb_dev_seed(&self, ctx: &RaceContext<GlobalState>, coop: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_tfb_dev_seed(&self, ctx: &RaceContext<BotState>, coop: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         // Triforce Blitz website's auto unlock doesn't know about async parts so has to be disabled for asyncs
@@ -2858,7 +2858,7 @@ impl Handler {
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_dev_seed(delay_until, coop, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
     }
 
-    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
+    async fn queue_existing_seed(&self, ctx: &RaceContext<BotState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         let (tx, rx) = mpsc::channel(1);
@@ -2867,7 +2867,7 @@ impl Handler {
     }
 
     /// Returns `false` if this race was already finished/cancelled.
-    async fn unlock_spoiler_log(&self, ctx: &RaceContext<GlobalState>, goal: Goal) -> Result<bool, Error> {
+    async fn unlock_spoiler_log(&self, ctx: &RaceContext<BotState>, goal: Goal) -> Result<bool, Error> {
         lock!(@write state = self.race_state; {
             match *state {
                 RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().is_none_or(|official_data| !official_data.cal_event.is_private_async_part()) {
@@ -2899,16 +2899,16 @@ impl Handler {
 }
 
 #[async_trait]
-impl RaceHandler<GlobalState> for Handler {
-    async fn should_handle(race_data: &RaceData, global_state: Arc<GlobalState>) -> Result<bool, Error> {
+impl RaceHandler<BotState> for Handler {
+    async fn should_handle(race_data: &RaceData, global_state: Arc<BotState>) -> Result<bool, Error> {
         Ok(Self::should_handle_inner(race_data, global_state, None).await)
     }
 
-    async fn should_stop(&mut self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
+    async fn should_stop(&mut self, ctx: &RaceContext<BotState>) -> Result<bool, Error> {
         Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(Some(self))).await)
     }
 
-    async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+    async fn task(global_state: Arc<BotState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
             let res = join_handle.await;
@@ -2935,7 +2935,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
+    async fn new(ctx: &RaceContext<BotState>) -> Result<Self, Error> {
         let data = ctx.data().await;
         let goal = data.goal.name.parse::<Goal>().to_racetime()?;
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = lock!(new_room_lock = ctx.global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
@@ -4226,7 +4226,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext<BotState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
@@ -4737,7 +4737,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
+    async fn race_data(&mut self, ctx: &RaceContext<BotState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
         let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(OfficialRaceData { ref event, ref entrants, ref mut scores, .. }) = self.official_data {
@@ -5057,7 +5057,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn error(&mut self, _: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
+    async fn error(&mut self, _: &RaceContext<BotState>, mut errors: Vec<String>) -> Result<(), Error> {
         errors.retain(|error|
             !error.ends_with(" is not allowed to join this race.") // failing to invite a user should not crash the race handler
             && !error.ends_with(" is already an entrant.") // failing to invite a user should not crash the race handler
@@ -5297,7 +5297,7 @@ pub(crate) enum PrepareSeedsError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 
-async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), PrepareSeedsError> {
+async fn prepare_seeds(global_state: Arc<BotState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), PrepareSeedsError> {
     'outer: loop {
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE NOT ignored AND room IS NULL AND async_room1 IS NULL AND async_room2 IS NULL AND async_room3 IS NULL AND file_stem IS NULL AND tfb_uuid IS NULL"#).fetch_all(&global_state.db_pool).await? {
             let mut transaction = global_state.db_pool.begin().await?;
@@ -5462,7 +5462,7 @@ pub(crate) enum CreateRoomsError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 
-async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), CreateRoomsError> {
+async fn create_rooms(global_state: Arc<BotState>, mut shutdown: rocket::Shutdown) -> Result<(), CreateRoomsError> {
     loop {
         select! {
             () = &mut shutdown => break,
@@ -5530,7 +5530,7 @@ pub(crate) enum HandleRoomsError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
-async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), HandleRoomsError> {
+async fn handle_rooms(global_state: Arc<BotState>, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), HandleRoomsError> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
@@ -5578,7 +5578,7 @@ pub(crate) enum MainError {
     #[error(transparent)] PrepareSeeds(#[from] PrepareSeedsError),
 }
 
-pub(crate) async fn main(config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), MainError> {
+pub(crate) async fn main(config: Config, shutdown: rocket::Shutdown, global_state: Arc<BotState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), MainError> {
     let ((), (), ()) = tokio::try_join!(
         prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()).err_into::<MainError>(),
         create_rooms(global_state.clone(), shutdown.clone()).err_into(),

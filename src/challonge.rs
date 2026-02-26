@@ -22,7 +22,7 @@ impl fmt::Display for ImportSkipReason {
 /// Returns a list of races to import. The `phase`, `round`, and `game` fields will be left blank since the data required to fill them in is not
 /// provided by the Challonge API, and only one race for each match is imported. The caller is expected to fill in the values for `phase` and
 /// `round`, duplicate this race to get as many different games as there should be in the match, and create a single scheduling thread for the match.
-pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>, community: Option<&str>, tournament: &str) -> Result<(Vec<Race>, Vec<(String, ImportSkipReason)>), cal::Error> {
+pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, event: &event::Data<'_>, community: Option<&str>, tournament: &str) -> Result<(Vec<Race>, Vec<(String, ImportSkipReason)>), cal::Error> {
     #[derive(Deserialize)]
     struct Matches {
         data: Vec<Match>,
@@ -65,11 +65,11 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
     }.parse()?;
     loop {
         println!("Challonge: Requesting API endpoint {next_endpoint}");
-        let Matches { data, links } = http_client.get(next_endpoint)
+        let Matches { data, links } = global.http_client.get(next_endpoint)
             .header(reqwest::header::ACCEPT, "application/json")
             .header(reqwest::header::CONTENT_TYPE, "application/vnd.api+json")
             .header("Authorization-Type", "v1")
-            .header(reqwest::header::AUTHORIZATION, &config.challonge_api_key)
+            .header(reqwest::header::AUTHORIZATION, &global.config.challonge_api_key)
             .send().await?
             .detailed_error_for_status().await?
             .json_with_text_in_error().await?;
@@ -101,7 +101,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
                     fpa_invoked: false,
                     breaks_used: false,
                     draft: if let Some(draft_kind) = event.draft_kind() {
-                        Some(Draft::for_game1(transaction, http_client, draft_kind, event, None, [&team1, &team2]).await?)
+                        Some(Draft::for_game1(transaction, &global.http_client, draft_kind, event, None, [&team1, &team2]).await?)
                     } else {
                         None
                     },

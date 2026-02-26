@@ -209,9 +209,9 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         match req.guard::<&CookieJar<'_>>().await {
-            Outcome::Success(cookies) => match req.guard::<&State<reqwest::Client>>().await {
-                Outcome::Success(http_client) => if let Some(token) = cookies.get_private("racetime_token") {
-                    match http_client.get(format!("https://{}/o/userinfo", racetime_host()))
+            Outcome::Success(cookies) => match req.guard::<&GlobalState>().await {
+                Outcome::Success(global) => if let Some(token) = cookies.get_private("racetime_token") {
+                    match global.http_client.get(format!("https://{}/o/userinfo", racetime_host()))
                         .bearer_auth(token.value())
                         .send()
                         .err_into::<UserFromRequestError>()
@@ -223,7 +223,7 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
                     }
                 } else if let Some(token) = cookies.get_private("racetime_refresh_token") {
                     match req.guard::<OAuth2<RaceTime>>().await {
-                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(http_client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
+                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(&global.http_client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
                         Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
                         Outcome::Forward(status) => Outcome::Forward(status),
                     }
@@ -245,9 +245,9 @@ impl<'r> FromRequest<'r> for DiscordUser {
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         match req.guard::<&CookieJar<'_>>().await {
-            Outcome::Success(cookies) => match req.guard::<&State<reqwest::Client>>().await {
-                Outcome::Success(http_client) => if let Some(token) = cookies.get_private("discord_token") {
-                    match http_client.get("https://discord.com/api/v10/users/@me")
+            Outcome::Success(cookies) => match req.guard::<&GlobalState>().await {
+                Outcome::Success(global) => if let Some(token) = cookies.get_private("discord_token") {
+                    match global.http_client.get("https://discord.com/api/v10/users/@me")
                         .bearer_auth(token.value())
                         .send()
                         .err_into::<UserFromRequestError>()
@@ -259,7 +259,7 @@ impl<'r> FromRequest<'r> for DiscordUser {
                     }
                 } else if let Some(token) = cookies.get_private("discord_refresh_token") {
                     match req.guard::<OAuth2<Discord>>().await {
-                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_discord_token_response(http_client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
+                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_discord_token_response(&global.http_client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
                         Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
                         Outcome::Forward(status) => Outcome::Forward(status),
                     }
@@ -280,33 +280,33 @@ impl<'r> FromRequest<'r> for User {
     type Error = UserFromRequestError;
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
-        match req.guard::<&State<PgPool>>().await {
-            Outcome::Success(pool) => {
+        match req.guard::<&GlobalState>().await {
+            Outcome::Success(global) => {
                 let mut found_user = Err((Status::Unauthorized, UserFromRequestError::Cookie));
                 match req.guard::<RaceTimeUser>().await {
-                    Outcome::Success(racetime_user) => if let Some(user) = guard_try!(User::from_racetime(&**pool, &racetime_user.id).await) {
-                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_discriminator = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.name, racetime_user.discriminator as _, racetime_user.pronouns as _, user.id as _).execute(&**pool).await);
+                    Outcome::Success(racetime_user) => if let Some(user) = guard_try!(User::from_racetime(&global.db_pool, &racetime_user.id).await) {
+                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_discriminator = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.name, racetime_user.discriminator as _, racetime_user.pronouns as _, user.id as _).execute(&global.db_pool).await);
                         found_user = found_user.or(Ok(user));
                     },
                     Outcome::Forward(_) => {}
                     Outcome::Error(e) => found_user = found_user.or(Err(e)),
                 }
                 match req.guard::<DiscordUser>().await {
-                    Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&**pool, discord_user.id).await) {
+                    Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&global.db_pool, discord_user.id).await) {
                         let (display_name, username) = if discord_user.discriminator.is_some() {
                             (discord_user.username, None)
                         } else {
                             (discord_user.global_name.unwrap_or_else(|| discord_user.username.clone()), Some(discord_user.username))
                         };
-                        guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1, discord_discriminator = $2, discord_username = $3 WHERE id = $4", display_name, discord_user.discriminator as _, username, user.id as _).execute(&**pool).await);
+                        guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1, discord_discriminator = $2, discord_username = $3 WHERE id = $4", display_name, discord_user.discriminator as _, username, user.id as _).execute(&global.db_pool).await);
                         found_user = found_user.or(Ok(user));
                     },
                     Outcome::Forward(_) => {}
                     Outcome::Error(e) => found_user = found_user.or(Err(e)),
                 }
                 match found_user {
-                    Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id<Users>" FROM view_as WHERE viewer = $1"#, user.id as _).fetch_optional(&**pool).await) {
-                        if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
+                    Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id<Users>" FROM view_as WHERE viewer = $1"#, user.id as _).fetch_optional(&global.db_pool).await) {
+                        if let Some(user) = guard_try!(User::from_id(&global.db_pool, user_id).await) {
                             Outcome::Success(user)
                         } else {
                             Outcome::Error((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
@@ -324,8 +324,8 @@ impl<'r> FromRequest<'r> for User {
 }
 
 #[rocket::get("/login?<redirect_to>")]
-pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, redirect_to: Option<Origin<'_>>) -> PageResult {
-    page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::new(ChestAppearances::random()) }, "Login — Mido's House", if let Some(ref me) = me {
+pub(crate) async fn login(global: &GlobalState, me: Option<User>, uri: Origin<'_>, redirect_to: Option<Origin<'_>>) -> PageResult {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::new(ChestAppearances::random()) }, "Login — Mido's House", if let Some(ref me) = me {
         html! {
             p {
                 : "You are already signed in as ";
@@ -418,14 +418,14 @@ pub(crate) enum RaceTimeCallbackError {
 }
 
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, http_client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
-    let mut transaction = pool.begin().await?;
-    let racetime_user = handle_racetime_token_response(http_client, cookies, &token).await?;
+pub(crate) async fn racetime_callback(global: &GlobalState, me: Option<User>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
+    let mut transaction = global.db_pool.begin().await?;
+    let racetime_user = handle_racetime_token_response(&global.http_client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(&mut *transaction, &racetime_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
     } else {
-        register_racetime_inner(pool, me, Some(racetime_user), Some(redirect_uri)).await?
+        register_racetime_inner(global, me, Some(racetime_user), Some(redirect_uri)).await?
     })
 }
 
@@ -440,14 +440,14 @@ pub(crate) enum DiscordCallbackError {
 }
 
 #[rocket::get("/auth/discord")]
-pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, http_client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, DiscordCallbackError> {
-    let mut transaction = pool.begin().await?;
-    let discord_user = handle_discord_token_response(http_client, cookies, &token).await?;
+pub(crate) async fn discord_callback(global: &GlobalState, me: Option<User>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, DiscordCallbackError> {
+    let mut transaction = global.db_pool.begin().await?;
+    let discord_user = handle_discord_token_response(&global.http_client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_discord(&mut *transaction, discord_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
     } else {
-        register_discord_inner(pool, me, Some(discord_user), Some(redirect_uri)).await?
+        register_discord_inner(global, me, Some(discord_user), Some(redirect_uri)).await?
     })
 }
 
@@ -458,9 +458,9 @@ pub(crate) enum ChallongeCallbackError {
 }
 
 #[rocket::get("/auth/challonge")]
-pub(crate) async fn challonge_callback(pool: &State<PgPool>, me: User, http_client: &State<reqwest::Client>, token: TokenResponse<Challonge>, cookies: &CookieJar<'_>) -> Result<Redirect, ChallongeCallbackError> {
-    let mut transaction = pool.begin().await?;
-    let challonge_user = handle_challonge_token_response(http_client, &token).await?;
+pub(crate) async fn challonge_callback(global: &GlobalState, me: User, token: TokenResponse<Challonge>, cookies: &CookieJar<'_>) -> Result<Redirect, ChallongeCallbackError> {
+    let mut transaction = global.db_pool.begin().await?;
+    let challonge_user = handle_challonge_token_response(&global.http_client, &token).await?;
     sqlx::query!("UPDATE users SET challonge_id = $1 WHERE id = $2", challonge_user.id, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
@@ -474,9 +474,9 @@ pub(crate) enum StartGGCallbackError {
 }
 
 #[rocket::get("/auth/startgg")]
-pub(crate) async fn startgg_callback(pool: &State<PgPool>, me: User, http_client: &State<reqwest::Client>, token: TokenResponse<StartGG>, cookies: &CookieJar<'_>) -> Result<Redirect, StartGGCallbackError> {
-    let mut transaction = pool.begin().await?;
-    let startgg_id = handle_startgg_token_response(http_client, &token).await?;
+pub(crate) async fn startgg_callback(global: &GlobalState, me: User, token: TokenResponse<StartGG>, cookies: &CookieJar<'_>) -> Result<Redirect, StartGGCallbackError> {
+    let mut transaction = global.db_pool.begin().await?;
+    let startgg_id = handle_startgg_token_response(&global.http_client, &token).await?;
     sqlx::query!("UPDATE users SET startgg_id = $1 WHERE id = $2", startgg_id as _, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
@@ -493,9 +493,9 @@ pub(crate) enum RegisterError {
     ExistsRaceTime,
 }
 
-async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>, redirect_uri: Option<uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
+async fn register_racetime_inner(global: &GlobalState, me: Option<User>, racetime_user: Option<RaceTimeUser>, redirect_uri: Option<uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(racetime_user) = racetime_user {
-        let mut transaction = pool.begin().await?;
+        let mut transaction = global.db_pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut *transaction).await? {
             return Err(RegisterError::ExistsRaceTime) //TODO user-facing error message
         } else if let Some(me) = me {
@@ -513,9 +513,9 @@ async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetim
     })
 }
 
-async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>, redirect_uri: Option<uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
+async fn register_discord_inner(global: &GlobalState, me: Option<User>, discord_user: Option<DiscordUser>, redirect_uri: Option<uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(discord_user) = discord_user {
-        let mut transaction = pool.begin().await?;
+        let mut transaction = global.db_pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, PgSnowflake(discord_user.id) as _).fetch_one(&mut *transaction).await? {
             return Err(RegisterError::ExistsDiscord) //TODO user-facing error message
         } else {
@@ -541,13 +541,13 @@ async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_
 }
 
 #[rocket::get("/register/racetime")]
-pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>) -> Result<Redirect, RegisterError> {
-    register_racetime_inner(pool, me, racetime_user, None).await
+pub(crate) async fn register_racetime(global: &GlobalState, me: Option<User>, racetime_user: Option<RaceTimeUser>) -> Result<Redirect, RegisterError> {
+    register_racetime_inner(global, me, racetime_user, None).await
 }
 
 #[rocket::get("/register/discord")]
-pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>) -> Result<Redirect, RegisterError> {
-    register_discord_inner(pool, me, discord_user, None).await
+pub(crate) async fn register_discord(global: &GlobalState, me: Option<User>, discord_user: Option<DiscordUser>) -> Result<Redirect, RegisterError> {
+    register_discord_inner(global, me, discord_user, None).await
 }
 
 #[derive(Debug, thiserror::Error, Error)]
@@ -560,8 +560,8 @@ pub(crate) enum MergeAccountsError {
 }
 
 #[rocket::get("/merge-accounts")]
-pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>) -> Result<Redirect, MergeAccountsError> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn merge_accounts(global: &GlobalState, me: User, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>) -> Result<Redirect, MergeAccountsError> {
+    let mut transaction = global.db_pool.begin().await?;
     match (me.racetime.is_some(), me.discord.is_some()) {
         (false, false) => unreachable!("signed in but neither account connected"),
         (true, true) => return Err(MergeAccountsError::AlreadyMerged),
@@ -578,7 +578,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
                 } else {
                     transaction.rollback().await?;
-                    transaction = pool.begin().await?;
+                    transaction = global.db_pool.begin().await?;
                     if let Some(racetime_user) = racetime_user {
                         if let Ok(Some(to_merge)) = User::from_racetime(&mut *transaction, &racetime_user.id).await {
                             if to_merge.discord.is_none() {

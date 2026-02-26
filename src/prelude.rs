@@ -245,6 +245,10 @@ pub(crate) use {
             ChestTextures,
         },
         form::*,
+        global::{
+            GlobalState,
+            discord_ctx,
+        },
         http::{
             PageError,
             PageKind,
@@ -276,6 +280,7 @@ pub(crate) use {
         racetime_bot::{
             self,
             CleanShutdown,
+            SeedMetadata,
             SeedRollUpdate,
             UnlockSpoilerLog,
             VersionedBranch,

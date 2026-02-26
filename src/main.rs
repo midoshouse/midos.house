@@ -35,6 +35,7 @@ mod draft;
 mod event;
 mod favicon;
 mod form;
+mod global;
 #[macro_use] mod http;
 mod id;
 mod lang;
@@ -229,23 +230,16 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 .application_name("midos-house")
                 .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
             ).await?;
-        let seed_metadata = Arc::default();
+        let seed_metadata = Arc::<RwLock<HashMap<String, SeedMetadata>>>::default();
         let ootr_api_client = Arc::new(ootr_web::ApiClient::new(http_client.clone(), config.ootr_api_key.clone(), config.ootr_api_key_encryption.clone()));
-        let rocket = http::rocket(
-            db_pool.clone(),
-            discord_builder.ctx_fut.clone(),
-            http_client.clone(),
-            config.clone(),
-            port.unwrap_or_else(|| if Environment::default().is_dev() { 24814 } else { 24812 }),
-            Arc::clone(&seed_metadata),
-            ootr_api_client.clone(),
-        ).await?;
+        let global = GlobalState::new(config.clone(), db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), seed_metadata.clone(), ootr_api_client.clone());
+        let rocket = http::rocket(global.clone(), port.unwrap_or_else(|| if Environment::default().is_dev() { 24814 } else { 24812 })).await?;
         let new_room_lock = Arc::default();
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
         let clean_shutdown = Arc::default();
         let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), Arc::clone(&new_room_lock), extra_room_tx.clone(), Arc::clone(&clean_shutdown), rocket.shutdown());
         let (seed_cache_tx, seed_cache_rx) = watch::channel(());
-        let global_state = Arc::new(racetime_bot::GlobalState::new(
+        let bot_state = Arc::new(racetime_bot::BotState::new(
             new_room_lock.clone(),
             config.racetime_bot.clone(),
             extra_room_tx,
@@ -260,13 +254,13 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
             seed_cache_tx,
             seed_metadata,
         ).await);
-        #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, global_state.clone());
-        let racetime_task = tokio::spawn(racetime_bot::main(config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| match res {
+        #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, bot_state.clone());
+        let racetime_task = tokio::spawn(racetime_bot::main(config.clone(), rocket.shutdown(), bot_state, seed_cache_rx)).map(|res| match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(Error::from(e)),
             Err(e) => Err(Error::from(e)),
         });
-        let import_task = tokio::spawn(cal::auto_import_races(db_pool, http_client, config, rocket.shutdown(), discord_builder.ctx_fut.clone(), new_room_lock)).map(|res| match res {
+        let import_task = tokio::spawn(cal::auto_import_races(global, rocket.shutdown(), new_room_lock)).map(|res| match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(Error::from(e)),
             Err(e) => Err(Error::from(e)),

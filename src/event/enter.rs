@@ -172,12 +172,12 @@ struct RequirementStatus {
 }
 
 impl Requirement {
-    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>) -> Result<Option<bool>, Error> {
-        let mut cache = teams::Cache::new(http_client.clone());
+    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, me: &User, data: &Data<'_>) -> Result<Option<bool>, Error> {
+        let mut cache = teams::Cache::new(global.http_client.clone());
         Ok(match self {
             Self::RaceTime => Some(me.racetime.is_some()),
             Self::RaceTimeInvite { invites, .. } => Some(me.racetime.as_ref().is_some_and(|racetime| invites.contains(&racetime.id))),
-            Self::Twitch => Some(if let Some(Some(racetime_user_data)) = me.racetime_user_data(http_client).await? {
+            Self::Twitch => Some(if let Some(Some(racetime_user_data)) = me.racetime_user_data(&global.http_client).await? {
                 racetime_user_data.twitch_channel.is_some()
             } else {
                 false
@@ -186,7 +186,7 @@ impl Requirement {
             Self::DiscordGuild { .. } => Some({
                 let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
                 if let Some(ref discord) = me.discord {
-                    discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_ok()
+                    discord_guild.member(discord_ctx!(global), discord.id).await.is_ok()
                 } else {
                     false
                 }
@@ -204,7 +204,7 @@ impl Requirement {
             Self::Qualifier { .. } => Some(false),
             Self::TripleQualifier { .. } => Some('checked: {
                 if let Some(racetime) = &me.racetime {
-                    for race in Race::for_event(transaction, http_client, data).await? {
+                    for race in Race::for_event(transaction, &global.http_client, data).await? {
                         if race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") {
                             if let Ok(room) = race.rooms().exactly_one() {
                                 let room_data = cache.race_data(&room).await?;
@@ -246,7 +246,7 @@ impl Requirement {
                 }
             }),
             Self::RslLeaderboard => Some(if let Some(racetime) = &me.racetime {
-                let rsl::Leaderboard { metadata, qualified, .. } = rsl::Leaderboard::get(http_client).await?;
+                let rsl::Leaderboard { metadata, qualified, .. } = rsl::Leaderboard::get(&global.http_client).await?;
                 if metadata.season != data.event { return Ok(None) }
                 qualified.iter().any(|iter_player| iter_player.userid == racetime.id)
             } else {
@@ -256,7 +256,7 @@ impl Requirement {
         })
     }
 
-    async fn check_get(&self, http_client: &reqwest::Client, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
+    async fn check_get(&self, global: &GlobalState, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Self::RaceTime => {
                 let mut html_content = html! {
@@ -688,7 +688,7 @@ impl Requirement {
                 }
             }
             Self::RslLeaderboard => {
-                let rsl::Leaderboard { metadata: rsl::LeaderboardMetadata { required_races, .. }, .. } = rsl::Leaderboard::get(http_client).await?;
+                let rsl::Leaderboard { metadata: rsl::LeaderboardMetadata { required_races, .. }, .. } = rsl::Leaderboard::get(&global.http_client).await?;
                 RequirementStatus {
                     blocks_submit: is_checked.is_none_or(|is_checked| !is_checked),
                     html_content: Box::new(move |_| html! {
@@ -713,13 +713,13 @@ impl Requirement {
         })
     }
 
-    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
+    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
-            Self::StartGG { optional: false } => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+            Self::StartGG { optional: false } => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation("A start.gg account is required to enter this event.")); //TODO link to /login/startgg
             },
             Self::StartGG { optional: true } => match value.startgg_radio {
-                Some(BoolRadio::Yes) => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+                Some(BoolRadio::Yes) => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                     form_ctx.push_error(form::Error::validation("Sign in with start.gg or opt out of start.gg integration.").with_name("startgg_radio")); //TODO link to /login/startgg
                 },
                 Some(BoolRadio::No) => {}
@@ -772,7 +772,7 @@ impl Requirement {
                     form_ctx.push_error(form::Error::validation("The qualifier seed is not yet available."));
                 }
             }
-            Self::TripleQualifier { async_starts, async_ends, .. } => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+            Self::TripleQualifier { async_starts, async_ends, .. } => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                 let now = Utc::now();
                 if (*async_starts).into_iter().zip_eq(*async_ends).any(|(async_start, async_end)| now >= async_start && now < async_end) {
                     if !value.confirm {
@@ -785,7 +785,7 @@ impl Requirement {
             Self::External { blocks_submit, .. } => if *blocks_submit {
                 form_ctx.push_error(form::Error::validation("Please complete event entry via the external method."));
             },
-            _ => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+            _ => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => Cow::Borrowed("A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”."), //TODO direct link?
                     Self::RaceTimeInvite { error_text, .. } => if me.racetime.is_some() {
@@ -822,12 +822,12 @@ impl Requirement {
         Ok(())
     }
 
-    async fn request_qualifier(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>) -> Result<Option<AsyncKind>, Error> {
+    async fn request_qualifier(&self, transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, me: &User, data: &Data<'_>) -> Result<Option<AsyncKind>, Error> {
         Ok(match self {
             Requirement::Qualifier { .. } => Some(AsyncKind::Qualifier1),
             Requirement::TripleQualifier { async_starts, async_ends, .. } => {
                 let now = Utc::now();
-                if self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+                if self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                     None
                 } else {
                     (*async_starts).into_iter()
@@ -852,7 +852,7 @@ pub(crate) enum Error {
     #[error(transparent)] Cal(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Event(#[from] event::Error),
-    #[error(transparent)] Notification(#[from] crate::notification::Error),
+    #[error(transparent)] Notification(#[from] crate::notification::IntoHtmlError),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Serenity(#[from] serenity::Error),
@@ -906,7 +906,7 @@ pub(crate) struct EnterForm {
     text_field2: String,
 }
 
-pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     //TODO if already entered, redirect to status page
     let my_invites = if let Some(ref me) = me {
         sqlx::query_scalar!(r#"SELECT team AS "team: Id<Teams>" FROM teams, team_members WHERE series = $1 AND event = $2 AND member = $3 AND status = 'unconfirmed'"#, data.series as _, &*data.event, me.id as _).fetch_all(&mut *transaction).await?
@@ -974,10 +974,10 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                             let mut request_qualifier = false;
                             let mut requirements_display = Vec::with_capacity(requirements.len());
                             for requirement in requirements {
-                                let is_checked = requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?;
-                                let status = requirement.check_get(http_client, &data, is_checked, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults).await?;
+                                let is_checked = requirement.is_checked(&mut transaction, global, me, &data).await?;
+                                let status = requirement.check_get(global, &data, is_checked, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults).await?;
                                 if status.blocks_submit { can_submit = false }
-                                if requirement.request_qualifier(&mut transaction, http_client, discord_ctx, me, &data).await?.is_some() { request_qualifier = true }
+                                if requirement.request_qualifier(&mut transaction, global, me, &data).await?.is_some() { request_qualifier = true }
                                 requirements_display.push((is_checked, status.html_content));
                             }
                             let preface = html! {
@@ -1069,28 +1069,28 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                         }
                     }
                 }
-                TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, ootr_api_client, me, uri, csrf, data, defaults).await?),
-                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld | TeamConfig::SlugOpen => return Ok(mw::enter_form(transaction, ootr_api_client, me, uri, csrf, data, defaults.into_context(), http_client).await?),
+                TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, global, me, uri, csrf, data, defaults).await?),
+                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld | TeamConfig::SlugOpen => return Ok(mw::enter_form(transaction, global, me, uri, csrf, data, defaults.into_context()).await?),
             },
         }
     };
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, false).await?;
+    let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::Enter, false).await?;
     let invites = html! {
         @for team_id in my_invites {
             : crate::notification::team_invite(&mut transaction, me.as_ref().expect("got a team invite while not logged in"), csrf, defaults.errors(), crate::notification::TeamInviteSource::Enter, team_id).await?;
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Enter — {}", data.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Enter — {}", data.display_name), html! {
         : header;
         : invites;
         : content;
     }).await?)
 }
 
-fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, http_client: &reqwest::Client, ootr_api_client: &'a ootr_web::ApiClient, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
-    let team_members = defaults.racetime_members(http_client);
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, global: &'a GlobalState, me: Option<User>, uri: Origin<'b>, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+    let team_members = defaults.racetime_members(&global.http_client);
     Box::pin(async move {
-        let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Enter, true).await?;
+        let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::Enter, true).await?;
         let page_content = {
             let team_config = data.team_config;
             let team_members = team_members.await?;
@@ -1183,20 +1183,20 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                 }, errors, "Enter");
             }
         };
-        Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Enter — {}", data.display_name), page_content).await?)
+        Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Enter — {}", data.display_name), page_content).await?)
     })
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(enter_form(transaction, http_client, ootr_api_client, discord_ctx, me, uri, csrf.as_ref(), data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
+    Ok(enter_form(transaction, global, me, uri, csrf.as_ref(), data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -1216,8 +1216,8 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                         }
                     } else {
                         for requirement in requirements {
-                            requirement.check_form(&mut transaction, http_client, discord_ctx, &me, &data, &mut form.context, value).await?;
-                            if let Some(async_kind) = requirement.request_qualifier(&mut transaction, http_client, discord_ctx, &me, &data).await? {
+                            requirement.check_form(&mut transaction, global, &me, &data, &mut form.context, value).await?;
+                            if let Some(async_kind) = requirement.request_qualifier(&mut transaction, global, &me, &data).await? {
                                 request_qualifier = Some(async_kind);
                             }
                         }
@@ -1255,17 +1255,17 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                         sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, $2, NOW())", id as _, async_kind as _).execute(&mut *transaction).await?;
                     }
                     if let (Some(discord_user), Some(discord_guild)) = (me.discord.as_ref(), data.discord_guild) {
-                        let discord_ctx = discord_ctx.read().await;
+                        let discord_ctx = discord_ctx!(global);
                         if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, PgSnowflake(discord_guild) as _, series as _, event).fetch_optional(&mut *transaction).await? {
-                            if let Ok(member) = discord_guild.member(&*discord_ctx, discord_user.id).await {
-                                member.add_role(&*discord_ctx, participant_role).await?;
+                            if let Ok(member) = discord_guild.member(discord_ctx, discord_user.id).await {
+                                member.add_role(discord_ctx, participant_role).await?;
                             }
                         }
                     }
                     let Flow { ref requirements, .. } = data.enter_flow.expect("checked above");
                     for requirement in requirements {
                         if let Requirement::StartGG { optional } = requirement {
-                            let discord_ctx = discord_ctx.read().await;
+                            let discord_ctx = discord_ctx!(global);
                             if !optional || value.startgg_radio == Some(BoolRadio::Yes) {
                                 // enter event on start.gg with user ID
                                 // this is currently not possible to automate, see conversation ending at <https://discord.com/channels/339548254704369677/541015301618401301/1346621619787006083> for details
@@ -1275,7 +1275,7 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                                 msg.mention_user(&me);
                                 msg.push(" signed up for ");
                                 msg.push_safe(&data.display_name);
-                                let response = startgg::query_cached::<startgg::UserSlugQuery>(http_client, &config.startgg, startgg::user_slug_query::Variables { id: startgg_id.clone() }).await?;
+                                let response = startgg::query_cached::<startgg::UserSlugQuery>(&global.http_client, &global.config.startgg, startgg::user_slug_query::Variables { id: startgg_id.clone() }).await?;
                                 if let startgg::user_slug_query::ResponseData { user: Some(startgg::user_slug_query::UserSlugQueryUser { discriminator: Some(slug) }) } = response {
                                     msg.push(" with start.gg user slug ");
                                     msg.push_mono_safe(slug);
@@ -1288,9 +1288,9 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                                     msg.push(" please investigate.");
                                 }
                                 if let Some(organizer_channel) = data.discord_organizer_channel {
-                                    organizer_channel.say(&*discord_ctx, msg.build()).await?;
+                                    organizer_channel.say(discord_ctx, msg.build()).await?;
                                 } else {
-                                    FENHL.create_dm_channel(&*discord_ctx).await?.say(&*discord_ctx, msg.build()).await?;
+                                    FENHL.create_dm_channel(discord_ctx).await?.say(discord_ctx, msg.build()).await?;
                                 }
                             } else {
                                 // enter event on start.gg anonymously
@@ -1305,9 +1305,9 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                                     .push(" as the gamertag. Please notify Fenhl once this is done so they can connect the attendee to the Mido's House account.")
                                     .build();
                                 if let Some(organizer_channel) = data.discord_organizer_channel {
-                                    organizer_channel.say(&*discord_ctx, msg).await?;
+                                    organizer_channel.say(discord_ctx, msg).await?;
                                 } else {
-                                    FENHL.create_dm_channel(&*discord_ctx).await?.say(&*discord_ctx, msg).await?;
+                                    FENHL.create_dm_channel(discord_ctx).await?.say(discord_ctx, msg).await?;
                                 }
                             }
                         }
@@ -1405,9 +1405,9 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
             }
             team_config => {
                 let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
-                    match me.racetime_user_data(http_client).await? {
+                    match me.racetime_user_data(&global.http_client).await? {
                         Some(Some(user)) => if user.teams.iter().any(|team| team.slug == *racetime_team) {
-                            let team = http_client.get(format!("https://{}/team/{racetime_team}/data", racetime_host()))
+                            let team = global.http_client.get(format!("https://{}/team/{racetime_team}/data", racetime_host()))
                                 .send().await?
                                 .detailed_error_for_status().await?
                                 .json_with_text_in_error::<mw::RaceTimeTeamData>().await?;
@@ -1448,7 +1448,7 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                             if let Some(user) = User::from_racetime(&mut *transaction, &member.id).await? {
                                 if let Some(ref discord) = user.discord {
                                     if let Some(discord_guild) = data.discord_guild {
-                                        if discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_err() {
+                                        if discord_guild.member(discord_ctx!(global), discord.id).await.is_err() {
                                             //TODO only check if Requirement::DiscordGuild is present
                                             form.context.push_error(form::Error::validation("This user has not joined the tournament's Discord server.").with_name(format!("roles[{}]", member.id)));
                                         }
@@ -1576,14 +1576,14 @@ pub(crate) async fn post(config: &State<Config>, pool: &State<PgPool>, http_clie
                         transaction.commit().await?;
                         RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event))))
                     } else {
-                        RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, http_client, ootr_api_client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
+                        RedirectOrContent::Content(enter_form_step2(transaction, global, Some(me), uri, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
                     })
                 }
             }
         }
         if value.step2 {
-            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, http_client, ootr_api_client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
+            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, global, Some(me), uri, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
         }
     }
-    Ok(RedirectOrContent::Content(enter_form(transaction, http_client, ootr_api_client, discord_ctx, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?))
+    Ok(RedirectOrContent::Content(enter_form(transaction, global, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?))
 }

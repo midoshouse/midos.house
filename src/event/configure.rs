@@ -6,8 +6,8 @@ use crate::{
     prelude::*,
 };
 
-async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Configure, false).await?;
+async fn configure_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Configure, false).await?;
     let content = if event.is_ended() {
         html! {
             article {
@@ -120,17 +120,17 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Configure — {}", event.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Configure — {}", event.display_name), html! {
         : header;
         : content;
     }).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/configure")]
-pub(crate) async fn get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(configure_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?)
+    Ok(configure_form(transaction, global, me, uri, csrf.as_ref(), data, Context::default()).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -145,8 +145,8 @@ pub(crate) struct ConfigureForm {
 }
 
 #[rocket::post("/event/<series>/<event>/configure", data = "<form>")]
-pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ConfigureForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ConfigureForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -174,7 +174,7 @@ pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(configure_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+            RedirectOrContent::Content(configure_form(transaction, global, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
             if let MatchSource::StartGG(_) = data.match_source() {
                 sqlx::query!("UPDATE events SET auto_import = $1 WHERE series = $2 AND event = $3", value.auto_import, data.series as _, &data.event).execute(&mut *transaction).await?;
@@ -192,7 +192,7 @@ pub(crate) async fn post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
             RedirectOrContent::Redirect(Redirect::to(uri!(super::info(series, event))))
         }
     } else {
-        RedirectOrContent::Content(configure_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+        RedirectOrContent::Content(configure_form(transaction, global, Some(me), uri, csrf.as_ref(), data, form.context).await?)
     })
 }
 
@@ -227,8 +227,8 @@ impl<'v> RestreamCoordinatorsFormDefaults<'v> {
     }
 }
 
-async fn restream_coordinators_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, defaults: RestreamCoordinatorsFormDefaults<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Configure, true).await?;
+async fn restream_coordinators_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, defaults: RestreamCoordinatorsFormDefaults<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Configure, true).await?;
     let content = if event.is_ended() {
         html! {
             article {
@@ -293,17 +293,17 @@ async fn restream_coordinators_form(mut transaction: Transaction<'_, Postgres>, 
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Manage restream coordinators — {}", event.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Manage restream coordinators — {}", event.display_name), html! {
         : header;
         : content;
     }).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/configure/restreamers")]
-pub(crate) async fn restream_coordinators_get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn restream_coordinators_get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(restream_coordinators_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::None).await?)
+    Ok(restream_coordinators_form(transaction, global, me, uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -314,8 +314,8 @@ pub(crate) struct AddRestreamCoordinatorForm {
 }
 
 #[rocket::post("/event/<series>/<event>/configure/restreamers", data = "<form>")]
-pub(crate) async fn add_restream_coordinator(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, AddRestreamCoordinatorForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn add_restream_coordinator(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, AddRestreamCoordinatorForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -334,20 +334,20 @@ pub(crate) async fn add_restream_coordinator(pool: &State<PgPool>, ootr_api_clie
             form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("restream_coordinator"));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::AddContext(form.context)).await?)
+            RedirectOrContent::Content(restream_coordinators_form(transaction, global, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::AddContext(form.context)).await?)
         } else {
             sqlx::query!("INSERT INTO restreamers (series, event, restreamer) VALUES ($1, $2, $3)", data.series as _, &data.event, value.restream_coordinator as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(restream_coordinators_get(series, event))))
         }
     } else {
-        RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::AddContext(form.context)).await?)
+        RedirectOrContent::Content(restream_coordinators_form(transaction, global, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::AddContext(form.context)).await?)
     })
 }
 
 #[rocket::post("/event/<series>/<event>/configure/restreamers/<restream_coordinator>/remove", data = "<form>")]
-pub(crate) async fn remove_restream_coordinator(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, restream_coordinator: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn remove_restream_coordinator(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, restream_coordinator: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -366,13 +366,13 @@ pub(crate) async fn remove_restream_coordinator(pool: &State<PgPool>, ootr_api_c
             form.context.push_error(form::Error::validation("There is no user with this ID."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
+            RedirectOrContent::Content(restream_coordinators_form(transaction, global, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
         } else {
-            sqlx::query!("DELETE FROM restreamers WHERE series = $1 AND event = $2 AND restreamer = $3", data.series as _, &data.event, restream_coordinator as _).execute(&**pool).await?;
+            sqlx::query!("DELETE FROM restreamers WHERE series = $1 AND event = $2 AND restreamer = $3", data.series as _, &data.event, restream_coordinator as _).execute(&global.db_pool).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(restream_coordinators_get(series, event))))
         }
     } else {
-        RedirectOrContent::Content(restream_coordinators_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
+        RedirectOrContent::Content(restream_coordinators_form(transaction, global, Some(me), uri, csrf.as_ref(), data, RestreamCoordinatorsFormDefaults::RemoveContext(restream_coordinator, form.context)).await?)
     })
 }

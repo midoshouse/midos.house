@@ -10,10 +10,7 @@ use {
         response::content::RawJson,
     },
     rocket_util::OptSuffix,
-    crate::{
-        prelude::*,
-        racetime_bot::SeedMetadata,
-    },
+    crate::prelude::*,
 };
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
@@ -368,7 +365,7 @@ impl<E: Into<GetError>> From<E> for StatusOrError<GetError> {
 }
 
 #[rocket::get("/seed/<filename>")]
-pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, seed_metadata: &State<Arc<RwLock<HashMap<String, SeedMetadata>>>>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
+pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
     let OptSuffix(file_stem, suffix) = filename;
     if !regex_is_match!("^[0-9A-Za-z_-]+$", file_stem) { return Err(StatusOrError::Status(Status::NotFound)) }
     Ok(match suffix {
@@ -384,8 +381,8 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
             }
         }
         Some("json") => if let Some(file_stem) = file_stem.strip_suffix("_Progression") {
-            let mut transaction = pool.begin().await?;
-            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = seed_metadata; seed_metadata.get(file_stem).cloned()) {
+            let mut transaction = global.db_pool.begin().await?;
+            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = global.seed_metadata; seed_metadata.get(file_stem).cloned()) {
                 info
             } else if let Some(locked_spoiler_log_path) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
                 SeedMetadata { locked_spoiler_log_path, progression_spoiler: false /* no official races with progression spoilers so far */ }
@@ -447,8 +444,8 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
         },
         Some(_) => return Err(StatusOrError::Status(Status::NotFound)),
         None => {
-            let mut transaction = pool.begin().await?;
-            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = seed_metadata; seed_metadata.get(file_stem).cloned()) {
+            let mut transaction = global.db_pool.begin().await?;
+            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = global.seed_metadata; seed_metadata.get(file_stem).cloned()) {
                 info
             } else if let Some(locked_spoiler_log_path) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
                 SeedMetadata { locked_spoiler_log_path, progression_spoiler: false /* no official races with progression spoilers so far */ }
@@ -472,7 +469,7 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
             } else {
                 "zpf"
             };
-            GetResponse::Page(page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::new(extra.chests) }, "Seed — Mido's House", html! {
+            GetResponse::Page(page(transaction, global, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::new(extra.chests) }, "Seed — Mido's House", html! {
                 @if let Some(hash) = extra.file_hash {
                     h1(class = "hash") {
                         @for hash_icon in hash {

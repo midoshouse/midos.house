@@ -6,10 +6,7 @@ use {
         EditMember,
         EditRole,
     },
-    sqlx::{
-        PgPool,
-        types::Json,
-    },
+    sqlx::types::Json,
     crate::{
         notification::SimpleNotificationKind,
         prelude::*,
@@ -676,7 +673,7 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<&User>, csrf: Option<&CsrfToken>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
+    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, me: Option<&User>, csrf: Option<&CsrfToken>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
         let mut errors = RawHtml(String::default());
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -752,7 +749,7 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @let PracticeButtons { practice_seed_buttons, practice_race_button } = self.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await?;
+                @let PracticeButtons { practice_seed_buttons, practice_race_button } = self.practice_buttons(&global.ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await?;
                 @match (&*practice_seed_buttons, &practice_race_button) {
                     ([], None) => {}
                     ([], Some(button)) | ([button], None) => : button;
@@ -1029,10 +1026,10 @@ impl<E: Into<InfoError>> From<E> for StatusOrError<InfoError> {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Info, false).await?;
+    let header = data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
         Series::BattleRoyale => ohko::info(&mut transaction, &data).await?,
         Series::CoOp => coop::info(&mut transaction, &data).await?,
@@ -1080,15 +1077,15 @@ pub(crate) async fn info(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &data.display_name, content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &data.display_name, content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
-pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn races(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Races, false).await?;
-    let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, &data).await?
+    let header = data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Races, false).await?;
+    let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, &global.http_client, &data).await?
         .into_iter()
         .partition::<Vec<_>, _>(|race| race.is_ended());
     past_races.reverse();
@@ -1123,13 +1120,13 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, me.as_ref(), &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, restreams, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
+            : cal::race_table(&mut transaction, global, me.as_ref(), &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, restreams, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, me.as_ref(), &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, restreams: cal::RaceTableRestreams::None, challonge_import_ctx: None }, &past_races).await?;
+            : cal::race_table(&mut transaction, global, me.as_ref(), &uri, csrf.as_ref(), Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, restreams: cal::RaceTableRestreams::None, challonge_import_ctx: None }, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
@@ -1143,7 +1140,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Races — {}", data.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Races — {}", data.display_name), content).await?)
 }
 
 pub(crate) enum StatusContext<'v> {
@@ -1184,8 +1181,8 @@ impl<'v> StatusContext<'v> {
     }
 }
 
-async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::MyStatus, false).await?;
+async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
         if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
             id = team
@@ -1372,7 +1369,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
                             let ctx = ctx.take_request_async();
                             let mut errors = ctx.errors().collect_vec();
                             let qualifier_kind = data.qualifier_kind(&mut transaction, Some(me)).await?;
-                            let signups = teams::signups_sorted(&mut transaction, &mut teams::Cache::new(http_client.clone()), None, &data, false, qualifier_kind, None).await?;
+                            let signups = teams::signups_sorted(&mut transaction, &mut teams::Cache::new(global.http_client.clone()), None, &data, false, qualifier_kind, None).await?;
                             let qualified = if let Some(teams::SignupsTeam { qualification, .. }) = signups.iter().find(|teams::SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| team.id == row.id)) {
                                 match qualification {
                                     teams::Qualification::Single { qualified } | teams::Qualification::TriforceBlitz { qualified, .. } => *qualified,
@@ -1568,14 +1565,14 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("My Status — {}", data.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn status(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(status_page(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
+    Ok(status_page(transaction, global, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1586,8 +1583,8 @@ pub(crate) struct StatusForm {
 }
 
 #[rocket::post("/event/<series>/<event>/status", data = "<form>")]
-pub(crate) async fn status_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn status_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -1605,19 +1602,19 @@ pub(crate) async fn status_post(pool: &State<PgPool>, http_client: &State<reqwes
     Ok(if let Some(ref value) = form.value {
         if row.restream_consent && !value.restream_consent {
             //TODO check if restream consent can still be revoked according to tournament rules, offer to resign if not
-            if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().any(|race| !race.is_ended() && !race.video_urls.is_empty()) {
+            if Race::for_event(&mut transaction, &global.http_client, &data).await?.into_iter().any(|race| !race.is_ended() && !race.video_urls.is_empty()) {
                 form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an organizer if you would like to cancel.").with_name("restream_consent"));
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(status_page(transaction, http_client, ootr_api_client, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+            RedirectOrContent::Content(status_page(transaction, global, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
         } else {
             sqlx::query!("UPDATE teams SET restream_consent = $1 WHERE id = $2", value.restream_consent, row.id as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
         }
     } else {
-        RedirectOrContent::Content(status_page(transaction, http_client, ootr_api_client, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+        RedirectOrContent::Content(status_page(transaction, global, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
     })
 }
 
@@ -1638,25 +1635,25 @@ impl<E: Into<FindTeamError>> From<E> for StatusOrError<FindTeamError> {
     }
 }
 
-async fn find_team_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+async fn find_team_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config {
         TeamConfig::Solo => {
-            let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::FindTeam, false).await?;
-            page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Find Teammates — {}", data.display_name), html! {
+            let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::FindTeam, false).await?;
+            page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await?
         }
-        TeamConfig::Pictionary => pic::find_team_form(transaction, ootr_api_client, me, uri, csrf, data, ctx).await?,
-        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld | TeamConfig::SlugOpen => mw::find_team_form(transaction, ootr_api_client, me, uri, csrf, data, ctx).await?,
+        TeamConfig::Pictionary => pic::find_team_form(transaction, global, me, uri, csrf, data, ctx).await?,
+        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld | TeamConfig::SlugOpen => mw::find_team_form(transaction, global, me, uri, csrf, data, ctx).await?,
     })
 }
 
 #[rocket::get("/event/<series>/<event>/find-team")]
-pub(crate) async fn find_team(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn find_team(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(find_team_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?)
+    Ok(find_team_form(transaction, global, me, uri, csrf.as_ref(), data, Context::default()).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1671,8 +1668,8 @@ pub(crate) struct FindTeamForm {
 }
 
 #[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
-pub(crate) async fn find_team_post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn find_team_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -1697,14 +1694,14 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, ootr_api_client: &State
             form.context.push_error(form::Error::validation("You are already signed up for this event."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+            RedirectOrContent::Content(find_team_form(transaction, global, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role, availability, notes) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, me.id as _, value.role.unwrap_or_default() as _, value.availability, value.notes).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(find_team(series, event))))
         }
     } else {
-        RedirectOrContent::Content(find_team_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+        RedirectOrContent::Content(find_team_form(transaction, global, Some(me), uri, csrf.as_ref(), data, form.context).await?)
     })
 }
 
@@ -1754,8 +1751,8 @@ impl<E: Into<AcceptError>> From<E> for StatusOrError<AcceptError> {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, AcceptForm>>) -> Result<RedirectOrContent, StatusOrError<AcceptError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn confirm_signup(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, AcceptForm>>) -> Result<RedirectOrContent, StatusOrError<AcceptError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -1773,14 +1770,14 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<req
         }
         Ok(if form.context.errors().next().is_some() {
             RedirectOrContent::Content(match value.source {
-                AcceptFormSource::Enter => enter::enter_form(transaction, http_client, ootr_api_client, discord_ctx, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?,
+                AcceptFormSource::Enter => enter::enter_form(transaction, global, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?,
                 AcceptFormSource::Notifications => {
                     transaction.rollback().await?;
-                    crate::notification::list(pool, Some(me), uri, csrf.as_ref(), form.context).await?
+                    crate::notification::list(global, Some(me), uri, csrf.as_ref(), form.context).await?
                 }
                 AcceptFormSource::Teams => {
                     transaction.rollback().await?;
-                    teams::list(pool, http_client, ootr_api_client, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
+                    teams::list(global, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
                         StatusOrError::Status(status) => StatusOrError::Status(status),
                         StatusOrError::Err(e) => e.into(),
                     })?
@@ -1799,9 +1796,9 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<req
                 //TODO also remove all other teams with member overlap, and notify
                 // create and assign Discord roles
                 if let Some(discord_guild) = data.discord_guild {
-                    let discord_ctx = discord_ctx.read().await;
+                    let discord_ctx = discord_ctx!(global);
                     for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team as _).fetch_all(&mut *transaction).await? {
-                        if let Ok(mut member) = discord_guild.member(&*discord_ctx, row.discord_id.0).await {
+                        if let Ok(mut member) = discord_guild.member(discord_ctx, row.discord_id.0).await {
                             let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
                             if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, PgSnowflake(discord_guild) as _, series as _, event).fetch_optional(&mut *transaction).await? {
                                 roles_to_assign.insert(participant_role);
@@ -1814,12 +1811,12 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<req
                                     roles_to_assign.insert(team_role);
                                 } else {
                                     let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, team as _).fetch_one(&mut *transaction).await?;
-                                    let team_role = discord_guild.create_role(&*discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await?.id;
+                                    let team_role = discord_guild.create_role(discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await?.id;
                                     sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", PgSnowflake(team_role) as _, PgSnowflake(discord_guild) as _, racetime_slug).execute(&mut *transaction).await?;
                                     roles_to_assign.insert(team_role);
                                 }
                             }
-                            member.edit(&*discord_ctx, EditMember::new().roles(roles_to_assign)).await?;
+                            member.edit(discord_ctx, EditMember::new().roles(roles_to_assign)).await?;
                         }
                     }
                 }
@@ -1851,14 +1848,14 @@ impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
     }
 }
 
-async fn resign_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+async fn resign_page(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let is_started = data.is_started(&mut transaction).await?;
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Resign — {}", data.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Resign — {}", data.display_name), html! {
         p {
             @if is_started {
                 @if let TeamConfig::Solo = data.team_config {
@@ -1889,8 +1886,8 @@ async fn resign_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    resign_page(pool, me, uri, csrf, Context::default(), series, event, team).await
+pub(crate) async fn resign(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    resign_page(global, me, uri, csrf, Context::default(), series, event, team).await
 }
 
 /// Metadata to ensure the correct page is displayed on form validation failure.
@@ -1923,8 +1920,8 @@ pub(crate) struct ResignForm {
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, ResignForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn resign_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, ResignForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let team = Team::from_id(&mut transaction, team).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1964,21 +1961,21 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwes
         }
         Ok(if form.context.errors().next().is_some() {
             RedirectOrContent::Content(match value.source {
-                ResignFormSource::Enter => enter::enter_form(transaction, http_client, ootr_api_client, discord_ctx, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?,
+                ResignFormSource::Enter => enter::enter_form(transaction, global, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?,
                 ResignFormSource::Notifications => {
                     transaction.rollback().await?;
-                    crate::notification::list(pool, Some(me), uri, csrf.as_ref(), form.context).await?
+                    crate::notification::list(global, Some(me), uri, csrf.as_ref(), form.context).await?
                 }
                 ResignFormSource::Resign => {
                     transaction.rollback().await?;
-                    resign_page(pool, Some(me), uri, csrf, form.context, series, event, team.id).await.map_err(|e| match e {
+                    resign_page(global, Some(me), uri, csrf, form.context, series, event, team.id).await.map_err(|e| match e {
                         StatusOrError::Status(status) => StatusOrError::Status(status),
                         StatusOrError::Err(e) => e.into(),
                     })?
                 }
                 ResignFormSource::Teams => {
                     transaction.rollback().await?;
-                    teams::list(pool, http_client, ootr_api_client, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
+                    teams::list(global, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
                         StatusOrError::Status(status) => StatusOrError::Status(status),
                         StatusOrError::Err(e) => e.into(),
                     })?
@@ -1993,7 +1990,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwes
             }
             if let Some(organizer_channel) = data.discord_organizer_channel {
                 //TODO don't post this message for unconfirmed (or unqualified?) teams
-                organizer_channel.say(&*discord_ctx.read().await, msg).await?;
+                organizer_channel.say(discord_ctx!(global), msg).await?;
             }
             if !keep_record {
                 sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut *transaction).await?;
@@ -2006,11 +2003,11 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwes
     }
 }
 
-async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+async fn opt_out_page(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
-        return Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
+        return Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
             p {
                 : "You can no longer opt out of participating in ";
                 : data;
@@ -2023,7 +2020,7 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
             return Err(StatusOrError::Status(Status::Forbidden)) //TODO ask to connect a racetime.gg account
         }
     } else {
-        return Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
+        return Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
             p {
                 a(href = uri!(auth::login(Some(uri!(opt_out(series, event)))))) : "Sign in or create a Mido's House account";
                 : " to opt out of participating in ";
@@ -2048,7 +2045,7 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
     } else {
         false
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Opt Out — {}", data.display_name), html! {
         @if opted_out {
             p : "You have already opted out.";
         } else if entered {
@@ -2067,13 +2064,13 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
 }
 
 #[rocket::get("/event/<series>/<event>/opt-out")]
-pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    opt_out_page(pool, me, uri, csrf, Context::default(), series, event).await
+pub(crate) async fn opt_out(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    opt_out_page(global, me, uri, csrf, Context::default(), series, event).await
 }
 
 #[rocket::post("/event/<series>/<event>/opt-out", data = "<form>")]
-pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn opt_out_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2100,7 +2097,7 @@ pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFut
         }
         Ok(if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(opt_out_page(pool, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
+            RedirectOrContent::Content(opt_out_page(global, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
                 StatusOrError::Status(status) => StatusOrError::Status(status),
                 StatusOrError::Err(e) => e.into(),
             })?)
@@ -2108,7 +2105,7 @@ pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFut
             let racetime = me.racetime.as_ref().expect("validated");
             sqlx::query!(r#"INSERT INTO opt_outs (series, event, racetime_id) VALUES ($1, $2, $3)"#, series as _, event, racetime.id).execute(&mut *transaction).await?;
             if let Some(organizer_channel) = data.discord_organizer_channel {
-                organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                organizer_channel.say(discord_ctx!(global), MessageBuilder::default()
                     .mention_user(&me)
                     .push(" has opted out from ")
                     .push_safe(data.display_name)
@@ -2147,8 +2144,8 @@ pub(crate) struct RequestAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/request-async", data = "<form>")]
-pub(crate) async fn request_async(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2182,7 +2179,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, http_client: &State<reqw
         }
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool.begin().await?, http_client, ootr_api_client, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
+            RedirectOrContent::Content(status_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -2192,7 +2189,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, http_client: &State<reqw
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool.begin().await?, http_client, ootr_api_client, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
+        RedirectOrContent::Content(status_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
     })
 }
 
@@ -2218,8 +2215,8 @@ pub(crate) struct SubmitAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/submit-async", data = "<form>")]
-pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2292,7 +2289,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwe
         ];
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool.begin().await?, http_client, ootr_api_client, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
+            RedirectOrContent::Content(status_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -2308,8 +2305,8 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwe
                 let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team.id as _).fetch_all(&mut *transaction).await?;
                 if let Some(PgSnowflake(discord_role)) = asyncs_row.discord_role {
                     for &PgSnowflake(user_id) in &members {
-                        if let Ok(member) = discord_guild.member(&*discord_ctx.read().await, user_id).await {
-                            member.add_role(&*discord_ctx.read().await, discord_role).await?;
+                        if let Ok(member) = discord_guild.member(discord_ctx!(global), user_id).await {
+                            member.add_role(discord_ctx!(global), discord_role).await?;
                         }
                     }
                 }
@@ -2388,7 +2385,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwe
                         message.quote_rest();
                         message.push_safe(&value.fpa);
                     }
-                    discord_channel.send_message(&*discord_ctx.read().await, CreateMessage::default()
+                    discord_channel.send_message(discord_ctx!(global), CreateMessage::default()
                         .content(message.build())
                         .flags(MessageFlags::SUPPRESS_EMBEDS)
                     ).await?;
@@ -2399,7 +2396,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, http_client: &State<reqwe
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool.begin().await?, http_client, ootr_api_client, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
+        RedirectOrContent::Content(status_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
     })
 }
 
@@ -2443,14 +2440,14 @@ async fn practice_seed_favicon_url(ootr_api_client: &ootr_web::ApiClient, data: 
     }
 }
 
-async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
+async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
     let content = html! {
-        : data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Practice, false).await?;
+        : data.header(&mut transaction, global, me.as_ref(), csrf, Tab::Practice, false).await?;
         @for error in ctx.errors() {
             : render_form_error(error);
         }
         @let mut errors = RawHtml(String::default());
-        @let PracticeButtons { practice_seed_buttons, practice_race_button } = data.practice_buttons(ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Content).await?;
+        @let PracticeButtons { practice_seed_buttons, practice_race_button } = data.practice_buttons(&global.ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Content).await?;
         : errors;
         @if practice_seed_buttons.is_empty() {
             article {
@@ -2470,14 +2467,14 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, ootr_api
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/practice")]
-pub(crate) async fn practice_seed_get(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<Option<RawHtml<String>>, Error> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn practice_seed_get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<Option<RawHtml<String>>, Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
-    Ok(Some(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, Context::default()).await?))
+    Ok(Some(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), data, Context::default()).await?))
 }
 
 #[derive(FromFormField, UriDisplayQuery)]
@@ -2489,8 +2486,8 @@ pub(crate) enum PracticeSeedKind {
 }
 
 #[rocket::post("/event/<series>/<event>/practice?<kind>", data = "<form>")]
-pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
+    let mut transaction = global.db_pool.begin().await?;
     let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2499,7 +2496,7 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
             form.context.push_error(form::Error::validation("The seed kind is required."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, form.context).await?)
+            RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), data, form.context).await?)
         } else {
             macro_rules! roll_try {
                 ($res:expr) => {{
@@ -2515,7 +2512,7 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
                                 eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
                             }
                             let content = html! {
-                                : data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
+                                : data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
                                 p {
                                     : "Sorry, the seed could not be rolled because the randomizer reported an error ";
                                     : num_retries;
@@ -2524,7 +2521,7 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
                                     : ".";
                                 }
                             };
-                            return Ok(Some(RedirectOrContent::Content(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)))
+                            return Ok(Some(RedirectOrContent::Content(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)))
                         }
                         Err(e) => {
                             transaction.commit().await?;
@@ -2617,8 +2614,8 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
                     draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } => unreachable!("draft should be done at this point"),
                 };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-                if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
-                    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
+                if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                    let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings).await?;
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
                     settings.remove("password_lock");
@@ -2652,8 +2649,8 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
             } else {
                 let Some((rando_version, mut settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-                if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
-                    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings.into_owned()).await?;
+                if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                    let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings.into_owned()).await?;
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
                     settings.to_mut().remove("password_lock");
@@ -2667,7 +2664,7 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, ootr_api_client: &S
             }
         }
     } else {
-        RedirectOrContent::Content(practice_seed_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), data, form.context).await?)
+        RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), data, form.context).await?)
     }))
 }
 
@@ -2740,9 +2737,8 @@ impl<'v> VolunteersFormDefaults<'v> {
     }
 }
 
-//(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>)
-async fn volunteer_page(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: &Data<'_>, defaults: VolunteersFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Volunteer, false).await?;
+async fn volunteer_page(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: &Data<'_>, defaults: VolunteersFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::Volunteer, false).await?;
     let content = match data.series {
         Series::League => html! {
             @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;
@@ -2867,17 +2863,17 @@ async fn volunteer_page(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
         },
         _ => unimplemented!(), //TODO ask other events' organizers if they want to show the Volunteer tab
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("Volunteer — {}", data.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Volunteer — {}", data.display_name), html! {
         : header;
         : content;
     }).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/volunteer")]
-pub(crate) async fn volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn volunteer(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(volunteer_page(transaction, ootr_api_client, me, uri, csrf.as_ref(), &data, VolunteersFormDefaults::None).await?)
+    Ok(volunteer_page(transaction, global, me, uri, csrf.as_ref(), &data, VolunteersFormDefaults::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -2888,8 +2884,8 @@ pub(crate) struct AddVolunteerForm {
 }
 
 #[rocket::post("/event/<series>/<event>/volunteer/<role>", data = "<form>")]
-pub(crate) async fn add_volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, role: VolunteerRole, form: Form<Contextual<'_, AddVolunteerForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn add_volunteer(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, role: VolunteerRole, form: Form<Contextual<'_, AddVolunteerForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2911,20 +2907,20 @@ pub(crate) async fn add_volunteer(pool: &State<PgPool>, ootr_api_client: &State<
             form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("volunteer"));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::AddContext(role, form.context)).await?)
+            RedirectOrContent::Content(volunteer_page(transaction, global, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::AddContext(role, form.context)).await?)
         } else {
             sqlx::query!("INSERT INTO volunteers (organization, language, volunteer, role) VALUES ('tsg', 'en', $1, $2)", value.volunteer as _, role as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(volunteer(series, event))))
         }
     } else {
-        RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::AddContext(role, form.context)).await?)
+        RedirectOrContent::Content(volunteer_page(transaction, global, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::AddContext(role, form.context)).await?)
     })
 }
 
 #[rocket::post("/event/<series>/<event>/volunteer/<role>/remove/<volunteer>", data = "<form>")]
-pub(crate) async fn remove_volunteer(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, role: VolunteerRole, volunteer: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn remove_volunteer(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, role: VolunteerRole, volunteer: Id<Users>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2946,13 +2942,13 @@ pub(crate) async fn remove_volunteer(pool: &State<PgPool>, ootr_api_client: &Sta
             form.context.push_error(form::Error::validation("There is no user with this ID."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::RemoveContext(role, volunteer, form.context)).await?)
+            RedirectOrContent::Content(volunteer_page(transaction, global, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::RemoveContext(role, volunteer, form.context)).await?)
         } else {
             sqlx::query!("DELETE FROM volunteers WHERE organization = 'tsg' AND language = 'en' AND volunteer = $1 AND role = $2", volunteer as _, role as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(volunteer(series, event))))
         }
     } else {
-        RedirectOrContent::Content(volunteer_page(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::RemoveContext(role, volunteer, form.context)).await?)
+        RedirectOrContent::Content(volunteer_page(transaction, global, Some(me), uri, csrf.as_ref(), &data, VolunteersFormDefaults::RemoveContext(role, volunteer, form.context)).await?)
     })
 }

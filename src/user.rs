@@ -345,8 +345,8 @@ impl PartialEq for User {
 impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id<Users>) -> Result<RawHtml<String>, StatusOrError<PageError>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn profile(global: &GlobalState, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id<Users>) -> Result<RawHtml<String>, StatusOrError<PageError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let user = if let Some(user) = User::from_id(&mut *transaction, id).await? {
         user
     } else {
@@ -521,7 +521,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     chests_events.dedup_by(|e1, e2| e1.series == e2.series && e1.event == e2.event);
     let chests_event = chests_events.choose(&mut rng());
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
-    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::new(chests) }, &format!("{} — Mido's House", user.display_name()), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::new(chests) }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 {
             bdi : user.display_name();
         }

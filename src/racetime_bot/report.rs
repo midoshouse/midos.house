@@ -73,7 +73,7 @@ impl Score for tfb::Score {
     }
 }
 
-async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, mut entrants: [(Entrant, S, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
+async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<BotState>, cal_event: &cal::Event, event: &event::Data<'_>, mut entrants: [(Entrant, S, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
     entrants.sort_unstable_by_key(|(_, time, _)| time.sort_key());
     let [(winner, winning_time, winning_room), (loser, losing_time, losing_room)] = entrants;
     if winning_time.is_dnf() && losing_time.is_dnf() {
@@ -366,7 +366,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
     Ok(transaction)
 }
 
-async fn report_ffa(ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, room: Url) -> Result<(), Error> {
+async fn report_ffa(ctx: &RaceContext<BotState>, cal_event: &cal::Event, event: &event::Data<'_>, room: Url) -> Result<(), Error> {
     if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
         let mut builder = MessageBuilder::default();
         let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
@@ -403,7 +403,7 @@ async fn report_ffa(ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, even
 
 impl Handler {
     #[must_use = "should set cleaned_up if this returns true"]
-    pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
+    pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<BotState>) -> Result<bool, Error> {
         let data = ctx.data().await;
         let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, breaks_used, ref scores, .. }) = self.official_data else { return Ok(true) };
         Ok(if let Some(scores) = data.entrants.iter().map(|entrant| {
@@ -426,7 +426,7 @@ impl Handler {
         })
     }
 
-    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks_used: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
+    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<BotState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks_used: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
         let stream_delay = match cal_event.race.entrants {
             Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
             Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,

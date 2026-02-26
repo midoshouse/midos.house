@@ -20,7 +20,6 @@ use {
             self,
             Notification,
         },
-        racetime_bot::SeedMetadata,
         prelude::*,
     },
 };
@@ -126,6 +125,8 @@ impl PageStyle {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PageError {
     #[error(transparent)] Event(#[from] event::DataError),
+    #[error(transparent)] NotificationGet(#[from] notification::GetError),
+    #[error(transparent)] NotificationHtml(#[from] notification::IntoHtmlError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("missing user data for Fenhl")]
@@ -144,6 +145,8 @@ impl IsNetworkError for PageError {
     fn is_network_error(&self) -> bool {
         match self {
             Self::Event(_) => false,
+            Self::NotificationGet(e) => e.is_network_error(),
+            Self::NotificationHtml(e) => e.is_network_error(),
             Self::Sql(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::FenhlUserData => false,
@@ -154,12 +157,12 @@ impl IsNetworkError for PageError {
 
 pub(crate) type PageResult = Result<RawHtml<String>, PageError>;
 
-pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
+pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
     let notifications = if let Some(me) = me {
         if let PageKind::Notifications = style.kind {
             Vec::default()
         } else {
-            Notification::get(&mut transaction, me).await?
+            Notification::get(&mut transaction, &global.http_client, me).await?
         }
     } else {
         Vec::default()
@@ -287,13 +290,13 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
 }
 
 #[rocket::get("/")]
-async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, event::Error> {
-    let mut transaction = pool.begin().await?;
+async fn index(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, event::Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let mut upcoming_events = Vec::default();
     let mut races = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
-        races.extend(Race::for_event(&mut transaction, http_client, &event).await?.into_iter().filter(|race| match race.schedule {
+        races.extend(Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().filter(|race| match race.schedule {
             RaceSchedule::Unscheduled => false,
             RaceSchedule::Live { end, .. } => end.is_none(),
             RaceSchedule::Async { start1, start2, end1, end2, .. } => start1.is_some() && start2.is_some() && (end1.is_none() || end2.is_none()), // second half scheduled and not ended
@@ -385,10 +388,10 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
         @if races.is_empty() {
             i : "(none currently)";
         } else {
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, ootr_api_client, me.as_ref(), &uri, csrf.as_ref(), None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), restreams: cal::RaceTableRestreams::None, challonge_import_ctx: None }, &races).await?;
+            : cal::race_table(&mut transaction, global, me.as_ref(), &uri, csrf.as_ref(), None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), restreams: cal::RaceTableRestreams::None, challonge_import_ctx: None }, &races).await?;
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, ..PageStyle::new(chests) }, "Mido's House", page_content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle { kind: PageKind::Index, ..PageStyle::new(chests) }, "Mido's House", page_content).await?)
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, FromFormField, UriDisplayQuery)]
@@ -408,9 +411,9 @@ impl ArchiveSortKey {
 }
 
 #[rocket::get("/archive?<sort>")]
-async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: Option<ArchiveSortKey>) -> Result<RawHtml<String>, event::Error> {
+async fn archive(global: &GlobalState, me: Option<User>, uri: Origin<'_>, sort: Option<ArchiveSortKey>) -> Result<RawHtml<String>, event::Error> {
     let sort = sort.unwrap_or_default();
-    let mut transaction = pool.begin().await?;
+    let mut transaction = global.db_pool.begin().await?;
     let mut past_events = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#).fetch_all(&mut *transaction).await? {
         past_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
@@ -462,14 +465,14 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(chests), "Event Archive — Mido's House", page_content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(chests), "Event Archive — Mido's House", page_content).await?)
 }
 
 #[rocket::get("/new")]
-async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    let mut transaction = pool.begin().await?;
+async fn new_event(global: &GlobalState, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    let mut transaction = global.db_pool.begin().await?;
     let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
-    page(transaction, &me, &uri, PageStyle::new(ChestAppearances::random()), "New Event — Mido's House", html! {
+    page(transaction, global, &me, &uri, PageStyle::new(ChestAppearances::random()), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
             : fenhl;
@@ -486,10 +489,10 @@ async fn robots_txt() -> RawText<&'static str> {
 #[rocket::catch(400)]
 async fn bad_request(request: &Request<'_>) -> PageResult {
     eprintln!("responding with 400 Bad Request to request {request:?}");
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::SMALL_KEYS), "Bad Request — Mido's House", html! {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle::new(ChestAppearances::SMALL_KEYS), "Bad Request — Mido's House", html! {
         h1 : "Error 400: Bad Request";
         p : "Login failed. If you need help, contact Fenhl on Discord.";
     }).await
@@ -497,10 +500,10 @@ async fn bad_request(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(404)]
 async fn not_found(request: &Request<'_>) -> PageResult {
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::new(ChestAppearances::INVISIBLE) }, "Not Found — Mido's House", html! {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::new(ChestAppearances::INVISIBLE) }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -510,10 +513,10 @@ async fn not_found(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(422)]
 async fn unprocessable_content(request: &Request<'_>) -> Result<(Status, RawHtml<String>), PageError> {
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    Ok((Status::NotFound, page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::new(ChestAppearances::INVISIBLE) }, "Not Found — Mido's House", html! {
+    Ok((Status::NotFound, page(global.db_pool.begin().await?, global, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::new(ChestAppearances::INVISIBLE) }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -526,10 +529,10 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     if let Environment::Production = Environment::default() {
         wheel::night_report(&format!("{}/error", night_path()), Some("internal server error")).await?;
     }
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Internal Server Error — Mido's House", html! {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await
@@ -537,10 +540,10 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(502)]
 async fn bad_gateway(request: &Request<'_>) -> PageResult {
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Bad Gateway — Mido's House", html! {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Bad Gateway — Mido's House", html! {
         h1 : "Error 502: Bad Gateway";
         p : "Sorry, there was a network error. Please try again. If this error persists, please contact Fenhl on Discord.";
     }).await
@@ -548,10 +551,10 @@ async fn bad_gateway(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(507)]
 async fn insufficient_storage(request: &Request<'_>) -> PageResult {
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Insufficient Storage — Mido's House", html! {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Insufficient Storage — Mido's House", html! {
         h1 : "Error 507: Insufficient Storage";
         p : "Sorry, the Mido's House server's disk is almost full, so rolling practice seeds with settings not supported by ootrandomizer.com is temporarily disabled. Please try again later. If this error persists, please contact Fenhl on Discord.";
     }).await
@@ -563,10 +566,10 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     if let Environment::Production = Environment::default() {
         wheel::night_report(&format!("{}/error", night_path()), Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
     }
-    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), &format!("{} — Mido's House", status.reason_lossy()), html! {
+    page(global.db_pool.begin().await?, global, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), &format!("{} — Mido's House", status.reason_lossy()), html! {
         h1 {
             : "Error ";
             : status.code;
@@ -577,9 +580,9 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     }).await
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, port: u16, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>, ootr_api_client: Arc<ootr_web::ApiClient>) -> Result<Rocket<rocket::Ignite>, crate::Error> {
+pub(crate) async fn rocket(global: Arc<GlobalState>, port: u16) -> Result<Rocket<rocket::Ignite>, crate::Error> {
     Ok(rocket::custom(rocket::Config::figment().merge(rocket::Config {
-        secret_key: SecretKey::from(&BASE64.decode(&config.secret_key)?),
+        secret_key: SecretKey::from(&BASE64.decode(&global.config.secret_key)?),
         log_level: Some(rocket::config::Level::ERROR),
         ..rocket::Config::default()
     }).merge(("port", port))) //TODO report issue for lack of typed interface to set port, see https://github.com/rwf2/Rocket/commit/fd294049c784cb52680a423616fadc29d57fa25b
@@ -654,6 +657,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         crate::mw::install_macos,
         notification::notifications,
         notification::dismiss,
+        notification::confirm_tsg_restream,
         seed::get,
         user::profile,
     ])
@@ -673,14 +677,14 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
             auth_uri: format!("https://{}/o/authorize", racetime_host()).into(),
             token_uri: format!("https://{}/o/token", racetime_host()).into(),
         },
-        config.racetime_oauth.client_id.clone(),
-        config.racetime_oauth.client_secret.clone(),
+        global.config.racetime_oauth.client_id.clone(),
+        global.config.racetime_oauth.client_secret.clone(),
         Some(uri!(base_uri(), auth::racetime_callback).to_string()),
     )))
     .attach(OAuth2::<auth::Discord>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider::Discord,
-        config.discord.client_id.to_string(),
-        config.discord.client_secret.to_string(),
+        global.config.discord.client_id.to_string(),
+        global.config.discord.client_secret.to_string(),
         Some(uri!(base_uri(), auth::discord_callback).to_string()),
     )))
     .attach(OAuth2::<auth::Challonge>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
@@ -688,8 +692,8 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
             auth_uri: "https://api.challonge.com/oauth/authorize".into(),
             token_uri: "https://api.challonge.com/oauth/token".into(),
         },
-        config.challonge.client_id.to_string(),
-        config.challonge.client_secret.to_string(),
+        global.config.challonge.client_id.to_string(),
+        global.config.challonge.client_secret.to_string(),
         Some(uri!(base_uri(), auth::challonge_callback).to_string()),
     )))
     .attach(OAuth2::<auth::StartGG>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
@@ -697,16 +701,11 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
             auth_uri: "https://start.gg/oauth/authorize".into(),
             token_uri: "https://api.start.gg/oauth/access_token".into(),
         },
-        config.startgg_oauth.client_id.to_string(),
-        config.startgg_oauth.client_secret.to_string(),
+        global.config.startgg_oauth.client_id.to_string(),
+        global.config.startgg_oauth.client_secret.to_string(),
         Some(uri!(base_uri(), auth::startgg_callback).to_string()),
     )))
-    .manage(config)
-    .manage(pool.clone())
-    .manage(discord_ctx)
-    .manage(http_client)
-    .manage(api::schema(pool))
-    .manage(seed_metadata)
-    .manage(ootr_api_client)
+    .manage(api::schema(global.db_pool.clone()))
+    .manage(global)
     .ignite().await?)
 }

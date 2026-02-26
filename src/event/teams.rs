@@ -909,17 +909,17 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
-pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     enum ShowStatus {
         Detailed,
         Confirmed,
         None,
     }
 
-    let mut transaction = pool.begin().await?;
-    let mut cache = Cache::new(http_client.clone());
+    let mut transaction = global.db_pool.begin().await?;
+    let mut cache = Cache::new(global.http_client.clone());
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, ootr_api_client, me.as_ref(), csrf.as_ref(), Tab::Teams, false).await?;
+    let header = data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Teams, false).await?;
     let mut show_status = ShowStatus::None;
     let is_organizer = if let Some(ref me) = me {
         data.organizers(&mut transaction).await?.contains(me)
@@ -930,7 +930,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
     if let QualifierKind::Score { series, event, .. } = qualifier_kind {
         if !data.is_started(&mut transaction).await? {
             let qual_event = Data::new(&mut transaction, series, event).await?.expect("missing qualifier event");
-            if Race::for_event(&mut transaction, http_client, &qual_event).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) { //TODO also show if anyone is already eligible to sign up
+            if Race::for_event(&mut transaction, &global.http_client, &qual_event).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) { //TODO also show if anyone is already eligible to sign up
                 show_status = ShowStatus::Confirmed;
             } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO replay s/8 and s/9 qual history to check for detailed status display showing any weird-looking data at any point (especially anyone's worst-case placement getting worse over time), then show to everyone
                 show_status = ShowStatus::Detailed;
@@ -943,7 +943,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
         false
     };
     let roles = data.team_config.roles();
-    let signups = signups_sorted(&mut transaction, &mut Cache::new(http_client.clone()), me.as_ref(), &data, is_organizer, qualifier_kind, None).await?;
+    let signups = signups_sorted(&mut transaction, &mut Cache::new(global.http_client.clone()), me.as_ref(), &data, is_organizer, qualifier_kind, None).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
@@ -1343,10 +1343,10 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, ootr_api_
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(data.chests().await?), &format!("{teams_label} — {}", data.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("{teams_label} — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    list(pool, http_client, ootr_api_client, me, uri, csrf, Context::default(), series, event).await
+pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    list(global, me, uri, csrf, Context::default(), series, event).await
 }

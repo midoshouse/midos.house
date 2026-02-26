@@ -1109,7 +1109,7 @@ impl Race {
         }
     }
 
-    async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
+    pub(crate) async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
         //TODO require fewer trackers for multiworld if all teams use MH MW
         Ok(match &self.entrants {
             Entrants::Two([team1, team2]) => team1.num_trackers(&mut *transaction).await? + team2.num_trackers(transaction).await?,
@@ -1967,10 +1967,10 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
     dtend
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     let now = Utc::now();
     let mut latest_instantiated_weeklies = HashMap::new();
-    for race in Race::for_event(transaction, http_client, event).await?.into_iter() {
+    for race in Race::for_event(transaction, &global.http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
                 let mut cal_event = ics::Event::new(format!("{}{}@midos.house",
@@ -1997,45 +1997,45 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     Entrants::Two([ref team1, ref team2]) => match race_event.kind {
                         EventKind::Normal => format!(
                             "{summary_prefix}: {} vs {}",
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async1 => format!(
                             "{summary_prefix} (async): {} vs {}",
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async2 => format!(
                             "{summary_prefix} (async): {} vs {}",
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async3 => unreachable!(),
                     },
                     Entrants::Three([ref team1, ref team2, ref team3]) => match race_event.kind {
                         EventKind::Normal => format!(
                             "{summary_prefix}: {} vs {} vs {}",
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async1 => format!(
                             "{summary_prefix} (async): {} vs {} vs {}",
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async2 => format!(
                             "{summary_prefix} (async): {} vs {} vs {}",
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async3 => format!(
                             "{summary_prefix} (async): {} vs {} vs {}",
-                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                     },
                 };
@@ -2090,15 +2090,15 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
 }
 
 #[rocket::get("/calendar")]
-pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn index_help(global: &GlobalState, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    let mut transaction = global.db_pool.begin().await?;
     let mut events = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed"#).fetch_all(&mut *transaction).await? {
         events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
     }
     let chests_event = events.choose(&mut rng());
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
-    page(transaction, &me, &uri, PageStyle::new(chests), "Calendar — Mido's House", html! {
+    page(transaction, global, &me, &uri, PageStyle::new(chests), "Calendar — Mido's House", html! {
         p {
             : "A calendar of all races across all events can be found at ";
             code : uri!(base_uri(), index);
@@ -2123,41 +2123,41 @@ pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Orig
 }
 
 #[rocket::get("/calendar.ics")]
-pub(crate) async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn index(global: &GlobalState) -> Result<Response<ICalendar<'static>>, Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed"#).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, &mut cal, &event).await?;
+        add_event_races(&mut transaction, global, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
 #[rocket::get("/series/<series>/calendar.ics")]
-pub(crate) async fn for_series(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn for_series(global: &GlobalState, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, &mut cal, &event).await?;
+        add_event_races(&mut transaction, global, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
-pub(crate) async fn for_event(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn for_event(global: &GlobalState, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, &mut cal, &event).await?;
+    add_event_races(&mut transaction, global, &mut cal, &event).await?;
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
-pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>, is_3p: bool) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>, is_3p: bool) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
         let mut team_data = Vec::with_capacity(teams.len());
@@ -2257,7 +2257,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("New Race — {}", event.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("New Race — {}", event.display_name), html! {
         : header;
         h2 : "Create race";
         : form;
@@ -2265,15 +2265,15 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
 }
 
 #[rocket::get("/event/<series>/<event>/races/new?<players>")]
-pub(crate) async fn create_race(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZero<u8>>) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+pub(crate) async fn create_race(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZero<u8>>) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let is_3p = match players.unwrap_or_else(|| NonZero::<u8>::new(2).unwrap()).get() {
         2 => false,
         3 => true,
         _ => return Err(StatusOrError::Status(Status::NotImplemented)),
     };
-    let mut transaction = pool.begin().await?;
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(create_race_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, Context::default(), is_3p).await?)
+    Ok(create_race_form(transaction, global, me, uri, csrf.as_ref(), event, Context::default(), is_3p).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -2293,8 +2293,8 @@ pub(crate) struct CreateRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
-pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn create_race_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2338,7 +2338,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(create_race_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), event, form.context, team3.is_some()).await?)
+            RedirectOrContent::Content(create_race_form(transaction, global, Some(me), uri, csrf.as_ref(), event, form.context, team3.is_some()).await?)
         } else {
             let (phase, round) = if value.phase_round.is_empty() {
                 (
@@ -2356,7 +2356,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             let draft = if team3.is_some() {
                 None
             } else if let Some(draft_kind) = event.draft_kind() {
-                Some(Draft::for_game1(&mut transaction, http_client, draft_kind, &event, phase.as_deref(), [&team1, &team2]).await?)
+                Some(Draft::for_game1(&mut transaction, &global.http_client, draft_kind, &event, phase.as_deref(), [&team1, &team2]).await?)
             } else {
                 None
             };
@@ -2400,7 +2400,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                     scheduling_thread,
                 };
                 if game == 1 {
-                    transaction = discord_bot::create_scheduling_thread(&*discord_ctx.read().await, transaction, &mut race, value.game_count).await?;
+                    transaction = discord_bot::create_scheduling_thread(discord_ctx!(global), transaction, &mut race, value.game_count).await?;
                     scheduling_thread = race.scheduling_thread;
                 }
                 race.save(&mut transaction).await?;
@@ -2410,7 +2410,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
         }
     } else {
         let is_3p = form.context.field_value("team3").is_some();
-        RedirectOrContent::Content(create_race_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), event, form.context, is_3p).await?)
+        RedirectOrContent::Content(create_race_form(transaction, global, Some(me), uri, csrf.as_ref(), event, form.context, is_3p).await?)
     })
 }
 
@@ -2425,6 +2425,7 @@ pub(crate) enum RaceTableRestreams {
 }
 
 pub(crate) struct RaceTableOptions<'a> {
+    /// Interpret `Race.game` as number of races in match.
     pub(crate) game_count: bool,
     pub(crate) show_multistreams: bool,
     pub(crate) can_create: bool,
@@ -2435,9 +2436,7 @@ pub(crate) struct RaceTableOptions<'a> {
 
 pub(crate) async fn race_table(
     transaction: &mut Transaction<'_, Postgres>,
-    discord_ctx: &DiscordCtx,
-    http_client: &reqwest::Client,
-    ootr_api_client: &ootr_web::ApiClient,
+    global: &GlobalState,
     me: Option<&User>,
     uri: &Origin<'_>,
     csrf: Option<&CsrfToken>,
@@ -2601,7 +2600,7 @@ pub(crate) async fn race_table(
                             }
                             Entrants::Two([ref team1, ref team2]) => {
                                 td(class = "vs1", colspan = "3") {
-                                    : team1.to_html(&mut *transaction, discord_ctx, false).await?;
+                                    : team1.to_html(&mut *transaction, discord_ctx!(global), false).await?;
                                     @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2610,7 +2609,7 @@ pub(crate) async fn race_table(
                                     }
                                 }
                                 td(class = "vs2", colspan = "3") {
-                                    : team2.to_html(&mut *transaction, discord_ctx, false).await?;
+                                    : team2.to_html(&mut *transaction, discord_ctx!(global), false).await?;
                                     @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2621,7 +2620,7 @@ pub(crate) async fn race_table(
                             }
                             Entrants::Three([ref team1, ref team2, ref team3]) => {
                                 td(colspan = "2") {
-                                    : team1.to_html(&mut *transaction, discord_ctx, false).await?;
+                                    : team1.to_html(&mut *transaction, discord_ctx!(global), false).await?;
                                     @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2630,7 +2629,7 @@ pub(crate) async fn race_table(
                                     }
                                 }
                                 td(colspan = "2") {
-                                    : team2.to_html(&mut *transaction, discord_ctx, false).await?;
+                                    : team2.to_html(&mut *transaction, discord_ctx!(global), false).await?;
                                     @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2639,7 +2638,7 @@ pub(crate) async fn race_table(
                                     }
                                 }
                                 td(colspan = "2") {
-                                    : team3.to_html(&mut *transaction, discord_ctx, false).await?;
+                                    : team3.to_html(&mut *transaction, discord_ctx!(global), false).await?;
                                     @if let RaceSchedule::Async { start3: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2655,7 +2654,7 @@ pub(crate) async fn race_table(
                                     a(class = "favicon", title = format!("{language} restream"), href = video_url.to_string()) : favicon(video_url);
                                 }
                                 @if options.show_multistreams && race.video_urls.is_empty() {
-                                    @for multistream_url in race.multistream_urls(&mut *transaction, http_client, &event).await? {
+                                    @for multistream_url in race.multistream_urls(&mut *transaction, &global.http_client, &event).await? {
                                         a(class = "favicon", title = "multistream", href = multistream_url.to_string()) : favicon(&multistream_url);
                                     }
                                 }
@@ -2678,7 +2677,7 @@ pub(crate) async fn race_table(
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
                                     @if !event.has_single_settings() && race.single_settings(&mut *transaction).await?.is_some() {
-                                        @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, http_client, ootr_api_client, race.id).await? {
+                                        @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, global, race.id).await? {
                                             external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), &favicon_url, "Practice")
                                         } else {
                                             button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), "Practice")
@@ -2704,7 +2703,7 @@ pub(crate) async fn race_table(
                                 @if race.teams().all(|team| team.restream_consent) {
                                     : "Restreamer: ";
                                     @if let Some(restreamer) = race.restreamers.get(&English) {
-                                        : restreamer.to_html(transaction, http_client).await?;
+                                        : restreamer.to_html(transaction, &global.http_client).await?;
                                         @if let Some(me) = me && let Restreamer::MidosHouse(id) = restreamer && *id == me.id {
                                             br;
                                             @let (errors, button) = button_form(uri!(volunteer_retract_post(race.series, &race.event, race.id, VolunteerRole::Restreamer, Some(uri))), csrf, Vec::default(), "Remove Signup");
@@ -2821,8 +2820,8 @@ pub(crate) async fn race_table(
     })
 }
 
-pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, discord_ctx: &DiscordCtx, config: &Config, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
+pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
     let form = match event.match_source() {
         MatchSource::Manual => html! {
             article {
@@ -2830,7 +2829,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         },
         MatchSource::Challonge { community, tournament } => if me.is_some() {
-            let (races, skips) = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
+            let (races, skips) = challonge::races_to_import(&mut transaction, global, &event, community, tournament).await?;
             if races.is_empty() {
                 html! {
                     article {
@@ -2858,7 +2857,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, http_client, ootr_api_client, me.as_ref(), &uri, csrf, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, restreams: RaceTableRestreams::None, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
+                let table = race_table(&mut transaction, global, me.as_ref(), &uri, csrf, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, restreams: RaceTableRestreams::None, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2896,7 +2895,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                 }
             }
         } else if me.is_some() {
-            let (races, skips) = startgg::races_to_import(&mut transaction, http_client, config, &event, event_slug).await?;
+            let (races, skips) = startgg::races_to_import(&mut transaction, global, &event, event_slug).await?;
             if races.is_empty() {
                 html! {
                     article {
@@ -2924,7 +2923,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, http_client, ootr_api_client, me.as_ref(), &uri, csrf, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, restreams: RaceTableRestreams::None, challonge_import_ctx: None }, &races).await?;
+                let table = race_table(&mut transaction, global, me.as_ref(), &uri, csrf, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, restreams: RaceTableRestreams::None, challonge_import_ctx: None }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2942,7 +2941,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         },
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Import Races — {}", event.display_name), html! {
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Import Races — {}", event.display_name), html! {
         : header;
         h2 : "Import races";
         : form;
@@ -2950,10 +2949,10 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
 }
 
 #[rocket::get("/event/<series>/<event>/races/import")]
-pub(crate) async fn import_races(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn import_races(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(import_races_form(transaction, http_client, ootr_api_client, &*discord_ctx.read().await, config, me, uri, csrf.as_ref(), event, Context::default()).await?)
+    Ok(import_races_form(transaction, global, me, uri, csrf.as_ref(), event, Context::default()).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -2971,8 +2970,8 @@ pub(crate) struct ImportRacesForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/import", data = "<form>")]
-pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn import_races_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -2986,7 +2985,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
                 Vec::default()
             }
             MatchSource::Challonge { community, tournament } => {
-                let (mut races, skips) = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
+                let (mut races, skips) = challonge::races_to_import(&mut transaction, global, &event, community, tournament).await?;
                 if races.is_empty() {
                     if skips.is_empty() {
                         form.context.push_error(form::Error::validation("Challonge did not list any matches for this event."));
@@ -3017,7 +3016,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
                 Vec::default()
             }
             MatchSource::StartGG(event_slug) => {
-                let (races, skips) = startgg::races_to_import(&mut transaction, http_client, config, &event, event_slug).await?;
+                let (races, skips) = startgg::races_to_import(&mut transaction, global, &event, event_slug).await?;
                 if races.is_empty() {
                     if skips.is_empty() {
                         form.context.push_error(form::Error::validation("start.gg did not list any matches for this event."));
@@ -3029,16 +3028,16 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
             }
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(import_races_form(transaction, http_client, ootr_api_client, &*discord_ctx.read().await, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+            RedirectOrContent::Content(import_races_form(transaction, global, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
             for race in races {
-                transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
+                transaction = import_race(transaction, discord_ctx!(global), race).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(import_races_form(transaction, http_client, ootr_api_client, &*discord_ctx.read().await, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+        RedirectOrContent::Content(import_races_form(transaction, global, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     })
 }
 
@@ -3098,10 +3097,10 @@ impl IsNetworkError for AutoImportError {
     }
 }
 
-async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>, new_room_lock: Arc<Mutex<()>>) -> Result<(), AutoImportError> {
+async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shutdown, new_room_lock: Arc<Mutex<()>>) -> Result<(), AutoImportError> {
     loop {
         lock!(new_room_lock = new_room_lock; {
-            let mut transaction = db_pool.begin().await?;
+            let mut transaction = global.db_pool.begin().await?;
             for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
                 let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
                 if event.auto_import {
@@ -3111,9 +3110,9 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                         MatchSource::League => if event.is_started(&mut transaction).await? {
                             let mut races = Vec::default();
                             for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
-                                races.push(Race::from_id(&mut transaction, &http_client, id).await?);
+                                races.push(Race::from_id(&mut transaction, &global.http_client, id).await?);
                             }
-                            let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
+                            let schedule = global.http_client.get("https://league.ootrandomizer.com/scheduleJson")
                                 .send().await?
                                 .detailed_error_for_status().await.map_err(AutoImportError::LeagueSchedule)?
                                 .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::LeagueSchedule)?;
@@ -3125,8 +3124,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     event: event.event.to_string(),
                                     source: Source::League { id: match_data.id },
                                     entrants: Entrants::Two([
-                                        match_data.player_a.into_entrant(&http_client).await.map_err(AutoImportError::IntoEntrant)?,
-                                        match_data.player_b.into_entrant(&http_client).await.map_err(AutoImportError::IntoEntrant)?,
+                                        match_data.player_a.into_entrant(&global.http_client).await.map_err(AutoImportError::IntoEntrant)?,
+                                        match_data.player_b.into_entrant(&global.http_client).await.map_err(AutoImportError::IntoEntrant)?,
                                     ]),
                                     phase: None,
                                     round: Some(match_data.division),
@@ -3149,7 +3148,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     },
                                     restreamers: if_chain! {
                                         if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one(); //TODO notify on multiple restreams
-                                        if let Some(restreamer) = restreamer.into_restreamer(&mut transaction, &http_client).await?;
+                                        if let Some(restreamer) = restreamer.into_restreamer(&mut transaction, &global.http_client).await?;
                                         then {
                                             iter::once((match_data.restream_language.unwrap_or(English), restreamer)).collect()
                                         } else {
@@ -3192,15 +3191,15 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                             }
                         },
                         MatchSource::StartGG(event_slug) => loop {
-                            match startgg::races_to_import(&mut transaction, &http_client, &config, &event, event_slug).await {
+                            match startgg::races_to_import(&mut transaction, global, &event, event_slug).await {
                                 Ok((races, _)) => {
                                     for race in races {
-                                        transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
+                                        transaction = import_race(transaction, discord_ctx!(global), race).await?;
                                     }
                                     break
                                 }
                                 Err(Error::UnknownTeamStartGG(entrant)) => {
-                                    let response = startgg::query_cached::<startgg::TeamMembersQuery>(&http_client, &config.startgg, startgg::team_members_query::Variables { entrant: entrant.clone() }).await?;
+                                    let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, &global.config.startgg, startgg::team_members_query::Variables { entrant: entrant.clone() }).await?;
                                     let startgg::team_members_query::ResponseData {
                                         entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
                                             participants: Some(participants),
@@ -3215,7 +3214,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
                                     sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant as _, team.id as _).execute(&mut *transaction).await?;
                                     transaction.commit().await?;
-                                    transaction = db_pool.begin().await?;
+                                    transaction = global.db_pool.begin().await?;
                                 }
                                 Err(e) => return Err(e.into()),
                             }
@@ -3223,8 +3222,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                     }
                 }
                 if let Some(ref speedgaming_slug) = event.speedgaming_slug {
-                    let schedule = sgl::online_schedule(&http_client, speedgaming_slug).await.map_err(AutoImportError::SglOnlineSchedule)?;
-                    let races = Race::for_event(&mut transaction, &http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
+                    let schedule = sgl::online_schedule(&global.http_client, speedgaming_slug).await.map_err(AutoImportError::SglOnlineSchedule)?;
+                    let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
                     let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingOnline { .. }));
                     unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
                     existing_races.sort_unstable_by_key(|cal_event| {
@@ -3243,12 +3242,12 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                             }) {
                                 // this match is already assigned to a race, update it in case it got rescheduled or its restream info got changed
                                 let cal_event = &mut existing_races[idx];
-                                transaction = restream.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, cal_event, restream_match.id).await?;
+                                transaction = restream.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, cal_event, restream_match.id).await?;
                                 cal_event.race.save(&mut transaction).await?;
                             } else {
                                 let mut matching_races = Vec::default();
                                 for (idx, cal_event) in unassigned_races.iter().enumerate() {
-                                    if restream_match.matches(&mut transaction, &http_client, &cal_event.race).await? {
+                                    if restream_match.matches(&mut transaction, &global.http_client, &cal_event.race).await? {
                                         matching_races.push((idx, cal_event));
                                     }
                                 }
@@ -3263,7 +3262,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                 .push(')')
                                                 //TODO instructions for how to fix?
                                                 .build();
-                                            let notification = organizer_channel.say(&*discord_ctx.read().await, msg).await?;
+                                            let notification = organizer_channel.say(discord_ctx!(global), msg).await?;
                                             sqlx::query!(
                                                 "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
                                                 restream_match.id, PgSnowflake(notification.id) as _,
@@ -3272,7 +3271,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     },
                                     Ok(Some((idx, _))) => {
                                         let mut cal_event = unassigned_races.swap_remove(idx);
-                                        transaction = restream.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, &mut cal_event, restream_match.id).await?;
+                                        transaction = restream.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, &mut cal_event, restream_match.id).await?;
                                         cal_event.race.save(&mut transaction).await?;
                                     }
                                     Err(races) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
@@ -3297,15 +3296,15 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                     Entrants::Two([ref team1, ref team2]) => format!(
                                                         "{info_prefix}{}{} vs {}",
                                                         if info_prefix.is_empty() { "" } else { ": " },
-                                                        team1.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                        team2.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                        team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                        team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                                                     ),
                                                     Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                                                         "{info_prefix}{}{} vs {} vs {}",
                                                         if info_prefix.is_empty() { "" } else { ": " },
-                                                        team1.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                        team2.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                        team3.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                        team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                        team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                        team3.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                                                     ),
                                                 };
                                                 options.push(CreateSelectMenuOption::new(if let Some(game) = cal_event.race.game {
@@ -3314,7 +3313,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                     summary
                                                 }, cal_event.race.id.to_string()));
                                             }
-                                            let notification = organizer_channel.send_message(&*discord_ctx.read().await, CreateMessage::default()
+                                            let notification = organizer_channel.send_message(discord_ctx!(global), CreateMessage::default()
                                                 .content(msg)
                                                 .select_menu(
                                                     CreateSelectMenu::new(format!("sgdisambig_{}", restream_match.id), CreateSelectMenuKind::String { options })
@@ -3333,8 +3332,8 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                     }
                 }
                 if let Some(tournament_id) = event.speedgaming_in_person_id {
-                    let schedule = sgl::in_person_schedule(&http_client, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
-                    let races = Race::for_event(&mut transaction, &http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
+                    let schedule = sgl::in_person_schedule(&global.http_client, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
+                    let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
                     let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
                     unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingOnline { .. }));
                     existing_races.sort_unstable_by_key(|cal_event| {
@@ -3352,7 +3351,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                         }) {
                             // this match is already assigned to a race, update it in case it finished, got rescheduled, or its restream info got changed
                             let cal_event = &mut existing_races[idx];
-                            transaction = schedule_match.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, cal_event).await?;
+                            transaction = schedule_match.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, cal_event).await?;
                             cal_event.race.save(&mut transaction).await?;
                         } else {
                             let mut matching_races = Vec::default();
@@ -3379,7 +3378,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                         }
                                         //TODO instructions for how to fix?
                                         let msg = msg.build();
-                                        let notification = organizer_channel.say(&*discord_ctx.read().await, msg).await?;
+                                        let notification = organizer_channel.say(discord_ctx!(global), msg).await?;
                                         sqlx::query!(
                                             "INSERT INTO speedgaming_onsite_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
                                             schedule_match.id, PgSnowflake(notification.id) as _,
@@ -3388,7 +3387,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                 },
                                 Ok(Some((idx, _))) => {
                                     let mut cal_event = unassigned_races.swap_remove(idx);
-                                    transaction = schedule_match.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, &mut cal_event).await?;
+                                    transaction = schedule_match.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, &mut cal_event).await?;
                                     cal_event.race.save(&mut transaction).await?;
                                 }
                                 Err(races) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
@@ -3421,15 +3420,15 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                 Entrants::Two([ref team1, ref team2]) => format!(
                                                     "{info_prefix}{}{} vs {}",
                                                     if info_prefix.is_empty() { "" } else { ": " },
-                                                    team1.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                    team2.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                                                 ),
                                                 Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                                                     "{info_prefix}{}{} vs {} vs {}",
                                                     if info_prefix.is_empty() { "" } else { ": " },
-                                                    team1.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                    team2.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                    team3.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team3.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                                                 ),
                                             };
                                             options.push(CreateSelectMenuOption::new(if let Some(game) = cal_event.race.game {
@@ -3438,7 +3437,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                 summary
                                             }, cal_event.race.id.to_string()));
                                         }
-                                        let notification = organizer_channel.send_message(&*discord_ctx.read().await, CreateMessage::default()
+                                        let notification = organizer_channel.send_message(discord_ctx!(global), CreateMessage::default()
                                             .content(msg)
                                             .select_menu(
                                                 CreateSelectMenu::new(format!("sgonsitedisambig_{}", schedule_match.id), CreateSelectMenuKind::String { options })
@@ -3466,11 +3465,11 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
     Ok(())
 }
 
-pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Client, config: Config, shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>, new_room_lock: Arc<Mutex<()>>) -> Result<(), AutoImportError> {
+pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket::Shutdown, new_room_lock: Arc<Mutex<()>>) -> Result<(), AutoImportError> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
-        match auto_import_races_inner(db_pool.clone(), http_client.clone(), config.clone(), shutdown.clone(), discord_ctx.clone(), new_room_lock.clone()).await {
+        match auto_import_races_inner(&global, shutdown.clone(), new_room_lock.clone()).await {
             Ok(()) => break Ok(()),
             Err(AutoImportError::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)) | AutoImportError::Event(event::Error::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)))) => {
                 let wait_time = Duration::from_secs(60);
@@ -3504,25 +3503,25 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
     }
 }
 
-async fn practice_seed_favicon_url(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, id: Id<Races>) -> Result<Option<Url>, Error> {
-    let race = Race::from_id(&mut *transaction, http_client, id).await?;
+async fn practice_seed_favicon_url(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, id: Id<Races>) -> Result<Option<Url>, Error> {
+    let race = Race::from_id(&mut *transaction, &global.http_client, id).await?;
     let Some((rando_version, settings)) = race.single_settings(transaction).await? else { return Ok(None) };
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-    if ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.is_some() {
+    if global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.is_some() {
         Ok(Some(Url::parse("https://ootrandomizer.com/")?))
     } else {
         Ok(None)
     }
 }
 
-async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let errors = ctx.errors().collect_vec();
     let content = html! {
-        : event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, false).await?;
+        : event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, false).await?;
         //TODO link back to race page
         h2 : "Practice";
         @if race.single_settings(&mut transaction).await?.is_some() {
-            @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut transaction, http_client, ootr_api_client, race.id).await? {
+            @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut transaction, global, race.id).await? {
                 external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, errors, &favicon_url, "Roll Seed")
             } else {
                 button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, errors, "Roll Seed")
@@ -3536,33 +3535,33 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, http_cli
             //TODO allow making any necessary choices like draft picks
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Practice — {}", event.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Practice — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/practice")]
-pub(crate) async fn practice_seed_get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<Option<RawHtml<String>>, event::Error> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn practice_seed_get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<Option<RawHtml<String>>, event::Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
-    let race = Race::from_id(&mut transaction, http_client, id).await?;
-    Ok(Some(practice_seed_form(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
+    Ok(Some(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/practice", data = "<form>")]
-pub(crate) async fn practice_seed_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
-    let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(Some(if form.value.is_some() {
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(practice_seed_form(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), event, race, form.context).await?)
+            RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), event, race, form.context).await?)
         } else {
             let (rando_version, mut settings) = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
             transaction.commit().await?;
             let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-            if let Some(web_version) = ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
-                let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, settings).await?;
+            if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings).await?;
                 RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
             } else {
                 let fs = systemstat::System::new().mount_at("/").at("/")?;
@@ -3579,12 +3578,12 @@ pub(crate) async fn practice_seed_post(pool: &State<PgPool>, http_client: &State
             }
         }
     } else {
-        RedirectOrContent::Content(practice_seed_form(transaction, http_client, ootr_api_client, me, uri, csrf.as_ref(), event, race, form.context).await?)
+        RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), event, race, form.context).await?)
     }))
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
     let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
@@ -3753,16 +3752,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
             Entrants::Two([ref p1, ref p2]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, discord_ctx, false).await?;
-                    li : p2.to_html(&mut transaction, discord_ctx, false).await?;
+                    li : p1.to_html(&mut transaction, discord_ctx!(global), false).await?;
+                    li : p2.to_html(&mut transaction, discord_ctx!(global), false).await?;
                 }
             }
             Entrants::Three([ref p1, ref p2, ref p3]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, discord_ctx, false).await?;
-                    li : p2.to_html(&mut transaction, discord_ctx, false).await?;
-                    li : p3.to_html(&mut transaction, discord_ctx, false).await?;
+                    li : p1.to_html(&mut transaction, discord_ctx!(global), false).await?;
+                    li : p2.to_html(&mut transaction, discord_ctx!(global), false).await?;
+                    li : p3.to_html(&mut transaction, discord_ctx!(global), false).await?;
                 }
             }
         }
@@ -3862,18 +3861,18 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit?<redirect_to>")]
-pub(crate) async fn edit_race(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn edit_race(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id, redirect_to)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, None).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, global, me, uri, csrf.as_ref(), event, race, redirect_to, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -3895,10 +3894,10 @@ pub(crate) struct EditRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit?<redirect_to>", data = "<form>")]
-pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let mut race = Race::from_id(&mut transaction, http_client, id).await?;
+    let mut race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if race.series != event.series || race.event != event.event {
@@ -4021,7 +4020,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
                 }
                 file_stem = Some(row.file_stem);
             } else {
-                match http_client.get(format!("{room}/data")).send().await {
+                match global.http_client.get(format!("{room}/data")).send().await {
                     Ok(response) => match response.detailed_error_for_status().await {
                         Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
                             Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
@@ -4042,7 +4041,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
                                     let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
                                     file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
                                     web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
-                                    match http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
+                                    match global.http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
                                         Ok(patch_response) => match patch_response.detailed_error_for_status().await {
                                             Ok(patch_response) => if let Some(content_disposition) = patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
                                                 match content_disposition.to_str() {
@@ -4073,7 +4072,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
                                         Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
                                     }
                                     if let Some(ref file_stem) = file_stem {
-                                        match http_client.get("https://ootrandomizer.com/spoilers/get").query(&[("id", web_id)]).send().await {
+                                        match global.http_client.get("https://ootrandomizer.com/spoilers/get").query(&[("id", web_id)]).send().await {
                                             Ok(spoiler_response) => if spoiler_response.status() != StatusCode::BAD_REQUEST { // returns error 400 if no spoiler log has been generated
                                                 match spoiler_response.detailed_error_for_status().await {
                                                     Ok(spoiler_response) => {
@@ -4128,7 +4127,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
                                     form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name(format!("restreamers.{}", language.short_code()))); //TODO direct link
                                 }
                             } else {
-                                match Restreamer::parse(&mut transaction, http_client, restreamer).await {
+                                match Restreamer::parse(&mut transaction, &global.http_client, restreamer).await {
                                     Ok(restreamer) => { restreamers.insert(language, restreamer); }
                                     Err(e @ (racetime_bot::ParseUserError::Format | racetime_bot::ParseUserError::IdNotFound | racetime_bot::ParseUserError::InvalidUrl | racetime_bot::ParseUserError::MidosHouseId | racetime_bot::ParseUserError::MidosHouseUserNoRacetime | racetime_bot::ParseUserError::UrlNotFound)) => {
                                         form.context.push_error(form::Error::validation(e.to_string()).with_name(format!("restreamers.{}", language.short_code())));
@@ -4148,7 +4147,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, ootr_api_client, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, global, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
         } else {
             match &mut race.schedule {
                 RaceSchedule::Unscheduled => {}
@@ -4176,12 +4175,12 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, ootr_api_client, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, global, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
     })
 }
 
-pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, ootr_api_client, me.as_ref(), csrf, Tab::Races, true).await?;
+pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect();
         full_form(uri!(add_file_hash_post(event.series, &*event.event, race.id)), csrf, html! {
@@ -4277,18 +4276,18 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle::new(event.chests().await?), &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
-pub(crate) async fn add_file_hash(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn add_file_hash(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(add_file_hash(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
+    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, global, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -4303,10 +4302,10 @@ pub(crate) struct AddFileHashForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit-hash", data = "<form>")]
-pub(crate) async fn add_file_hash_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn add_file_hash_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if race.series != event.series || race.event != event.event {
@@ -4347,7 +4346,7 @@ pub(crate) async fn add_file_hash_post(pool: &State<PgPool>, http_client: &State
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(add_file_hash_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+            RedirectOrContent::Content(add_file_hash_form(transaction, global, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
@@ -4357,14 +4356,14 @@ pub(crate) async fn add_file_hash_post(pool: &State<PgPool>, http_client: &State
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(add_file_hash_form(transaction, ootr_api_client, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+        RedirectOrContent::Content(add_file_hash_form(transaction, global, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
     })
 }
 
-async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, ootr_api_client: &ootr_web::ApiClient, me: User, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let errors = ctx.errors().collect_vec();
     let content = html! {
-        : event.header(&mut transaction, ootr_api_client, Some(&me), csrf, Tab::Races, false).await?;
+        : event.header(&mut transaction, global, Some(&me), csrf, Tab::Races, false).await?;
         //TODO link back to race page
         h2 : "Volunteer";
         @for error in errors {
@@ -4414,14 +4413,14 @@ async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, ootr_api_cli
             }
         }
     };
-    Ok(page(transaction, &Some(me), &uri, PageStyle::new(event.chests().await?), &format!("Volunteer — {}", event.display_name), content).await?)
+    Ok(page(transaction, global, &Some(me), &uri, PageStyle::new(event.chests().await?), &format!("Volunteer — {}", event.display_name), content).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/volunteer?<role>&<redirect_to>", data = "<form>")]
-pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn volunteer_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
-    let mut race = Race::from_id(&mut transaction, http_client, id).await?;
+    let mut race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(Some(if form.value.is_some() {
@@ -4489,7 +4488,7 @@ pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<req
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(volunteer_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
+            RedirectOrContent::Content(volunteer_form(transaction, global, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
         } else {
             match role {
                 VolunteerRole::Restreamer => { race.restreamers.insert(English, Restreamer::MidosHouse(me.id)); }
@@ -4507,15 +4506,15 @@ pub(crate) async fn volunteer_post(pool: &State<PgPool>, http_client: &State<req
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
     } else {
-        RedirectOrContent::Content(volunteer_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
+        RedirectOrContent::Content(volunteer_form(transaction, global, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
     }))
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/volunteer-retract?<role>&<redirect_to>", data = "<form>")]
-pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
-    let mut transaction = pool.begin().await?;
+pub(crate) async fn volunteer_retract_post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, role: VolunteerRole, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, event::Error> {
+    let mut transaction = global.db_pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
-    let mut race = Race::from_id(&mut transaction, http_client, id).await?;
+    let mut race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(Some(if form.value.is_some() {
@@ -4537,7 +4536,7 @@ pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &S
             },
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(volunteer_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
+            RedirectOrContent::Content(volunteer_form(transaction, global, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
         } else {
             match role {
                 VolunteerRole::Restreamer => { race.restreamers.remove(&English); }
@@ -4561,6 +4560,6 @@ pub(crate) async fn volunteer_retract_post(pool: &State<PgPool>, http_client: &S
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
     } else {
-        RedirectOrContent::Content(volunteer_form(transaction, ootr_api_client, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
+        RedirectOrContent::Content(volunteer_form(transaction, global, me, uri, csrf.as_ref(), event, race, redirect_to, form.context).await?)
     }))
 }

@@ -456,8 +456,8 @@ impl<'r> FromRequest<'r> for ApiKey {
     type Error = ApiKeyFromRequestError;
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let db_pool = match <&State<PgPool>>::from_request(req).await {
-            request::Outcome::Success(db_pool) => db_pool,
+        let db_pool = match req.guard::<&GlobalState>().await {
+            request::Outcome::Success(global) => &global.db_pool,
             request::Outcome::Forward(status) => return request::Outcome::Forward(status),
             request::Outcome::Error((status, ())) => return request::Outcome::Error((status, ApiKeyFromRequestError::DbPool)),
         };
@@ -467,14 +467,14 @@ impl<'r> FromRequest<'r> for ApiKey {
                 user_search,
                 write,
                 user_id AS "user_id: Id<Users>"
-            FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&**db_pool).await {
+            FROM api_keys WHERE key = $1"#, api_key).fetch_optional(db_pool).await {
                 Ok(Some(row)) => request::Outcome::Success(Self {
                     scopes: Scopes {
                         entrants_read: row.entrants_read,
                         user_search: row.user_search,
                         write: row.write,
                     },
-                    user: match user::User::from_id(&**db_pool, row.user_id).await {
+                    user: match user::User::from_id(db_pool, row.user_id).await {
                         Ok(user) => user.expect("database constraint validated: API keys belong to existing users"),
                         Err(e) => return request::Outcome::Error((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
                     },
@@ -489,12 +489,12 @@ impl<'r> FromRequest<'r> for ApiKey {
 }
 
 #[rocket::get("/api/v1/graphql?<query..>")]
-pub(crate) async fn graphql_query(config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
-    let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
+pub(crate) async fn graphql_query(global: &GlobalState, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+    let transaction = Arc::new(Mutex::new(global.db_pool.begin().await?));
     let mut request = GraphQLRequest::from(query)
-        .data::<Config>((*config).clone())
+        .data::<Config>(global.config.clone())
         .data::<ArcTransaction>(transaction.clone())
-        .data::<reqwest::Client>((*http_client).clone());
+        .data::<reqwest::Client>(global.http_client.clone());
     if let Some(api_key) = api_key {
         request = request.data::<ApiKey>(api_key);
     }
@@ -504,12 +504,12 @@ pub(crate) async fn graphql_query(config: &State<Config>, db_pool: &State<PgPool
 }
 
 #[rocket::post("/api/v1/graphql", data = "<request>", format = "application/json")]
-pub(crate) async fn graphql_request(config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
-    let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
+pub(crate) async fn graphql_request(global: &GlobalState, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+    let transaction = Arc::new(Mutex::new(global.db_pool.begin().await?));
     let mut request = request
-        .data::<Config>((*config).clone())
+        .data::<Config>(global.config.clone())
         .data::<ArcTransaction>(transaction.clone())
-        .data::<reqwest::Client>((*http_client).clone());
+        .data::<reqwest::Client>(global.http_client.clone());
     if let Some(api_key) = api_key {
         request = request.data::<ApiKey>(api_key);
     }
@@ -542,8 +542,8 @@ impl<E: Into<CsvError>> From<E> for StatusOrError<CsvError> {
 }
 
 #[rocket::get("/api/v1/event/<series>/<event>/entrants.csv?<api_key>")]
-pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: crate::series::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
-    let mut transaction = db_pool.begin().await?;
+pub(crate) async fn entrants_csv(global: &GlobalState, series: crate::series::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
+    let mut transaction = global.db_pool.begin().await?;
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let is_organizer = event.organizers(&mut transaction).await?.contains(&me);
@@ -551,7 +551,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let qualifier_kind = event.qualifier_kind(&mut transaction, Some(&me)).await?;
-    let signups = teams::signups_sorted(&mut transaction, &mut teams::Cache::new(http_client.inner().clone()), None, &event, is_organizer, qualifier_kind, None).await?;
+    let signups = teams::signups_sorted(&mut transaction, &mut teams::Cache::new(global.http_client.clone()), None, &event, is_organizer, qualifier_kind, None).await?;
     let mut csv = csv::Writer::from_writer(Vec::default());
     for (i, teams::SignupsTeam { team, .. }) in signups.into_iter().enumerate() {
         if let Some(team) = team {
@@ -572,7 +572,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
                 csv.serialize(Row {
                     id: member.id,
                     display_name: member.display_name(),
-                    twitch_display_name: member.racetime_user_data(http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
+                    twitch_display_name: member.racetime_user_data(&global.http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
                     discord_display_name: member.discord.as_ref().map(|discord| &*discord.display_name),
                     discord_discriminator: member.discord.as_ref().and_then(|discord| discord.username_or_discriminator.as_ref().right()).copied(),
                     racetime_id: member.racetime.as_ref().map(|racetime| &*racetime.id),
