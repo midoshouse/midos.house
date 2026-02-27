@@ -131,9 +131,11 @@ span.button-row {
 }
 
 .menu form:nth-last-child(1) input[type="submit"],
+.menu form:nth-last-child(1) button,
 .menu .button:nth-last-child(1) {
-    border-end-start-radius: 8px;
     border-start-end-radius: 0;
+    border-end-start-radius: 8px;
+    border-end-end-radius: 8px;
 }
 
 .menu form {
@@ -181,8 +183,7 @@ button {
     display: grid;
 }
 
-.popover-wrapper input[type="submit"],
-.popover-wrapper button {
+[popover]:popover-open + * + button {
     border-end-start-radius: 0 !important;
     border-end-end-radius: 0 !important;
 }
@@ -220,6 +221,7 @@ input[type="submit"],
 
 .popover-wrapper > button,
 input[type="submit"],
+.button-row > form button,
 .button {
     border-inline-start-width: 0;
 }
