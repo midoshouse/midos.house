@@ -61,7 +61,6 @@ pub(crate) fn s2_enter_form() -> RawHtml<String> {
 pub(crate) fn s1_settings() -> (seed::Settings, serde_json::Map<String, serde_json::Value>) {
     (
         collect![
-            format!("create_spoiler") => json!(false),
             format!("bridge") => json!("dungeons"),
             format!("bridge_rewards") => json!(3),
             format!("trials") => json!(0),
