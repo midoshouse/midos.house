@@ -392,6 +392,7 @@ impl<'a> Data<'a> {
             | Series::CoOp
             | Series::CopaDoBrasil
             | Series::CopaLatinoamerica
+            | Series::EscapeFromKakariko
             | Series::League
             | Series::MixedPools
             | Series::Mq
@@ -1063,6 +1064,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::CoOp => coop::info(&mut transaction, &data).await?,
         Series::CopaDoBrasil => br::info(&mut transaction, &data).await?,
         Series::CopaLatinoamerica => latam::info(&mut transaction, &data).await?,
+        Series::EscapeFromKakariko => None, //TODO
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Mq => None,
@@ -1460,6 +1462,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                             | Series::CoOp
                             | Series::CopaDoBrasil
                             | Series::CopaLatinoamerica
+                            | Series::EscapeFromKakariko
                             | Series::MixedPools
                             | Series::Mq
                             | Series::PotsOfTime

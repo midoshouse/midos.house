@@ -47,6 +47,7 @@ pub(crate) enum Series {
     CoOp,
     CopaDoBrasil,
     CopaLatinoamerica,
+    EscapeFromKakariko,
     League,
     MixedPools,
     Mq,
@@ -73,6 +74,7 @@ impl Series {
             Self::CoOp => "coop",
             Self::CopaDoBrasil => "br",
             Self::CopaLatinoamerica => "latam",
+            Self::EscapeFromKakariko => "efk",
             Self::League => "league",
             Self::MixedPools => "mp",
             Self::Mq => "mq",
@@ -99,6 +101,7 @@ impl Series {
             Self::CoOp => "Co-op Tournaments",
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::CopaLatinoamerica => "Copa Latinoamerica",
+            Self::EscapeFromKakariko => "Escape from Kakariko",
             Self::League => "League",
             Self::MixedPools => "Mixed Pools Tournaments",
             Self::Mq => "12 MQ Tournaments",
@@ -121,6 +124,7 @@ impl Series {
 
     pub(crate) fn default_race_duration(&self) -> TimeDelta {
         match self {
+            Self::EscapeFromKakariko => TimeDelta::minutes(40),
             Self::TriforceBlitz => TimeDelta::hours(2),
             Self::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),

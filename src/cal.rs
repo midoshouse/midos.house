@@ -908,6 +908,7 @@ impl Race {
             | Series::CoOp //TODO add archives of seasons 1 and 2?
             | Series::CopaDoBrasil
             | Series::CopaLatinoamerica
+            | Series::EscapeFromKakariko
             | Series::MixedPools
             | Series::Mq
             | Series::PotsOfTime
