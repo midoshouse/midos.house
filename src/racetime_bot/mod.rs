@@ -192,6 +192,7 @@ pub(crate) enum UnlockSpoilerLog {
 #[derive(Clone, Copy, PartialEq, Eq, Sequence)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
+    BattleRoyaleS1,
     BattleRoyaleS2,
     Cc7, // same behavior as S7 but aliased for back-compat
     CoOpS3,
@@ -251,6 +252,7 @@ impl Goal {
 
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
+            Self::BattleRoyaleS1 => series == Series::BattleRoyale && event == "1",
             Self::BattleRoyaleS2 => series == Series::BattleRoyale && event == "2",
             Self::Cc7 => series == Series::Standard && event == "7cc",
             Self::CoOpS3 => series == Series::CoOp && event == "3",
@@ -298,6 +300,7 @@ impl Goal {
             Self::Rsl => Some(1104),
             Self::StandardRuleset => Some(5115),
             Self::TriforceBlitz => Some(4459),
+            | Self::BattleRoyaleS1
             | Self::BattleRoyaleS2
             | Self::Cc7
             | Self::CoOpS3
@@ -342,6 +345,7 @@ impl Goal {
 
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
+            Self::BattleRoyaleS1 => "Battle Royale Season 1",
             Self::BattleRoyaleS2 => "Battle Royale Season 2",
             Self::Cc7 => "Standard Tournament Season 7 Challenge Cup",
             Self::CoOpS3 => "Co-op Tournament Season 3",
@@ -386,6 +390,7 @@ impl Goal {
 
     fn language(&self) -> Language {
         match self {
+            | Self::BattleRoyaleS1
             | Self::BattleRoyaleS2
             | Self::Cc7
             | Self::CoOpS3
@@ -441,6 +446,7 @@ impl Goal {
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
             Self::TournoiFrancoS5 => Some(draft::Kind::TournoiFrancoS5),
+            | Self::BattleRoyaleS1
             | Self::BattleRoyaleS2
             | Self::CoOpS3
             | Self::CopaDoBrasil
@@ -493,6 +499,7 @@ impl Goal {
             | Self::S7
             | Self::S8
                 => PrerollMode::Short,
+            | Self::BattleRoyaleS1
             | Self::BattleRoyaleS2
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
@@ -538,6 +545,7 @@ impl Goal {
                     => UnlockSpoilerLog::Now,
                 | Self::TriforceBlitzProgressionSpoiler
                     => UnlockSpoilerLog::Progression,
+                | Self::BattleRoyaleS1
                 | Self::BattleRoyaleS2
                 | Self::CopaDoBrasil
                 | Self::CopaLatinoamerica2025
@@ -582,6 +590,7 @@ impl Goal {
 
     pub(crate) fn rando_version(&self, event: Option<&event::Data<'_>>) -> VersionedBranch {
         match self {
+            Self::BattleRoyaleS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::BattleRoyaleS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::Cc7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::CoOpS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
@@ -633,6 +642,7 @@ impl Goal {
     /// Only returns a value for goals that only have one possible set of settings.
     pub(crate) fn single_settings(&self) -> Option<seed::Settings> {
         match self {
+            Self::BattleRoyaleS1 => None, // plando
             Self::BattleRoyaleS2 => None, // plando
             Self::Cc7 => None, // settings draft
             Self::CoOpS3 => Some(coop::s3_settings()),
@@ -681,6 +691,7 @@ impl Goal {
                 => ctx.say("!seed: The settings used for the race").await?,
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
+            | Self::BattleRoyaleS1
             | Self::BattleRoyaleS2
             | Self::LeagueS6
             | Self::LeagueS7
@@ -914,6 +925,15 @@ impl Goal {
                         SeedCommandParseResult::Regular { settings: self.single_settings().expect("goal has no single settings"), plando: serde_json::Map::default(), unlock_spoiler_log, language: self.language(), article, description }
                     }
                 }
+            Self::BattleRoyaleS1 => {
+                let (settings, plando) = ohko::s1_settings();
+                SeedCommandParseResult::Regular {
+                    language: English,
+                    article: "a",
+                    description: format!("seed"),
+                    settings, plando, unlock_spoiler_log,
+                }
+            }
             Self::BattleRoyaleS2 => {
                 let (settings, plando) = ohko::s2_settings();
                 SeedCommandParseResult::Regular {
@@ -3015,9 +3035,6 @@ impl RaceHandler<BotState> for Handler {
                         }
                     }
                 }, true, Vec::default()).await?;
-                if let (Series::BattleRoyale, "2") | (Series::League, "9") | (Series::TriforceBlitz, "4") = (event.series, &*event.event) {
-                    ctx.say("This race uses the old Standard ruleset: https://zsr.link/f_eTj").await?;
-                }
                 let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = cal_event.race.draft_kind(&event) {
                     let state = cal_event.race.draft.clone().expect("missing draft state");
                     let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(draft_kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
@@ -3181,6 +3198,18 @@ impl RaceHandler<BotState> for Handler {
                 } else {
                     match race_state {
                         RaceState::Init => match goal {
+                            Goal::BattleRoyaleS1 => ctx.send_message(
+                                "Welcome! This is a practice room for Battle Royale Season 1. Learn more about the tournament at https://midos.house/event/ohko/1",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the season.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::BattleRoyaleS2 => ctx.send_message(
                                 "Welcome! This is a practice room for Battle Royale Season 2. Learn more about the tournament at https://midos.house/event/ohko/2",
                                 true,
@@ -4194,6 +4223,10 @@ impl RaceHandler<BotState> for Handler {
                             | Goal::TournoiFrancoS4
                             | Goal::TournoiFrancoS5
                                 => unreachable!("should have draft state set"),
+                            Goal::BattleRoyaleS1 => {
+                                let (settings, plando) = ohko::s1_settings();
+                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                            }
                             Goal::BattleRoyaleS2 => {
                                 let (settings, plando) = ohko::s2_settings();
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
@@ -4933,6 +4966,7 @@ impl RaceHandler<BotState> for Handler {
                             })
                         });
                     }
+                    | Goal::BattleRoyaleS1
                     | Goal::BattleRoyaleS2
                     | Goal::Cc7
                     | Goal::CoOpS3

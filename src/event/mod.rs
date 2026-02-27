@@ -859,7 +859,7 @@ impl<'a> Data<'a> {
                         urls
                     }
                 }
-            } else if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
+            } else if matches!(id, (Series::BattleRoyale, "1" | "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
                 vec![(
                     true,
                     uri!(practice_seed_post(self.series, &*self.event, _, _)).to_html(),
@@ -2454,7 +2454,7 @@ async fn practice_seed_favicon_url(ootr_api_client: &ootr_web::ApiClient, data: 
         } else {
             Ok(None)
         }
-    } else if data.series == Series::BattleRoyale && data.event == "2" {
+    } else if data.series == Series::BattleRoyale && matches!(&*data.event, "1" | "2") {
         Ok(None)
     } else if data.series == Series::CopaLatinoamerica && data.event == "2025" {
         Ok(None)
@@ -2668,6 +2668,16 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     }
                     RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
                 }
+            } else if series == Series::BattleRoyale && event == "1" {
+                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                let (mut settings, plando) = ohko::s1_settings();
+                settings.remove("password_lock");
+                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
+                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                if let Some(spoiler_log_path) = spoiler_log_path {
+                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                }
+                RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::BattleRoyale && event == "2" {
                 let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
                 let (mut settings, plando) = ohko::s2_settings();

@@ -58,6 +58,108 @@ pub(crate) fn s2_enter_form() -> RawHtml<String> {
     }
 }
 
+pub(crate) fn s1_settings() -> (seed::Settings, serde_json::Map<String, serde_json::Value>) {
+    (
+        collect![
+            format!("create_spoiler") => json!(false),
+            format!("bridge") => json!("dungeons"),
+            format!("bridge_rewards") => json!(3),
+            format!("trials") => json!(0),
+            format!("shuffle_ganon_bosskey") => json!("remove"),
+            format!("shuffle_bosskeys") => json!("vanilla"),
+            format!("shuffle_mapcompass") => json!("startwith"),
+            format!("open_forest") => json!("closed_deku"),
+            format!("open_kakariko") => json!("open"),
+            format!("open_door_of_time") => json!(true),
+            format!("zora_fountain") => json!("open"),
+            format!("gerudo_fortress") => json!("fast"),
+            format!("dungeon_shortcuts_choice") => json!("all"),
+            format!("free_bombchu_drops") => json!(false),
+            format!("shuffle_scrubs") => json!("low"),
+            format!("disabled_locations") => json!([
+                "Deku Theater Mask of Truth",
+                "Kak 40 Gold Skulltula Reward",
+                "Kak 50 Gold Skulltula Reward",
+                "GC Deku Scrub Grotto Left",
+                "GC Deku Scrub Grotto Center",
+                "GC Deku Scrub Grotto Right",
+            ]),
+            format!("allowed_tricks") => json!([
+                "logic_visible_collisions",
+                "logic_grottos_without_agony",
+                "logic_fewer_tunic_requirements",
+                "logic_rusted_switches",
+                "logic_man_on_roof",
+                "logic_windmill_poh",
+                "logic_crater_bean_poh_with_hovers",
+                "logic_dc_jump",
+                "logic_lens_botw",
+                "logic_child_deadhand",
+                "logic_forest_vines",
+                "logic_lens_shadow",
+                "logic_lens_shadow_platform",
+                "logic_lens_bongo",
+                "logic_lens_spirit",
+                "logic_lens_gtg",
+                "logic_lens_castle",
+            ]),
+            format!("starting_equipment") => json!([
+                "deku_shield",
+            ]),
+            format!("starting_inventory") => json!([
+                "ocarina",
+                "zeldas_letter",
+            ]),
+            format!("start_with_consumables") => json!(true),
+            format!("start_with_rupees") => json!(true),
+            format!("no_escape_sequence") => json!(true),
+            format!("no_guard_stealth") => json!(true),
+            format!("no_epona_race") => json!(true),
+            format!("skip_some_minigame_phases") => json!(true),
+            format!("free_scarecrow") => json!(true),
+            format!("fast_bunny_hood") => json!(true),
+            format!("chicken_count") => json!(1),
+            format!("big_poe_count") => json!(1),
+            format!("correct_chest_appearances") => json!("both"),
+            format!("correct_potcrate_appearances") => json!("textures_content"),
+            format!("hint_dist") => json!("very_strong"),
+            format!("misc_hints") => json!([
+                "altar",
+                "ganondorf",
+                "warp_songs_and_owls",
+                "20_skulltulas",
+                "30_skulltulas",
+                "40_skulltulas",
+                "50_skulltulas",
+                "unique_merchants",
+            ]),
+            format!("damage_multiplier") => json!("ohko"),
+            format!("junk_ice_traps") => json!("off"),
+            format!("ice_trap_appearance") => json!("junk_only"),
+            format!("adult_trade_start") => json!([
+                "Prescription",
+                "Eyeball Frog",
+                "Eyedrops",
+                "Claim Check",
+            ]),
+        ],
+        collect![
+            format!("settings") => json!({
+                "starting_items": {
+                    "Bottle with Fairy": 1,
+                    "Deku Shield": 1,
+                    "Ocarina": 1,
+                    "Zeldas Letter": 1,
+                },
+            }),
+            format!("item_pool") => json!({
+                "Nayrus Love": 0,
+                "Biggoron Sword": 0,
+            }),
+        ],
+    )
+}
+
 pub(crate) fn s2_settings() -> (seed::Settings, serde_json::Map<String, serde_json::Value>) {
     (
         collect![
