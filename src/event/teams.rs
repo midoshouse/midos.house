@@ -447,7 +447,11 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 if let Some(score) = scores.remove(&MemberUser::RaceTime { id: racetime_id.clone(), url: String::default(), name: String::default() }) {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), score);
+                } else if qual_event.series == Series::Standard && qual_event.event == "9" && racetime_id == "ZbpNAaBvn5BJkg04" {
+                    user_teams.insert(user.id, team.clone());
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(828.60), r64(972.82), r64(979.43), r64(829.50), r64(912.99), r64(947.95), r64(1011.65), r64(938.46)]);
                 } else {
+                    //TODO cache scores in database to guard against racetime.gg user deletion
                     return Err(cal::Error::UnqualifiedEntrant {
                         series: data.series,
                         event: data.event.to_string(),
@@ -1002,7 +1006,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         ShowStatus::None => {}
     }
     match data.draft_kind() {
-        None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5) => {}
+        None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
         Some(draft::Kind::RslS7) => column_headers.push(html! {
             th : "RSL-Lite OK";
         }),
@@ -1285,7 +1289,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                 ShowStatus::None => {}
                             }
                             @match data.draft_kind() {
-                                None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5) => {}
+                                None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
                                 Some(draft::Kind::RslS7) => td {
                                     @if lite_ok {
                                         : "✓";

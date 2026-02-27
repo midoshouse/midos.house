@@ -2629,6 +2629,14 @@ impl Handler {
         }
     }
 
+    fn draft_kind(&self, goal: Goal) -> Option<draft::Kind> {
+        if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
+            cal_event.race.draft_kind(event)
+        } else {
+            goal.draft_kind() //TODO allow specifying draft kind for SlugCentral Open practice races
+        }
+    }
+
     async fn can_monitor(&self, ctx: &RaceContext<BotState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
         if is_monitor { return Ok(true) }
         if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
@@ -2643,13 +2651,13 @@ impl Handler {
 
     async fn send_settings(&self, ctx: &RaceContext<BotState>, preface: &str, reply_to: &str) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
-        if let Some(draft_kind) = goal.draft_kind() {
+        if let Some(draft_kind) = self.draft_kind(goal) {
             let available_settings = lock!(@read state = self.race_state; if let RaceState::Draft { state: ref draft, .. } = *state {
                 match draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
                     draft::StepKind::GoFirst => None,
                     draft::StepKind::Ban { available_settings, .. } => Some(available_settings.all().map(|setting| setting.description).collect()),
                     draft::StepKind::Pick { available_choices, .. } => Some(available_choices.all().map(|setting| setting.description).collect()),
-                    draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } => Some(Vec::default()),
+                    draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } | draft::StepKind::DoneSlugOpen(_) => Some(Vec::default()),
                 }
             } else {
                 None
@@ -2662,6 +2670,7 @@ impl Handler {
                 draft::Kind::RslS7 => rsl::FORCE_OFF_SETTINGS.into_iter().map(|rsl::ForceOffSetting { name, .. }| Cow::Owned(format!("{name}: blocked or banned")))
                     .chain(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).map(|rsl::MultiOptionSetting { name, options, .. }| Cow::Owned(format!("{name}: {}", English.join_str_with("or", nonempty_collections::iter::once("blocked").chain(options.iter().map(|(name, _, _, _)| *name)))))))
                     .collect(),
+                draft::Kind::SlugOpen => unimplemented!("SlugCentral Open format draft in race room"),
                 draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::TournoiFrancoS4 => fr::S4_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::TournoiFrancoS5 => fr::S5_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
@@ -2686,7 +2695,7 @@ impl Handler {
 
     async fn advance_draft(&self, ctx: &RaceContext<BotState>, state: &RaceState) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
-        let Some(draft_kind) = goal.draft_kind() else { unreachable!() };
+        let Some(draft_kind) = self.draft_kind(goal) else { unreachable!() };
         let RaceState::Draft { state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
         let step = draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
         match step.kind {
@@ -2707,7 +2716,8 @@ impl Handler {
                 };
                 self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, goal.language(), article, description).await;
             }
-            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } => ctx.say(step.message).await?,
+            draft::StepKind::DoneSlugOpen(_) => unimplemented!("SlugCentral Open format draft in race room"),
+            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim => ctx.say(step.message).await?,
         }
         Ok(())
     }
@@ -2716,11 +2726,12 @@ impl Handler {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-            lock!(@write state = self.race_state; if let Some(draft_kind) = goal.draft_kind() {
+            lock!(@write state = self.race_state; if let Some(draft_kind) = self.draft_kind(goal) {
                 match *state {
                     RaceState::Init => match draft_kind {
                         draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?,
+                        draft::Kind::SlugOpen => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed franco draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                         draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets / le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
@@ -2762,6 +2773,7 @@ impl Handler {
                             match draft_kind {
                                 draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
                                 draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the weights draft.")).await?,
+                                draft::Kind::SlugOpen => unimplemented!("SlugCentral Open format draft in race room"),
                                 draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
                                 draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft. / mais ce n'est pas votre tour.")).await?,
                             }
@@ -3006,7 +3018,7 @@ impl RaceHandler<BotState> for Handler {
                 if let (Series::BattleRoyale, "2") | (Series::League, "9") | (Series::TriforceBlitz, "4") = (event.series, &*event.event) {
                     ctx.say("This race uses the old Standard ruleset: https://zsr.link/f_eTj").await?;
                 }
-                let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = event.draft_kind() {
+                let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = cal_event.race.draft_kind(&event) {
                     let state = cal_event.race.draft.clone().expect("missing draft state");
                     let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(draft_kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
                         // we just need to roll the seed so player/team names are no longer required

@@ -61,7 +61,7 @@ impl Role {
         }
     }
 
-    fn css_class(&self) -> Option<&'static str> {
+    pub(crate) fn css_class(&self) -> Option<&'static str> {
         match self {
             Self::None => None,
             Self::Sheikah => Some("sheikah"),
@@ -480,6 +480,7 @@ impl<'a> Data<'a> {
             (Series::Multiworld, "4") => Some(draft::Kind::MultiworldS4),
             (Series::Multiworld, "5") => Some(draft::Kind::MultiworldS5),
             (Series::Rsl, "7") => Some(draft::Kind::RslS7),
+            (Series::SlugOpen, _) => Some(draft::Kind::SlugOpen),
             (Series::Standard, "7" | "7cc") => Some(draft::Kind::S7),
             (Series::TournoiFrancophone, "3") => Some(draft::Kind::TournoiFrancoS3),
             (Series::TournoiFrancophone, "4") => Some(draft::Kind::TournoiFrancoS4),
@@ -811,32 +812,59 @@ impl<'a> Data<'a> {
         let practice_seed_urls = match (self.series, &*self.event) {
             (Series::TriforceBlitz, "2") => {
                 let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
-                vec![(false, url.to_html(), Some(url), "Roll Seed")]
+                vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             (Series::TriforceBlitz, "3") => {
                 let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
-                vec![(false, url.to_html(), Some(url), "Roll Seed")]
+                vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             (Series::TriforceBlitz, "4coop") => {
                 let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
-                vec![(false, url.to_html(), Some(url), "Roll Seed")]
+                vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             (Series::TriforceBlitz, "4") => {
                 let url = Url::parse("https://www.triforceblitz.com/generator")?;
-                vec![(false, url.to_html(), Some(url), "Roll Seed")]
+                vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
-            id => if self.draft_kind().is_some() {
-                vec![
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, "Roll Seed (Base Settings)"),
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, "Roll Seed (Random Settings)"),
-                    //TODO random (advanced) for Tournoi Francophone, replace with League and Lite options for RSL (no draft)
-                ]
+            id => if let Some(draft_kind) = self.draft_kind() {
+                match draft_kind {
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => vec![
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Base Settings)")),
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Random Settings)")),
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Random Settings, Advanced)")),
+                    ],
+                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::S7 => vec![
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Base Settings)")),
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Random Settings)")),
+                    ],
+                    draft::Kind::RslS7 => vec![
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (RSL Weights)")),
+                        (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::BaseLite), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (RSL-Lite Weights)")),
+                    ],
+                    draft::Kind::SlugOpen => {
+                        let mut urls = Vec::with_capacity(enum_iterator::cardinality::<sco::Format>());
+                        for format in all::<sco::Format>() {
+                            if let Some(draft_kind) = format.draft_kind() {
+                                urls.extend([
+                                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({}, Base Settings)", format.display_name())),
+                                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({}, Random Settings)", format.display_name())),
+                                ]);
+                                if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 = draft_kind {
+                                    urls.push((true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({}, Random Settings, Advanced)", format.display_name())));
+                                }
+                            } else {
+                                urls.push((true, uri!(practice_seed_post(self.series, &*self.event, _, Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({})", format.display_name())));
+                            }
+                        }
+                        urls
+                    }
+                }
             } else if matches!(id, (Series::BattleRoyale, "2") | (Series::CopaLatinoamerica, "2025")) || self.has_single_settings() {
                 vec![(
                     true,
-                    uri!(practice_seed_post(self.series, &*self.event, _)).to_html(),
+                    uri!(practice_seed_post(self.series, &*self.event, _, _)).to_html(),
                     practice_seed_favicon_url(ootr_api_client, self).await?,
-                    "Roll Seed",
+                    format!("Roll Seed"),
                 )]
             } else {
                 Vec::default()
@@ -863,7 +891,7 @@ impl<'a> Data<'a> {
         };
         let num_practice_seed_buttons = practice_seed_urls.len();
         let practice_seed_buttons = practice_seed_urls.into_iter().map(|(post, url, favicon_url, label)| {
-            let content = if matches!(ctx, PracticeButtonsContext::Content) || num_practice_seed_buttons > 1 || practice_race_url.is_some() { label } else { "Practice" };
+            let content = if matches!(ctx, PracticeButtonsContext::Content) || num_practice_seed_buttons > 1 || practice_race_url.is_some() { &label } else { "Practice" };
             if post && match ctx { PracticeButtonsContext::Navbar { tab, is_subpage } => !matches!(tab, Tab::Practice) || is_subpage, PracticeButtonsContext::Content => true } {
                 let (new_errors, form) = if let Some(favicon_url) = favicon_url {
                     external_button_form(url, csrf, Vec::default(), &favicon_url, content)
@@ -2412,6 +2440,7 @@ pub(crate) enum PracticeError {
     #[error(transparent)] RandoVersion(#[from] ootr_utils::VersionParseError),
     #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] RslScriptPath(#[from] rsl::ScriptPathError),
+    #[error(transparent)] SlugOpenSingleSettings(#[from] sco::SingleSettingsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -2481,18 +2510,23 @@ pub(crate) async fn practice_seed_get(global: &GlobalState, me: Option<User>, ur
 pub(crate) enum PracticeSeedKind {
     #[field(value = "base")]
     Base,
+    #[field(value = "base-lite")]
+    BaseLite,
     #[field(value = "random")]
     Random,
+    #[field(value = "random-advanced")]
+    RandomAdvanced,
 }
 
-#[rocket::post("/event/<series>/<event>/practice?<kind>", data = "<form>")]
-pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
+#[rocket::post("/event/<series>/<event>/practice?<kind>&<sco_format>", data = "<form>")]
+pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, sco_format: Option<sco::Format>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
     let mut transaction = global.db_pool.begin().await?;
     let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(Some(if form.value.is_some() {
-        if data.draft_kind().is_some() && kind.is_none() {
+        let draft_kind = if let Some(sco_format) = sco_format { sco_format.draft_kind() } else { data.draft_kind() };
+        if draft_kind.is_some() && kind.is_none() {
             form.context.push_error(form::Error::validation("The seed kind is required."));
         }
         if form.context.errors().next().is_some() {
@@ -2531,15 +2565,22 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 }};
             }
 
-            if let Some(draft_kind) = data.draft_kind() {
+            if let Some(draft_kind) = draft_kind {
                 let picks = match kind {
                     None => unreachable!("form error"),
                     Some(PracticeSeedKind::Base) => HashMap::default(),
+                    Some(PracticeSeedKind::BaseLite) => collect![Cow::Borrowed("preset") => Cow::Borrowed("lite")],
                     Some(PracticeSeedKind::Random) => Draft {
                         high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
                         went_first: None,
                         skipped_bans: 0,
                         settings: HashMap::default(),
+                    }.complete_randomly(draft_kind).await?,
+                    Some(PracticeSeedKind::RandomAdvanced) => Draft {
+                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: collect![Cow::Borrowed("hard_settings_ok") => Cow::Borrowed("ok")],
                     }.complete_randomly(draft_kind).await?,
                 };
                 #[allow(unused_parens)] // false positive
@@ -2611,7 +2652,8 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                         settings.insert(format!("world_count"), json!(world_count));
                         (VersionedBranch::Pinned { version: randomizer_version }, settings)
                     }
-                    draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } => unreachable!("draft should be done at this point"),
+                    draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim => unreachable!("draft should be done at this point"),
+                    draft::StepKind::DoneSlugOpen(_) => unreachable!("attempted to roll practice seed for SlugCentral Open without set format"),
                 };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
                 if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
@@ -2647,7 +2689,11 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else {
-                let Some((rando_version, mut settings)) = data.single_settings().await? else { println!("no single settings"); return Ok(None) };
+                let Some((rando_version, mut settings)) = (if let Some(sco_format) = sco_format {
+                    sco_format.single_settings().await?.map(|(rando_version, settings)| (rando_version, Cow::Owned(settings)))
+                } else {
+                    data.single_settings().await?
+                }) else { println!("no single settings"); return Ok(None) };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
                 if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
                     let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings.into_owned()).await?;

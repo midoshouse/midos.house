@@ -192,6 +192,7 @@ impl TypeMapKey for ExtraRoomTx {
 #[derive(Clone, Copy)]
 pub(crate) struct CommandIds {
     pub(crate) ban: Option<CommandId>,
+    pub(crate) claim: Option<CommandId>,
     delete_after: CommandId,
     draft: Option<CommandId>,
     pub(crate) first: Option<CommandId>,
@@ -370,7 +371,7 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
     let guild_id = interaction.guild_id().expect("Received interaction from outside of a guild");
     let event = race.event(&mut transaction).await?;
     Ok(if let Some(team) = team {
-        if let Some(draft_kind) = event.draft_kind() {
+        if let Some(draft_kind) = race.draft_kind(&event) {
             if let Some(ref draft) = race.draft {
                 if draft.is_active_team(draft_kind, race.game, team.id).await? {
                     let msg_ctx = draft::MessageContext::Discord {
@@ -428,7 +429,7 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
 async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
     match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
-        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } | draft::StepKind::DoneSlugOpen(_) => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
             Ok(_) => unreachable!(),
             Err(error_msg) => {
                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -439,7 +440,7 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
                 return Ok(())
             }
         },
-        draft::StepKind::Ban { available_settings, rsl, .. } => {
+        draft::StepKind::Ban { available_settings, terminology, .. } => {
             let response_content = if_chain! {
                 if let French = event.language;
                 if let Some(action) = match action {
@@ -450,7 +451,12 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
                 then {
                     format!("Sélectionnez le setting à {action} :")
                 } else {
-                    format!("Select the setting to {}:", if rsl { "block" } else { action })
+                    match terminology {
+                        draft::BanTerminology::Default => format!("Select the setting to {action}:"),
+                        draft::BanTerminology::Rsl => format!("Select the setting to block:"),
+                        draft::BanTerminology::SlugOpenBan => format!("Select the format to ban:"),
+                        draft::BanTerminology::SlugOpenPick => format!("Select the format to pick:"),
+                    }
                 }
             };
             let mut response_msg = CreateInteractionResponseMessage::new()
@@ -520,11 +526,70 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
                 .ephemeral(false)
                 .content(apply_response)
             )).await?;
-            if let Some(draft_kind) = event.draft_kind() {
-                interaction.channel_id()
-                    .say(ctx, race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.message).await?;
+            let mut transaction;
+            if let Some(draft_kind) = race.draft_kind(&event) {
+                let draft = race.draft.as_ref().unwrap();
+                let next_step = draft.next_step(draft_kind, race.game, &mut msg_ctx).await?;
+                let draft::MessageContext::Discord { command_ids, .. } = &mut msg_ctx else { unreachable!() };
+                let command_ids = command_ids.clone();
+                transaction = msg_ctx.into_transaction();
+                let mut extra_messages = Vec::default();
+                if let draft::StepKind::DoneSlugOpen(assignments) = next_step.kind {
+                    let Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) = &race.entrants else { panic!("unexpected entrants in SlugCentral Open format draft") };
+                    for (format, [high_seed, low_seed]) in assignments {
+                        let [p1, p2] = if draft.high_seed == team1.id {
+                            [
+                                team1.members_roles(&mut transaction).await?.into_iter().find(|(_, role)| *role == event::Role::from(high_seed)).expect("missing format assignment").0,
+                                team2.members_roles(&mut transaction).await?.into_iter().find(|(_, role)| *role == event::Role::from(low_seed)).expect("missing format assignment").0,
+                            ]
+                        } else {
+                            [
+                                team1.members_roles(&mut transaction).await?.into_iter().find(|(_, role)| *role == event::Role::from(low_seed)).expect("missing format assignment").0,
+                                team2.members_roles(&mut transaction).await?.into_iter().find(|(_, role)| *role == event::Role::from(high_seed)).expect("missing format assignment").0,
+                            ]
+                        };
+                        let /*mut*/ settings = collect![as HashMap<_, _>: Cow::Borrowed("sco_format") => Cow::Borrowed(format.slug())];
+                        match format.draft_kind() {
+                            None => {}
+                            Some(draft::Kind::TournoiFrancoS5) => {
+                                unimplemented!() //TODO configure hard_settings_ok and mq_ok based on individual team members' options (adopt HTH's options change?)
+                            }
+                            Some(_) => unimplemented!(),
+                        }
+                        let new_race = Race {
+                            id: Id::new(&mut transaction).await?,
+                            entrants: Entrants::Two([Entrant::MidosHouseTeamMember { team: team1.clone(), member: p1 }, Entrant::MidosHouseTeamMember { team: team2.clone(), member: p2 }]),
+                            draft: Some(Draft {
+                                high_seed: if rng().random() { team1.id } else { team2.id },
+                                went_first: None,
+                                skipped_bans: 0,
+                                settings,
+                            }),
+                            ..race.clone()
+                        };
+                        if let Some(draft_kind) = new_race.draft_kind(&event) {
+                            let Some(ref draft) = new_race.draft else { unreachable!("just inserted") };
+                            let mut msg_ctx = draft::MessageContext::Discord {
+                                guild_id: interaction.guild_id().unwrap(),
+                                teams: new_race.teams().cloned().collect(),
+                                team: Team::dummy(),
+                                transaction, command_ids,
+                            };
+                            extra_messages.push(draft.next_step(draft_kind, new_race.game, &mut msg_ctx).await?.message);
+                            transaction = msg_ctx.into_transaction();
+                        }
+                        new_race.save(&mut transaction).await?;
+                    }
+                    race.ignored = true;
+                    race.save(&mut transaction).await?;
+                }
+                interaction.channel_id().say(ctx, next_step.message).await?;
+                for message in extra_messages {
+                    interaction.channel_id().say(ctx, message).await?;
+                }
+            } else {
+                transaction = msg_ctx.into_transaction();
             }
-            let mut transaction = msg_ctx.into_transaction();
             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
         }
@@ -592,6 +657,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Blocks the weights of a setting from being changed."),
+                    draft::Kind::SlugOpen => CreateCommand::new("ban")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Bans a format in the format draft, or a setting in the Franco format's settings draft."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -601,6 +670,28 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 });
                 idx
             });
+            let claim = if let Some(draft::Kind::SlugOpen) = draft_kind {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("claim")
+                    .kind(CommandType::ChatInput)
+                    .add_context(InteractionContext::Guild)
+                    .description("Selects a format to play.")
+                    .add_option({
+                        let mut option = CreateCommandOption::new(
+                            CommandOptionType::String,
+                            "format",
+                            "The format you want to play.",
+                        );
+                        for format in all::<sco::Format>() {
+                            option = option.add_string_choice(format.display_name(), format.slug());
+                        }
+                        option.required(true)
+                    })
+                );
+                Some(idx)
+            } else {
+                None
+            };
             let delete_after = {
                 let idx = commands.len();
                 commands.push(CreateCommand::new("delete-after")
@@ -627,6 +718,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .add_context(InteractionContext::Guild)
                         .description("Chooses a setting for this race (same as /pick)."),
                     draft::Kind::RslS7 => return None, // command is called /ban, no alias necessary
+                    draft::Kind::SlugOpen => CreateCommand::new("draft")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Chooses a format in the format draft, or a setting in the Franco format's settings draft (same as /pick)."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -654,6 +749,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         )
                             .required(false)
                         ),
+                    draft::Kind::SlugOpen => CreateCommand::new("first")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Go first in the settings draft for the Franco format."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -678,6 +777,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::RslS7 => return None,
+                    draft::Kind::SlugOpen => CreateCommand::new("no")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Answers no to a yes/no question in the settings draft for the Franco format."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -698,6 +801,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Sets a weight of a setting to 0."),
+                    draft::Kind::SlugOpen => CreateCommand::new("pick")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Chooses a format in the format draft, or a setting in the Franco format's settings draft."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("pick")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -869,6 +976,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         )
                             .required(false)
                         ),
+                    draft::Kind::SlugOpen => CreateCommand::new("second")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Go second in the settings draft for the Franco format."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -900,6 +1011,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Skips your current turn of the weights draft."),
+                    draft::Kind::SlugOpen => CreateCommand::new("skip")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Skips the final pick of the settings draft for the Franco format."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -949,6 +1064,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::RslS7 => return None,
+                    draft::Kind::SlugOpen => CreateCommand::new("yes")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Answers yes to a yes/no question in the settings draft for the Franco format."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -961,6 +1080,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let commands = guild.set_commands(ctx, commands).await?;
             ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, Some(CommandIds {
                 ban: ban.map(|idx| commands[idx].id),
+                claim: claim.map(|idx| commands[idx].id),
                 delete_after: commands[delete_after].id,
                 draft: draft.map(|idx| commands[idx].id),
                 first: first.map(|idx| commands[idx].id),
@@ -989,6 +1109,19 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     if let Some(&Some(command_ids)) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
+                        } else if Some(interaction.data.id) == command_ids.claim {
+                            let Some(user) = User::from_discord(ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context"), interaction.user_id()).await? else {
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content("Sorry, your Discord account doesn't seem to be connected to a Mido's House account.")
+                                )).await?;
+                                return Ok(())
+                            };
+                            let format = match interaction.data.options[0].value {
+                                CommandDataOptionValue::String(ref format) => format.parse().expect("unknown SlugCentral Open format"),
+                                _ => panic!("unexpected slash command option type"),
+                            };
+                            draft_action(ctx, interaction, draft::Action::Claim { user, format }).await?;
                         } else if interaction.data.id == command_ids.delete_after {
                             let Some(parent_channel) = interaction.channel.as_ref().and_then(|thread| thread.parent_id) else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1075,6 +1208,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             }
                                         }
                                     }
+                                    draft::Kind::SlugOpen => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("Sorry, this command is not available during the format draft since first pick is selected at random.")
+                                        )).await?;
+                                        return Ok(())
+                                    }
                                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
                                         let mq = interaction.data.options.get(0).map(|option| match option.value {
@@ -1090,7 +1230,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             } else {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
-                                                    .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
+                                                    .content(if let French = draft_kind.language() {
+                                                        "Désolé, veuillez entrer le nombre de donjons MQ d'abord."
+                                                    } else {
+                                                        "Sorry, please specify the number of MQ dungeons."
+                                                    })
                                                 )).await?;
                                                 transaction.rollback().await?;
                                                 return Ok(())
@@ -1116,7 +1260,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None, true, None).await? {
                                 let event = race.event(&mut transaction).await?;
                                 if event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id)) {
-                                    if let Some(draft_kind) = event.draft_kind() {
+                                    if let Some(draft_kind) = race.draft_kind(&event) {
                                         if let Some(ref draft) = race.draft {
                                             let mut msg_ctx = draft::MessageContext::Discord {
                                                 teams: race.teams().cloned().collect(),
@@ -1145,7 +1289,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content("Sorry, this command is currently only available for events with settings drafts.") //TODO
+                                            .content("Sorry, this command is currently only available for races with settings drafts.") //TODO
                                         )).await?;
                                         transaction.rollback().await?;
                                     }
@@ -1278,18 +1422,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     }
                                     Ok(Some(race)) => {
                                         let race = Race {
-                                            source: if let cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } = race.source {
-                                                if reset_schedule { cal::Source::Manual } else { race.source }
-                                            } else {
-                                                race.source
-                                            },
-                                            schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
-                                            schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
-                                            fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
-                                            breaks_used: if reset_schedule { false } else { race.breaks_used },
                                             draft: if reset_draft {
                                                 if_chain! {
-                                                    if let Some(draft_kind) = event.draft_kind();
+                                                    if let Some(draft_kind) = race.draft_kind(&event);
                                                     if let Some(draft) = race.draft;
                                                     if let Entrants::Two(entrants) = &race.entrants;
                                                     if let Ok(low_seed) = entrants.iter()
@@ -1305,6 +1440,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             } else {
                                                 race.draft
                                             },
+                                            source: if let cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } = race.source {
+                                                if reset_schedule { cal::Source::Manual } else { race.source }
+                                            } else {
+                                                race.source
+                                            },
+                                            schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
+                                            schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
+                                            fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
+                                            breaks_used: if reset_schedule { false } else { race.breaks_used },
                                             seed: if reset_schedule { seed::Data::default() } else { race.seed },
                                             video_urls: if reset_schedule { HashMap::default() } else { race.video_urls },
                                             restreamers: if reset_schedule { HashMap::default() } else { race.restreamers },
@@ -1956,6 +2100,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             }
                                         }
                                     }
+                                    draft::Kind::SlugOpen => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("Sorry, this command is not available during the format draft since first pick is selected at random.")
+                                        )).await?;
+                                        return Ok(())
+                                    }
                                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
                                         let mq = interaction.data.options.get(0).map(|option| match option.value {
@@ -1971,7 +2122,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             } else {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
-                                                    .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
+                                                    .content(if let French = draft_kind.language() {
+                                                        "Désolé, veuillez entrer le nombre de donjons MQ d'abord."
+                                                    } else {
+                                                        "Sorry, please specify the number of MQ dungeons."
+                                                    })
                                                 )).await?;
                                                 transaction.rollback().await?;
                                                 return Ok(())
@@ -1996,7 +2151,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         } else if interaction.data.id == command_ids.status {
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None, true, None).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if let Some(draft_kind) = event.draft_kind() {
+                                if let Some(draft_kind) = race.draft_kind(&event) {
                                     if let Some(ref draft) = race.draft {
                                         let mut msg_ctx = draft::MessageContext::Discord {
                                             teams: race.teams().cloned().collect(),
@@ -2022,7 +2177,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, this command is currently only available for events with settings drafts.") //TODO
+                                        .content("Sorry, this command is currently only available for races with settings drafts.") //TODO
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -2237,8 +2392,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             | draft::StepKind::Ban { .. }
                             | draft::StepKind::Pick { .. }
                             | draft::StepKind::BooleanChoice { .. }
+                            | draft::StepKind::Claim
                             | draft::StepKind::Done(_)
                             | draft::StepKind::DoneRsl { .. }
+                            | draft::StepKind::DoneSlugOpen(_)
                                 => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
                                     Ok(_) => unreachable!(),
                                     Err(error_msg) => {

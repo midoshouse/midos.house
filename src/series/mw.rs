@@ -1631,7 +1631,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, FromFormField, Sequence)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromFormField, Sequence)]
 pub(crate) enum Role {
     #[field(value = "power")]
     Power,

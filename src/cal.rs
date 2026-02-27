@@ -1187,17 +1187,27 @@ impl Race {
         }
     }
 
+    pub(crate) fn draft_kind(&self, event: &event::Data<'_>) -> Option<draft::Kind> {
+        if let Some(format) = sco::Format::for_race(self) {
+            format.draft_kind()
+        } else {
+            event.draft_kind()
+        }
+    }
+
     pub(crate) async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<(VersionedBranch, seed::Settings)>, Error> {
         let event = self.event(transaction).await?;
         Ok(if let Some((version, settings)) = event.single_settings().await? {
             Some((version, settings.into_owned()))
-        } else if let Some(draft) = &self.draft {
-            let Some(draft_kind) = event.draft_kind() else { return Ok(None) };
+        } else if let Some(draft_kind) = self.draft_kind(&event) {
+            let Some(draft) = &self.draft else { return Ok(None) };
             match draft.next_step(draft_kind, None, &mut draft::MessageContext::None).await?.kind {
                 draft::StepKind::Done(settings) => event.rando_version.map(|version| (version, settings)),
                 draft::StepKind::DoneRsl { .. } => None, //TODO
-                draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } => None,
+                draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim | draft::StepKind::DoneSlugOpen(_) => None,
             }
+        } else if let Some(format) = sco::Format::for_race(self) {
+            format.single_settings().await?
         } else {
             None
         })
@@ -1868,6 +1878,7 @@ pub(crate) enum Error {
     #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sheets(#[from] sheets::Error),
+    #[error(transparent)] SlugOpenSingleSettings(#[from] sco::SingleSettingsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
@@ -1919,6 +1930,7 @@ impl IsNetworkError for Error {
             Self::Roll(_) => false, //TODO
             Self::SeedData(e) => e.is_network_error(),
             Self::Sheets(e) => e.is_network_error(),
+            Self::SlugOpenSingleSettings(e) => e.is_network_error(),
             Self::Sql(_) => false,
             Self::StartGG(e) => e.is_network_error(),
             Self::TimeFromLocal(_) => false,
@@ -2237,15 +2249,34 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                     }
                 });
             }
-            : form_field("game_count", &mut errors, html! {
-                label(for = "game_count") : "Number of games in this match:";
-                input(type = "number", min = "1", max = "255", name = "game_count", value = ctx.field_value("game_count").map_or_else(|| event.default_game_count.to_string(), |game_count| game_count.to_owned()));
-                label(class = "help") {
-                    : "(If some games end up not being necessary, use ";
-                    code : "/delete-after";
-                    : " in the scheduling thread to delete them.)";
-                }
-            });
+            @if let TeamConfig::SlugOpen = event.team_config {
+                : form_field("wheel_ban", &mut errors, html! {
+                    label(for = "wheel_ban") : "Wheel ban:";
+                    select(name = "wheel_ban") {
+                        @for format in all::<sco::Format>() {
+                            option(value = format.slug(), selected? = ctx.field_value("wheel_ban") == Some(format.slug())) : format.display_name();
+                        }
+                    }
+                });
+                : form_field("wheel_pick", &mut errors, html! {
+                    label(for = "wheel_pick") : "Wheel pick:";
+                    select(name = "wheel_pick") {
+                        @for format in all::<sco::Format>() {
+                            option(value = format.slug(), selected? = ctx.field_value("wheel_pick") == Some(format.slug())) : format.display_name();
+                        }
+                    }
+                });
+            } else {
+                : form_field("game_count", &mut errors, html! {
+                    label(for = "game_count") : "Number of games in this match:";
+                    input(type = "number", min = "1", max = "255", name = "game_count", value = ctx.field_value("game_count").map_or_else(|| event.default_game_count.to_string(), |game_count| game_count.to_owned()));
+                    label(class = "help") {
+                        : "(If some games end up not being necessary, use ";
+                        code : "/delete-after";
+                        : " in the scheduling thread to delete them.)";
+                    }
+                });
+            }
         }, errors, "Create")
     } else {
         html! {
@@ -2289,7 +2320,9 @@ pub(crate) struct CreateRaceForm {
     round: String,
     #[field(default = String::new())]
     phase_round: String,
-    game_count: i16,
+    game_count: Option<i16>,
+    wheel_ban: Option<sco::Format>,
+    wheel_pick: Option<sco::Format>,
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
@@ -2337,6 +2370,23 @@ pub(crate) async fn create_race_post(global: &GlobalState, me: User, uri: Origin
         } else {
             None
         };
+        if let TeamConfig::SlugOpen = event.team_config {
+            if let Some(wheel_ban) = value.wheel_ban {
+                if let Some(wheel_pick) = value.wheel_pick {
+                    if wheel_pick == wheel_ban {
+                        form.context.push_error(form::Error::validation("Wheel pick cannot be the same as wheel ban.").with_name("wheel_pick"));
+                    }
+                } else {
+                    form.context.push_error(form::Error::validation("This field is required.").with_name("wheel_pick"));
+                }
+            } else {
+                form.context.push_error(form::Error::validation("This field is required.").with_name("wheel_ban"));
+            }
+        } else {
+            if value.game_count.is_none() {
+                form.context.push_error(form::Error::validation("This field is required.").with_name("game_count"));
+            }
+        }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(create_race_form(transaction, global, Some(me), uri, csrf.as_ref(), event, form.context, team3.is_some()).await?)
         } else {
@@ -2355,13 +2405,24 @@ pub(crate) async fn create_race_post(global: &GlobalState, me: User, uri: Origin
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
             let draft = if team3.is_some() {
                 None
+            } else if let (Some(wheel_ban), Some(wheel_pick)) = (value.wheel_ban, value.wheel_pick) {
+                Some(Draft {
+                    high_seed: if rng().random() { team1.id } else { team2.id },
+                    went_first: Some(true),
+                    skipped_bans: 0,
+                    settings: collect![
+                        Cow::Borrowed(wheel_ban.slug()) => Cow::Borrowed("wheel_ban"),
+                        Cow::Borrowed(wheel_pick.slug()) => Cow::Borrowed("wheel_pick"),
+                    ],
+                })
             } else if let Some(draft_kind) = event.draft_kind() {
                 Some(Draft::for_game1(&mut transaction, &global.http_client, draft_kind, &event, phase.as_deref(), [&team1, &team2]).await?)
             } else {
                 None
             };
             let mut scheduling_thread = None;
-            for game in 1..=value.game_count {
+            let game_count = value.game_count.unwrap_or(1);
+            for game in 1..=game_count {
                 let mut race = Race {
                     id: Id::<Races>::new(&mut transaction).await?,
                     series: event.series,
@@ -2381,7 +2442,7 @@ pub(crate) async fn create_race_post(global: &GlobalState, me: User, uri: Origin
                     },
                     phase: phase.clone(),
                     round: round.clone(),
-                    game: (value.game_count > 1).then_some(game),
+                    game: (game_count > 1).then_some(game),
                     schedule: RaceSchedule::Unscheduled,
                     schedule_updated_at: None,
                     fpa_invoked: false,
@@ -2400,7 +2461,7 @@ pub(crate) async fn create_race_post(global: &GlobalState, me: User, uri: Origin
                     scheduling_thread,
                 };
                 if game == 1 {
-                    transaction = discord_bot::create_scheduling_thread(discord_ctx!(global), transaction, &mut race, value.game_count).await?;
+                    transaction = discord_bot::create_scheduling_thread(discord_ctx!(global), transaction, &mut race, game_count).await?;
                     scheduling_thread = race.scheduling_thread;
                 }
                 race.save(&mut transaction).await?;
