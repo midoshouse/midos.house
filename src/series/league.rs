@@ -170,6 +170,86 @@ pub(crate) enum MatchStatus {
     Confirmed,
 }
 
+pub(crate) fn s5_settings() -> seed::Settings {
+    collect![
+        format!("user_message") => json!("OoTR League S5"),
+        format!("create_spoiler") => json!(false),
+        format!("reachable_locations") => json!("beatable"),
+        format!("bridge_medallions") => json!(5),
+        format!("trials") => json!(0),
+        format!("shuffle_ganon_bosskey") => json!("medallions"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("open_forest") => json!("closed_deku"),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => json!("random"),
+        format!("spawn_positions") => json!([
+            "child",
+        ]),
+        format!("free_bombchu_drops") => json!(false),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_rusted_switches",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_man_on_roof",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_dc_jump",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "lens",
+            "farores_wind",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("correct_chest_appearances") => json!("both"),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("hint_dist") => json!("league"),
+        format!("misc_hints") => json!([
+            "altar",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "30_skulltulas",
+            "40_skulltulas",
+            "50_skulltulas",
+        ]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+    ]
+}
+
 pub(crate) fn s6_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("OoTR League S6"),
