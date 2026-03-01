@@ -217,7 +217,7 @@ impl Requirement {
                 }
                 false
             }),
-            Self::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => Some(if_chain! {
+            Self::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => Some({
                 let data = if let Some(event) = event {
                     &Data::new(&mut *transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
                 } else {
@@ -226,9 +226,9 @@ impl Requirement {
                 let qualifier_kind = data.qualifier_kind(&mut *transaction, None).await?;
                 // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
                 let teams = teams::signups_sorted(transaction, &mut cache, None, data, false, qualifier_kind, Some(&teams::MemberUser::MidosHouse(me.clone()))).await?;
-                if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == *me));
-                if let teams::Qualification::Multiple { num_entered, num_finished, .. } = team.qualification;
-                then {
+                if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == *me))
+                    && let teams::Qualification::Multiple { num_entered, num_finished, .. } = team.qualification
+                {
                     placement < num_players_extended.unwrap_or(*num_players)
                     && if *need_finish { num_finished } else { num_entered } >= *min_races
                     // for Challenge Cup: enough players have signed up for main bracket that the user is guaranteed not to overqualify

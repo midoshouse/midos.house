@@ -147,56 +147,54 @@ impl Data {
             password: Option<[OcarinaNote; 6]>,
         }
 
-        if_chain! {
-            if self.file_hash.is_none() || self.password.is_none() || match self.files {
-                Some(Files::MidosHouse { .. }) => true,
-                Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - WEB_TIMEOUT,
-                Some(Files::TriforceBlitz { .. }) => false,
-                Some(Files::TfbSotd { .. }) => false,
-                None => false,
-            };
-            if let Some((spoiler_path, spoiler_file_name)) = match self.files {
+        if (self.file_hash.is_none() || self.password.is_none() || match self.files {
+            Some(Files::MidosHouse { .. }) => true,
+            Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - WEB_TIMEOUT,
+            Some(Files::TriforceBlitz { .. }) => false,
+            Some(Files::TfbSotd { .. }) => false,
+            None => false,
+        })
+            && let Some((spoiler_path, spoiler_file_name)) = match self.files {
                 Some(Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. }) if fs::exists(spoiler_path).await? => Some((PathBuf::from(spoiler_path), None)),
                 Some(Files::MidosHouse { ref file_stem, .. } | Files::OotrWeb { ref file_stem, .. }) => {
                     let spoiler_file_name = format!("{file_stem}_Spoiler.json");
                     Some((Path::new(DIR).join(&spoiler_file_name).to_owned(), Some(spoiler_file_name)))
                 }
                 _ => None,
-            };
-            then {
-                let spoiler_path_exists = spoiler_path.exists();
-                let (file_hash, password, world_count, chests) = if spoiler_path_exists {
-                    let log = fs::read_to_string(&spoiler_path).await?;
-                    if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                        (Some(log.file_hash), log.password, Some(log.settings[0].world_count), if spoiler_file_name.is_some() {
-                            ChestAppearances::from(log)
-                        } else {
-                            ChestAppearances::random() // keeping chests random for locked spoilers to avoid leaking seed info
-                        })
-                    } else if let Ok(log) = serde_json::from_str::<SparseSpoilerLog>(&log) {
-                        (Some(log.file_hash), self.password.or(log.password), None, ChestAppearances::random())
+            }
+        {
+            let spoiler_path_exists = spoiler_path.exists();
+            let (file_hash, password, world_count, chests) = if spoiler_path_exists {
+                let log = fs::read_to_string(&spoiler_path).await?;
+                if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
+                    (Some(log.file_hash), log.password, Some(log.settings[0].world_count), if spoiler_file_name.is_some() {
+                        ChestAppearances::from(log)
                     } else {
-                        (self.file_hash, self.password, None, ChestAppearances::random())
-                    }
+                        ChestAppearances::random() // keeping chests random for locked spoilers to avoid leaking seed info
+                    })
+                } else if let Ok(log) = serde_json::from_str::<SparseSpoilerLog>(&log) {
+                    (Some(log.file_hash), self.password.or(log.password), None, ChestAppearances::random())
                 } else {
                     (self.file_hash, self.password, None, ChestAppearances::random())
-                };
-                //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
-                return Ok(ExtraData {
-                    spoiler_status: if spoiler_path_exists {
-                        if let Some(spoiler_file_name) = spoiler_file_name {
-                            SpoilerStatus::Unlocked(spoiler_file_name)
-                        } else if self.progression_spoiler {
-                            SpoilerStatus::Progression
-                        } else {
-                            SpoilerStatus::Locked
-                        }
+                }
+            } else {
+                (self.file_hash, self.password, None, ChestAppearances::random())
+            };
+            //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
+            return Ok(ExtraData {
+                spoiler_status: if spoiler_path_exists {
+                    if let Some(spoiler_file_name) = spoiler_file_name {
+                        SpoilerStatus::Unlocked(spoiler_file_name)
+                    } else if self.progression_spoiler {
+                        SpoilerStatus::Progression
                     } else {
-                        SpoilerStatus::NotFound
-                    },
-                    file_hash, password, world_count, chests,
-                })
-            }
+                        SpoilerStatus::Locked
+                    }
+                } else {
+                    SpoilerStatus::NotFound
+                },
+                file_hash, password, world_count, chests,
+            })
         }
         //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
         Ok(ExtraData {

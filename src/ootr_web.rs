@@ -225,23 +225,21 @@ impl ApiClient {
             // API lists releases under the “master” branch
             "master"
         };
-        Ok(lock!(versions_cache = self.versions_cache; if_chain! {
-            if allow_cache;
-            if let Some((retrieved, response)) = versions_cache.get(web_branch);
-            if retrieved.elapsed() < Duration::from_secs(60 * 60);
-            then {
-                response.clone()
-            } else {
-                let RawVersionsResponse { currently_active_version, available_versions } = self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", web_branch)])).await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error().await?;
-                let response = VersionsResponse {
-                    currently_active_version: currently_active_version.normalize(branch),
-                    available_versions: available_versions.into_iter().filter_map(|ver| ver.normalize(branch)).collect(),
-                };
-                versions_cache.insert(web_branch, (Instant::now(), response.clone()));
-                response
-            }
+        Ok(lock!(versions_cache = self.versions_cache; if allow_cache
+            && let Some((retrieved, response)) = versions_cache.get(web_branch)
+            && retrieved.elapsed() < Duration::from_secs(60 * 60)
+        {
+            response.clone()
+        } else {
+            let RawVersionsResponse { currently_active_version, available_versions } = self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", web_branch)])).await?
+                .detailed_error_for_status().await?
+                .json_with_text_in_error().await?;
+            let response = VersionsResponse {
+                currently_active_version: currently_active_version.normalize(branch),
+                available_versions: available_versions.into_iter().filter_map(|ver| ver.normalize(branch)).collect(),
+            };
+            versions_cache.insert(web_branch, (Instant::now(), response.clone()));
+            response
         }))
     }
 

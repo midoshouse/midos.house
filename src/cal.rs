@@ -389,20 +389,18 @@ impl Restreamer {
             }
         }
         if let Ok(url) = Url::parse(id_or_url) {
-            return if_chain! {
-                if let Some("racetime.gg" | "www.racetime.gg") = url.host_str();
-                if let Some(mut path_segments) = url.path_segments();
-                if path_segments.next() == Some("user");
-                if let Some(url_part) = path_segments.next();
-                then {
-                    match racetime_bot::user_data(http_client, url_part).await {
-                        Ok(Some(user_data)) => Ok(Self::RaceTime(user_data.id)),
-                        Ok(None) => Err(racetime_bot::ParseUserError::UrlNotFound),
-                        Err(e) => Err(e.into()),
-                    }
-                } else {
-                    Err(racetime_bot::ParseUserError::InvalidUrl)
+            return if let Some("racetime.gg" | "www.racetime.gg") = url.host_str()
+                && let Some(mut path_segments) = url.path_segments()
+                && path_segments.next() == Some("user")
+                && let Some(url_part) = path_segments.next()
+            {
+                match racetime_bot::user_data(http_client, url_part).await {
+                    Ok(Some(user_data)) => Ok(Self::RaceTime(user_data.id)),
+                    Ok(None) => Err(racetime_bot::ParseUserError::UrlNotFound),
+                    Err(e) => Err(e.into()),
                 }
+            } else {
+                Err(racetime_bot::ParseUserError::InvalidUrl)
             }
         }
         Err(racetime_bot::ParseUserError::Format)
@@ -989,10 +987,9 @@ impl Race {
     }
 
     pub(crate) async fn next_game(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client) -> Result<Option<Self>, Error> {
-        Ok(if_chain! {
-            if let Some(game) = self.game;
-            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
-            if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE
+        Ok(if let Some(game) = self.game
+            && let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db()
+            && let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE
                 NOT ignored
                 AND series = $1
                 AND event = $2
@@ -1033,12 +1030,11 @@ impl Race {
                 p2_twitch,
                 total.map(|total| total as i32),
                 finished.map(|finished| finished as i32),
-            ).fetch_optional(&mut **transaction).await?;
-            then {
-                Some(Self::from_id(&mut *transaction, http_client, id).await?)
-            } else {
-                None
-            }
+            ).fetch_optional(&mut **transaction).await?
+        {
+            Some(Self::from_id(&mut *transaction, http_client, id).await?)
+        } else {
+            None
         })
     }
 
@@ -1608,21 +1604,17 @@ impl Event {
 
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
         Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).is_some() {
-            if_chain! {
-                if self.race.series == Series::SpeedGaming && event.speedgaming_in_person_id.is_some();
-                if let Some(race_start) = self.start();
-                if event.start(transaction).await?.is_some_and(|event_start| event_start <= race_start);
-                then {
-                    // don't create racetime.gg rooms for in-person races
-                    RaceHandleMode::Notify
-                } else {
-                    if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() {
-                        RaceHandleMode::RaceTime
-                    } else {
-                        // racetime.gg doesn't support single-entrant races
-                        RaceHandleMode::Discord
-                    }
-                }
+            if self.race.series == Series::SpeedGaming && event.speedgaming_in_person_id.is_some()
+                && let Some(race_start) = self.start()
+                && event.start(transaction).await?.is_some_and(|event_start| event_start <= race_start)
+            {
+                // don't create racetime.gg rooms for in-person races
+                RaceHandleMode::Notify
+            } else if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() {
+                RaceHandleMode::RaceTime
+            } else {
+                // racetime.gg doesn't support single-entrant races
+                RaceHandleMode::Discord
             }
         } else {
             // the organizers of this event didn't request for Mido to handle official races, so we ignore this race even if it would otherwise not be handled on racetime.gg
@@ -1657,15 +1649,13 @@ impl Event {
                         return Ok(None)
                     }
                 }
-                Entrant::Discord { twitch_username: None, racetime_id: None, id } => if_chain! {
-                    if let Some(user) = User::from_discord(&mut **transaction, *id).await?;
-                    if let Some(Some(racetime_user_data)) = user.racetime_user_data(http_client).await?;
-                    if let Some(twitch_name) = racetime_user_data.twitch_name;
-                    then {
-                        channels.push(Cow::Owned(twitch_name));
-                    } else {
-                        return Ok(None)
-                    }
+                Entrant::Discord { twitch_username: None, racetime_id: None, id } => if let Some(user) = User::from_discord(&mut **transaction, *id).await?
+                    && let Some(Some(racetime_user_data)) = user.racetime_user_data(http_client).await?
+                    && let Some(twitch_name) = racetime_user_data.twitch_name
+                {
+                    channels.push(Cow::Owned(twitch_name));
+                } else {
+                    return Ok(None)
                 },
                 Entrant::Named { twitch_username: None, racetime_id: None, .. } => return Ok(None),
             }
@@ -1719,33 +1709,127 @@ impl Event {
     }
 
     pub(crate) async fn format_discord(&self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, language: Language, msg: &mut MessageBuilder) -> sqlx::Result<()> {
-        if_chain! {
-            if let French = language;
-            if let (Some(phase), Some(round)) = (self.race.phase.as_ref(), self.race.round.as_ref());
-            if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", self.race.series as _, &self.race.event, phase, round).fetch_optional(&mut **transaction).await?;
-            if self.race.game.is_none();
-            then {
-                match self.race.entrants {
-                    Entrants::Open | Entrants::Count { .. } => {
-                        msg.push_safe(phase_round);
-                    },
-                    Entrants::Named(ref entrants) => {
-                        msg.push_safe(phase_round);
-                        msg.push(" : ");
-                        msg.push_safe(entrants);
+        if let French = language
+            && let (Some(phase), Some(round)) = (self.race.phase.as_ref(), self.race.round.as_ref())
+            && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", self.race.series as _, &self.race.event, phase, round).fetch_optional(&mut **transaction).await?
+            && self.race.game.is_none()
+        {
+            match self.race.entrants {
+                Entrants::Open | Entrants::Count { .. } => {
+                    msg.push_safe(phase_round);
+                },
+                Entrants::Named(ref entrants) => {
+                    msg.push_safe(phase_round);
+                    msg.push(" : ");
+                    msg.push_safe(entrants);
+                }
+                Entrants::Two([ref team1, ref team2]) => {
+                    msg.push_safe(phase_round);
+                    //TODO adjust for asyncs
+                    msg.push(" : ");
+                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                    msg.push(" vs ");
+                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                }
+                Entrants::Three([ref team1, ref team2, ref team3]) => {
+                    msg.push_safe(phase_round);
+                    //TODO adjust for asyncs
+                    msg.push(" : ");
+                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                    msg.push(" vs ");
+                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                    msg.push(" vs ");
+                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                }
+            }
+        } else {
+            let info_prefix = match (&self.race.phase, &self.race.round) {
+                (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                (Some(phase), None) => Some(phase.clone()),
+                (None, Some(round)) => Some(round.clone()),
+                (None, None) => None,
+            };
+            match self.race.entrants {
+                Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
+                    msg.push_safe(prefix);
+                },
+                Entrants::Named(ref entrants) => {
+                    if let Some(prefix) = info_prefix {
+                        msg.push_safe(prefix);
+                        msg.push(": ");
                     }
-                    Entrants::Two([ref team1, ref team2]) => {
-                        msg.push_safe(phase_round);
+                    msg.push_safe(entrants);
+                }
+                Entrants::Two([ref team1, ref team2]) => {
+                    if let Some(prefix) = info_prefix {
+                        msg.push_safe(prefix);
+                        match self.kind {
+                            EventKind::Normal => {
+                                msg.push(": ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                            }
+                            EventKind::Async1 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                            }
+                            EventKind::Async2 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                            }
+                            EventKind::Async3 => unreachable!(),
+                        }
+                    } else {
                         //TODO adjust for asyncs
-                        msg.push(" : ");
                         msg.mention_entrant(&mut *transaction, guild, team1).await?;
                         msg.push(" vs ");
                         msg.mention_entrant(&mut *transaction, guild, team2).await?;
                     }
-                    Entrants::Three([ref team1, ref team2, ref team3]) => {
-                        msg.push_safe(phase_round);
+                }
+                Entrants::Three([ref team1, ref team2, ref team3]) => {
+                    if let Some(prefix) = info_prefix {
+                        msg.push_safe(prefix);
+                        match self.kind {
+                            EventKind::Normal => {
+                                msg.push(": ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                            }
+                            EventKind::Async1 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                            }
+                            EventKind::Async2 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                            }
+                            EventKind::Async3 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                            }
+                        }
+                    } else {
                         //TODO adjust for asyncs
-                        msg.push(" : ");
                         msg.mention_entrant(&mut *transaction, guild, team1).await?;
                         msg.push(" vs ");
                         msg.mention_entrant(&mut *transaction, guild, team2).await?;
@@ -1753,106 +1837,10 @@ impl Event {
                         msg.mention_entrant(&mut *transaction, guild, team3).await?;
                     }
                 }
-            } else {
-                let info_prefix = match (&self.race.phase, &self.race.round) {
-                    (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                    (Some(phase), None) => Some(phase.clone()),
-                    (None, Some(round)) => Some(round.clone()),
-                    (None, None) => None,
-                };
-                match self.race.entrants {
-                    Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                    },
-                    Entrants::Named(ref entrants) => {
-                        if let Some(prefix) = info_prefix {
-                            msg.push_safe(prefix);
-                            msg.push(": ");
-                        }
-                        msg.push_safe(entrants);
-                    }
-                    Entrants::Two([ref team1, ref team2]) => {
-                        if let Some(prefix) = info_prefix {
-                            msg.push_safe(prefix);
-                            match self.kind {
-                                EventKind::Normal => {
-                                    msg.push(": ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                }
-                                EventKind::Async1 => {
-                                    msg.push(" (async): ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                }
-                                EventKind::Async2 => {
-                                    msg.push(" (async): ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                }
-                                EventKind::Async3 => unreachable!(),
-                            }
-                        } else {
-                            //TODO adjust for asyncs
-                            msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                            msg.push(" vs ");
-                            msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                        }
-                    }
-                    Entrants::Three([ref team1, ref team2, ref team3]) => {
-                        if let Some(prefix) = info_prefix {
-                            msg.push_safe(prefix);
-                            match self.kind {
-                                EventKind::Normal => {
-                                    msg.push(": ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
-                                }
-                                EventKind::Async1 => {
-                                    msg.push(" (async): ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
-                                }
-                                EventKind::Async2 => {
-                                    msg.push(" (async): ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
-                                }
-                                EventKind::Async3 => {
-                                    msg.push(" (async): ");
-                                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                                    msg.push(" vs ");
-                                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                                }
-                            }
-                        } else {
-                            //TODO adjust for asyncs
-                            msg.mention_entrant(&mut *transaction, guild, team1).await?;
-                            msg.push(" vs ");
-                            msg.mention_entrant(&mut *transaction, guild, team2).await?;
-                            msg.push(" vs ");
-                            msg.mention_entrant(&mut *transaction, guild, team3).await?;
-                        }
-                    }
-                }
-                if let Some(game) = self.race.game {
-                    msg.push(", game ");
-                    msg.push(game.to_string());
-                }
+            }
+            if let Some(game) = self.race.game {
+                msg.push(", game ");
+                msg.push(game.to_string());
             }
         }
         Ok(())
@@ -2510,14 +2498,10 @@ pub(crate) async fn race_table(
     if let Some(event) = event {
         event_cache.insert((event.series, &*event.event), event.clone());
     }
-    let phase_round_options = if_chain! {
-        if let Some(event) = event;
-        if options.challonge_import_ctx.is_some();
-        then {
-            Some(sqlx::query!("SELECT phase, round FROM phase_round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut **transaction).await?)
-        } else {
-            None
-        }
+    let phase_round_options = if let Some(event) = event && options.challonge_import_ctx.is_some() {
+        Some(sqlx::query!("SELECT phase, round FROM phase_round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut **transaction).await?)
+    } else {
+        None
     };
     let has_games = options.game_count || races.iter().any(|race| race.game.is_some());
     let has_seeds = 'has_seeds: {
@@ -3208,14 +3192,12 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                                     } else {
                                         HashMap::default()
                                     },
-                                    restreamers: if_chain! {
-                                        if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one(); //TODO notify on multiple restreams
-                                        if let Some(restreamer) = restreamer.into_restreamer(&mut transaction, &global.http_client).await?;
-                                        then {
-                                            iter::once((match_data.restream_language.unwrap_or(English), restreamer)).collect()
-                                        } else {
-                                            HashMap::default()
-                                        }
+                                    restreamers: if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one() //TODO notify on multiple restreams
+                                        && let Some(restreamer) = restreamer.into_restreamer(&mut transaction, &global.http_client).await?
+                                    {
+                                        iter::once((match_data.restream_language.unwrap_or(English), restreamer)).collect()
+                                    } else {
+                                        HashMap::default()
                                     },
                                     commentators: HashMap::default(), //TODO import from League website
                                     trackers: HashMap::default(),

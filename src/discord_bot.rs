@@ -441,22 +441,20 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
             }
         },
         draft::StepKind::Ban { available_settings, terminology, .. } => {
-            let response_content = if_chain! {
-                if let French = event.language;
-                if let Some(action) = match action {
+            let response_content = if let French = event.language
+                && let Some(action) = match action {
                     "ban" => Some("ban"),
                     "draft" => Some("pick"),
                     _ => None,
-                };
-                then {
-                    format!("Sélectionnez le setting à {action} :")
-                } else {
-                    match terminology {
-                        draft::BanTerminology::Default => format!("Select the setting to {action}:"),
-                        draft::BanTerminology::Rsl => format!("Select the setting to block:"),
-                        draft::BanTerminology::SlugOpenBan => format!("Select the format to ban:"),
-                        draft::BanTerminology::SlugOpenPick => format!("Select the format to pick:"),
-                    }
+                }
+            {
+                format!("Sélectionnez le setting à {action} :")
+            } else {
+                match terminology {
+                    draft::BanTerminology::Default => format!("Select the setting to {action}:"),
+                    draft::BanTerminology::Rsl => format!("Select the setting to block:"),
+                    draft::BanTerminology::SlugOpenBan => format!("Select the format to ban:"),
+                    draft::BanTerminology::SlugOpenPick => format!("Select the format to pick:"),
                 }
             };
             let mut response_msg = CreateInteractionResponseMessage::new()
@@ -480,18 +478,16 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
             interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
         }
         draft::StepKind::Pick { available_choices, rsl, .. } => {
-            let response_content = if_chain! {
-                if let French = event.language;
-                if let Some(action) = match action {
+            let response_content = if let French = event.language
+                && let Some(action) = match action {
                     "ban" => Some("ban"),
                     "draft" => Some("pick"),
                     _ => None,
-                };
-                then {
-                    format!("Sélectionnez le setting à {action} :")
-                } else {
-                    format!("Select the setting to {}:", if rsl { "ban" } else { action })
                 }
+            {
+                format!("Sélectionnez le setting à {action} :")
+            } else {
+                format!("Select the setting to {}:", if rsl { "ban" } else { action })
             };
             let mut response_msg = CreateInteractionResponseMessage::new()
                 .ephemeral(true)
@@ -1423,19 +1419,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     Ok(Some(race)) => {
                                         let race = Race {
                                             draft: if reset_draft {
-                                                if_chain! {
-                                                    if let Some(draft_kind) = race.draft_kind(&event);
-                                                    if let Some(draft) = race.draft;
-                                                    if let Entrants::Two(entrants) = &race.entrants;
-                                                    if let Ok(low_seed) = entrants.iter()
+                                                if let Some(draft_kind) = race.draft_kind(&event)
+                                                    && let Some(draft) = race.draft
+                                                    && let Entrants::Two(entrants) = &race.entrants
+                                                    && let Ok(low_seed) = entrants.iter()
                                                         .filter_map(as_variant!(Entrant::MidosHouseTeam))
                                                         .filter(|team| team.id != draft.high_seed)
-                                                        .exactly_one();
-                                                    then {
-                                                        Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
-                                                    } else {
-                                                        None
-                                                    }
+                                                        .exactly_one()
+                                                {
+                                                    Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
+                                                } else {
+                                                    None
                                                 }
                                             } else {
                                                 race.draft
@@ -1601,35 +1595,33 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .try_collect().await?,
                                                     };
                                                     transaction.commit().await?;
-                                                    let response_content = if_chain! {
-                                                        if let French = event.language;
-                                                        if cal_event.race.game.is_none();
-                                                        if overlapping_maintenance_windows.is_empty();
-                                                        then {
-                                                            MessageBuilder::default()
-                                                                .push("Votre race a été planifiée pour le ")
-                                                                .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                                .push('.')
-                                                                .build()
-                                                        } else {
-                                                            let mut response_content = MessageBuilder::default();
-                                                            response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
-                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    let response_content = if let French = event.language
+                                                        && cal_event.race.game.is_none()
+                                                        && overlapping_maintenance_windows.is_empty()
+                                                    {
+                                                        MessageBuilder::default()
+                                                            .push("Votre race a été planifiée pour le ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push('.')
+                                                            .build()
+                                                    } else {
+                                                        let mut response_content = MessageBuilder::default();
+                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                                        response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        response_content.push('.');
+                                                        for (window, kind) in overlapping_maintenance_windows {
+                                                            response_content.push_line("");
+                                                            response_content.push_bold("Warning:");
+                                                            response_content.push(" this race may overlap with ");
+                                                            response_content.push(kind.to_string());
+                                                            response_content.push(" maintenance planned for ");
+                                                            response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push(" until ");
+                                                            response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
                                                             response_content.push('.');
-                                                            for (window, kind) in overlapping_maintenance_windows {
-                                                                response_content.push_line("");
-                                                                response_content.push_bold("Warning:");
-                                                                response_content.push(" this race may overlap with ");
-                                                                response_content.push(kind.to_string());
-                                                                response_content.push(" maintenance planned for ");
-                                                                response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                                response_content.push(" until ");
-                                                                response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                                response_content.push('.');
-                                                            }
-                                                            response_content.build()
                                                         }
+                                                        response_content.build()
                                                     };
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
@@ -1850,40 +1842,38 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .try_collect().await?,
                                                     };
                                                     transaction.commit().await?;
-                                                    let response_content = if_chain! {
-                                                        if let French = event.language;
-                                                        if cal_event.race.game.is_none();
-                                                        if overlapping_maintenance_windows.is_empty();
-                                                        then {
-                                                            MessageBuilder::default()
-                                                                .push("La partie de votre async a été planifiée pour le ")
-                                                                .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                                .push('.')
-                                                                .build()
-                                                        } else {
-                                                            let mut response_content = MessageBuilder::default();
-                                                            response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
-                                                            response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
-                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                            response_content.push('.');
-                                                            for (window, kind) in overlapping_maintenance_windows {
-                                                                response_content.push_line("");
-                                                                response_content.push_bold("Warning:");
-                                                                if let Entrants::Two(_) = cal_event.race.entrants {
-                                                                    response_content.push(" this async half may overlap with ");
-                                                                } else {
-                                                                    response_content.push(" this async part may overlap with ");
-                                                                }
-                                                                response_content.push(kind.to_string());
-                                                                response_content.push(" maintenance planned for ");
-                                                                response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                                response_content.push(" until ");
-                                                                response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                                                response_content.push('.');
+                                                    let response_content = if let French = event.language
+                                                        && cal_event.race.game.is_none()
+                                                        && overlapping_maintenance_windows.is_empty()
+                                                    {
+                                                        MessageBuilder::default()
+                                                            .push("La partie de votre async a été planifiée pour le ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push('.')
+                                                            .build()
+                                                    } else {
+                                                        let mut response_content = MessageBuilder::default();
+                                                        response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
+                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
+                                                        response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        response_content.push('.');
+                                                        for (window, kind) in overlapping_maintenance_windows {
+                                                            response_content.push_line("");
+                                                            response_content.push_bold("Warning:");
+                                                            if let Entrants::Two(_) = cal_event.race.entrants {
+                                                                response_content.push(" this async half may overlap with ");
+                                                            } else {
+                                                                response_content.push(" this async part may overlap with ");
                                                             }
-                                                            response_content.build()
+                                                            response_content.push(kind.to_string());
+                                                            response_content.push(" maintenance planned for ");
+                                                            response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push(" until ");
+                                                            response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push('.');
                                                         }
+                                                        response_content.build()
                                                     };
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
@@ -2494,117 +2484,113 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
         Some(None) => return Err(Error::UnregisteredDiscordGuild(guild_id)),
         Some(Some(command_ids)) => command_ids,
     };
-    let mut title = if_chain! {
-        if let French = event.language;
-        if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
-        if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
-        then {
-            match race.entrants {
-                Entrants::Open | Entrants::Count { .. } => info_prefix,
-                Entrants::Named(ref entrants) => format!("{info_prefix} : {entrants}"),
-                Entrants::Two([ref team1, ref team2]) => format!(
-                    "{info_prefix} : {} vs {}",
-                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                ),
-                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
-                    "{info_prefix} : {} vs {} vs {}",
-                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                ),
-            }
-        } else {
-            let info_prefix = format!("{}{}{}",
-                race.phase.as_deref().unwrap_or(""),
-                if race.phase.is_none() || race.round.is_none() { "" } else { " " },
-                race.round.as_deref().unwrap_or(""),
-            );
-            match race.entrants {
-                Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
-                Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
-                Entrants::Two([ref team1, ref team2]) => format!(
-                    "{info_prefix}{}{} vs {}",
-                    if info_prefix.is_empty() { "" } else { ": " },
-                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                ),
-                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
-                    "{info_prefix}{}{} vs {} vs {}",
-                    if info_prefix.is_empty() { "" } else { ": " },
-                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                ),
-            }
+    let mut title = if let French = event.language
+        && let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref())
+        && let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?
+    {
+        match race.entrants {
+            Entrants::Open | Entrants::Count { .. } => info_prefix,
+            Entrants::Named(ref entrants) => format!("{info_prefix} : {entrants}"),
+            Entrants::Two([ref team1, ref team2]) => format!(
+                "{info_prefix} : {} vs {}",
+                team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+            ),
+            Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                "{info_prefix} : {} vs {} vs {}",
+                team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                team3.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+            ),
+        }
+    } else {
+        let info_prefix = format!("{}{}{}",
+            race.phase.as_deref().unwrap_or(""),
+            if race.phase.is_none() || race.round.is_none() { "" } else { " " },
+            race.round.as_deref().unwrap_or(""),
+        );
+        match race.entrants {
+            Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
+            Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
+            Entrants::Two([ref team1, ref team2]) => format!(
+                "{info_prefix}{}{} vs {}",
+                if info_prefix.is_empty() { "" } else { ": " },
+                team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+            ),
+            Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                "{info_prefix}{}{} vs {} vs {}",
+                if info_prefix.is_empty() { "" } else { ": " },
+                team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                team3.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+            ),
         }
     };
     let mut content = MessageBuilder::default();
-    if_chain! {
-        if let French = event.language;
-        if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
-        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
-        if game_count == 1;
-        if event.asyncs_allowed();
-        if let None | Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = event.draft_kind();
-        then {
-            for team in race.teams() {
-                content.mention_team(&mut transaction, Some(guild_id), team).await?;
-                content.push(' ');
-            }
-            content.push("Bienvenue dans votre ");
-            content.push_safe(phase_round);
-            content.push(". Veuillez utiliser ");
-            content.mention_command(command_ids.schedule, "schedule");
-            content.push(" pour schedule votre race en live ou ");
-            content.mention_command(command_ids.schedule_async, "schedule-async");
-            content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>."); //TODO update for @time
-        } else {
-            for team in race.teams() {
-                content.mention_team(&mut transaction, Some(guild_id), team).await?;
-                content.push(' ');
-            }
-            content.push("Welcome to your ");
-            if let Some(ref phase) = race.phase {
-                content.push_safe(phase.clone());
-                content.push(' ');
-            }
-            if let Some(ref round) = race.round {
-                content.push_safe(round.clone());
-                content.push(' ');
-            }
-            content.push("match. Use ");
-            match event.scheduling_backend(&mut transaction).await? {
-                SchedulingBackend::MidosHouse => {
-                    content.mention_command(command_ids.schedule, "schedule");
-                    if event.asyncs_allowed() {
-                        content.push(" to schedule as a live race or ");
-                        content.mention_command(command_ids.schedule_async, "schedule-async");
-                        content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
-                    } else {
-                        content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
-                    }
-                    if game_count > 1 {
-                        content.push(" You can use the ");
-                        content.push_mono("game:");
-                        content.push(" parameter with these commands to schedule subsequent games ahead of time.");
-                    }
-                }
-                SchedulingBackend::SpeedGamingOnline(speedgaming_slug) =>  {
-                    content.push("<https://speedgaming.org/");
-                    content.push(speedgaming_slug);
-                    if game_count > 1 {
-                        content.push("/submit> to schedule your races.");
-                    } else {
-                        content.push("/submit> to schedule your race.");
-                    }
-                }
-                SchedulingBackend::SpeedGamingInPerson => if game_count > 1 {
-                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
+    if let French = event.language
+        && let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref())
+        && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?
+        && game_count == 1
+        && event.asyncs_allowed()
+        && let None | Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = event.draft_kind()
+    {
+        for team in race.teams() {
+            content.mention_team(&mut transaction, Some(guild_id), team).await?;
+            content.push(' ');
+        }
+        content.push("Bienvenue dans votre ");
+        content.push_safe(phase_round);
+        content.push(". Veuillez utiliser ");
+        content.mention_command(command_ids.schedule, "schedule");
+        content.push(" pour schedule votre race en live ou ");
+        content.mention_command(command_ids.schedule_async, "schedule-async");
+        content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>."); //TODO update for @time
+    } else {
+        for team in race.teams() {
+            content.mention_team(&mut transaction, Some(guild_id), team).await?;
+            content.push(' ');
+        }
+        content.push("Welcome to your ");
+        if let Some(ref phase) = race.phase {
+            content.push_safe(phase.clone());
+            content.push(' ');
+        }
+        if let Some(ref round) = race.round {
+            content.push_safe(round.clone());
+            content.push(' ');
+        }
+        content.push("match. Use ");
+        match event.scheduling_backend(&mut transaction).await? {
+            SchedulingBackend::MidosHouse => {
+                content.mention_command(command_ids.schedule, "schedule");
+                if event.asyncs_allowed() {
+                    content.push(" to schedule as a live race or ");
+                    content.mention_command(command_ids.schedule_async, "schedule-async");
+                    content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
                 } else {
-                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your race.");
-                },
+                    content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
+                }
+                if game_count > 1 {
+                    content.push(" You can use the ");
+                    content.push_mono("game:");
+                    content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                }
             }
+            SchedulingBackend::SpeedGamingOnline(speedgaming_slug) =>  {
+                content.push("<https://speedgaming.org/");
+                content.push(speedgaming_slug);
+                if game_count > 1 {
+                    content.push("/submit> to schedule your races.");
+                } else {
+                    content.push("/submit> to schedule your race.");
+                }
+            }
+            SchedulingBackend::SpeedGamingInPerson => if game_count > 1 {
+                content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
+            } else {
+                content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your race.");
+            },
         }
     };
     if title.len() > 100 {

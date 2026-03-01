@@ -83,9 +83,8 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
     let [(winner, winning_time, winning_room), (loser, losing_time, losing_room)] = entrants;
     if winning_time.is_dnf() && losing_time.is_dnf() {
         if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
-            let msg = if_chain! {
-                if let French = event.language;
-                if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
+            let msg = if let French = event.language
+                && let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
                     (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
                         Some(Some(phase_round))
                     } else {
@@ -93,82 +92,81 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     },
                     (Some(_), None) | (None, Some(_)) => None, // no translation
                     (None, None) => Some(None), // no phase/round
-                };
-                if cal_event.race.game.is_none();
-                then {
-                    let mut builder = MessageBuilder::default();
-                    if let Some(phase_round) = phase_round {
-                        builder.push_safe(phase_round);
-                        builder.push(" : ");
-                    }
-                    builder.push("Ni ");
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
-                    if winning_room != losing_room {
-                        builder.push(" [<");
-                        builder.push(winning_room.to_string());
-                        builder.push(">]");
-                    }
-                    builder.push(" ni ");
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
-                    if winning_room != losing_room {
-                        builder.push(" [<");
-                        builder.push(losing_room.to_string());
-                        builder.push(">]");
-                    }
-                    builder.push(" n'ont fini");
-                    if winning_room == losing_room {
-                        builder.push(" <");
-                        builder.push(winning_room);
-                        builder.push('>');
-                    }
-                    builder.build()
-                } else {
-                    let mut builder = MessageBuilder::default();
-                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                        (Some(phase), None) => Some(phase.clone()),
-                        (None, Some(round)) => Some(round.clone()),
-                        (None, None) => None,
-                    };
-                    match (info_prefix, cal_event.race.game) {
-                        (Some(prefix), Some(game)) => {
-                            builder.push_safe(prefix);
-                            builder.push(", game ");
-                            builder.push(game.to_string());
-                            builder.push(": ");
-                        }
-                        (Some(prefix), None) => {
-                            builder.push_safe(prefix);
-                            builder.push(": ");
-                        }
-                        (None, Some(game)) => {
-                            builder.push("game ");
-                            builder.push(game.to_string());
-                            builder.push(": ");
-                        }
-                        (None, None) => {}
-                    }
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
-                    if winning_room != losing_room {
-                        builder.push(" [<");
-                        builder.push(winning_room.to_string());
-                        builder.push(">]");
-                    }
-                    builder.push(" and ");
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
-                    if winning_room != losing_room {
-                        builder.push(" [<");
-                        builder.push(losing_room.to_string());
-                        builder.push(">]");
-                    }
-                    builder.push(" both did not finish");
-                    if winning_room == losing_room {
-                        builder.push(" <");
-                        builder.push(winning_room);
-                        builder.push('>');
-                    }
-                    builder.build()
                 }
+                && cal_event.race.game.is_none()
+            {
+                let mut builder = MessageBuilder::default();
+                if let Some(phase_round) = phase_round {
+                    builder.push_safe(phase_round);
+                    builder.push(" : ");
+                }
+                builder.push("Ni ");
+                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                if winning_room != losing_room {
+                    builder.push(" [<");
+                    builder.push(winning_room.to_string());
+                    builder.push(">]");
+                }
+                builder.push(" ni ");
+                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                if winning_room != losing_room {
+                    builder.push(" [<");
+                    builder.push(losing_room.to_string());
+                    builder.push(">]");
+                }
+                builder.push(" n'ont fini");
+                if winning_room == losing_room {
+                    builder.push(" <");
+                    builder.push(winning_room);
+                    builder.push('>');
+                }
+                builder.build()
+            } else {
+                let mut builder = MessageBuilder::default();
+                let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                    (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                    (Some(phase), None) => Some(phase.clone()),
+                    (None, Some(round)) => Some(round.clone()),
+                    (None, None) => None,
+                };
+                match (info_prefix, cal_event.race.game) {
+                    (Some(prefix), Some(game)) => {
+                        builder.push_safe(prefix);
+                        builder.push(", game ");
+                        builder.push(game.to_string());
+                        builder.push(": ");
+                    }
+                    (Some(prefix), None) => {
+                        builder.push_safe(prefix);
+                        builder.push(": ");
+                    }
+                    (None, Some(game)) => {
+                        builder.push("game ");
+                        builder.push(game.to_string());
+                        builder.push(": ");
+                    }
+                    (None, None) => {}
+                }
+                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                if winning_room != losing_room {
+                    builder.push(" [<");
+                    builder.push(winning_room.to_string());
+                    builder.push(">]");
+                }
+                builder.push(" and ");
+                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                if winning_room != losing_room {
+                    builder.push(" [<");
+                    builder.push(losing_room.to_string());
+                    builder.push(">]");
+                }
+                builder.push(" both did not finish");
+                if winning_room == losing_room {
+                    builder.push(" <");
+                    builder.push(winning_room);
+                    builder.push('>');
+                }
+                builder.build()
             };
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
@@ -201,9 +199,8 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
         }
     } else {
         if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
-            let msg = if_chain! {
-                if let French = event.language;
-                if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
+            let msg = if let French = event.language
+                && let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
                     (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
                         Some(Some(phase_round))
                     } else {
@@ -211,75 +208,74 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     },
                     (Some(_), None) | (None, Some(_)) => None, // no translation
                     (None, None) => Some(None), // no phase/round
-                };
-                if cal_event.race.game.is_none();
-                then {
-                    let mut builder = MessageBuilder::default();
-                    if let Some(phase_round) = phase_round {
-                        builder.push_safe(phase_round);
-                        builder.push(" : ");
-                    }
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
-                    builder.push(" (");
-                    builder.push(winning_time.format(French));
-                    builder.push(')');
-                    if winning_room != losing_room {
-                        builder.push(" [<");
-                        builder.push(winning_room.to_string());
-                        builder.push(">]");
-                    }
-                    builder.push(if winner.name_is_plural() { " ont battu " } else { " a battu " });
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
-                    builder.push(" (");
-                    builder.push(losing_time.format(French));
-                    builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
-                    builder.push(losing_room.to_string());
-                    builder.push(if winning_room == losing_room { ">" } else { ">]" });
-                    builder.build()
-                } else {
-                    let mut builder = MessageBuilder::default();
-                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                        (Some(phase), None) => Some(phase.clone()),
-                        (None, Some(round)) => Some(round.clone()),
-                        (None, None) => None,
-                    };
-                    match (info_prefix, cal_event.race.game) {
-                        (Some(prefix), Some(game)) => {
-                            builder.push_safe(prefix);
-                            builder.push(", game ");
-                            builder.push(game.to_string());
-                            builder.push(": ");
-                        }
-                        (Some(prefix), None) => {
-                            builder.push_safe(prefix);
-                            builder.push(": ");
-                        }
-                        (None, Some(game)) => {
-                            builder.push("game ");
-                            builder.push(game.to_string());
-                            builder.push(": ");
-                        }
-                        (None, None) => {}
-                    }
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
-                    builder.push(" (");
-                    builder.push(winning_time.format(English));
-                    builder.push(')');
-                    if winning_room != losing_room {
-                        builder.push(" [<");
-                        builder.push(winning_room.to_string());
-                        builder.push(">]");
-                    }
-                    builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
-                    builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
-                    builder.push(" (");
-                    builder.push(losing_time.format(English));
-                    builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
-                    builder.push(losing_room.to_string());
-                    builder.push(if winning_room == losing_room { ">" } else { ">]" });
-                    builder.build()
                 }
+                && cal_event.race.game.is_none()
+            {
+                let mut builder = MessageBuilder::default();
+                if let Some(phase_round) = phase_round {
+                    builder.push_safe(phase_round);
+                    builder.push(" : ");
+                }
+                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                builder.push(" (");
+                builder.push(winning_time.format(French));
+                builder.push(')');
+                if winning_room != losing_room {
+                    builder.push(" [<");
+                    builder.push(winning_room.to_string());
+                    builder.push(">]");
+                }
+                builder.push(if winner.name_is_plural() { " ont battu " } else { " a battu " });
+                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                builder.push(" (");
+                builder.push(losing_time.format(French));
+                builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
+                builder.push(losing_room.to_string());
+                builder.push(if winning_room == losing_room { ">" } else { ">]" });
+                builder.build()
+            } else {
+                let mut builder = MessageBuilder::default();
+                let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                    (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                    (Some(phase), None) => Some(phase.clone()),
+                    (None, Some(round)) => Some(round.clone()),
+                    (None, None) => None,
+                };
+                match (info_prefix, cal_event.race.game) {
+                    (Some(prefix), Some(game)) => {
+                        builder.push_safe(prefix);
+                        builder.push(", game ");
+                        builder.push(game.to_string());
+                        builder.push(": ");
+                    }
+                    (Some(prefix), None) => {
+                        builder.push_safe(prefix);
+                        builder.push(": ");
+                    }
+                    (None, Some(game)) => {
+                        builder.push("game ");
+                        builder.push(game.to_string());
+                        builder.push(": ");
+                    }
+                    (None, None) => {}
+                }
+                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                builder.push(" (");
+                builder.push(winning_time.format(English));
+                builder.push(')');
+                if winning_room != losing_room {
+                    builder.push(" [<");
+                    builder.push(winning_room.to_string());
+                    builder.push(">]");
+                }
+                builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
+                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                builder.push(" (");
+                builder.push(losing_time.format(English));
+                builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
+                builder.push(losing_room.to_string());
+                builder.push(if winning_room == losing_room { ">" } else { ">]" });
+                builder.build()
             };
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
@@ -394,31 +390,27 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 sqlx::query_scalar!(r#"UPDATE races SET ignored = TRUE WHERE id = ANY($1)"#, &races_to_delete.into_iter().map(|race| i64::from(race.id)).collect_vec()).execute(&mut *transaction).await.to_racetime()?;
             }
         } else {
-            if_chain! {
-                if let Entrant::MidosHouseTeam(winner) = winner;
-                if let Entrant::MidosHouseTeam(loser) = loser;
-                if let Some(draft_kind) = event.draft_kind();
-                if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()?;
-                then {
-                    let draft = Draft::for_next_game(&mut transaction, draft_kind, loser.id, winner.id).await.to_racetime()?;
-                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(&draft) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
-                    if_chain! {
-                        if let Some(guild_id) = event.discord_guild;
-                        if let Some(scheduling_thread) = next_game.scheduling_thread;
-                        if match_decided == Some(false) || cal_event.race.game.expect("found next game for race without game number") <= cal_event.race.game_count(&mut transaction).await.to_racetime()? / 2;
-                        let discord_ctx = ctx.global_state.discord_ctx.read().await;
-                        let data = discord_ctx.data.read().await;
-                        if let Some(Some(command_ids)) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
-                        then {
-                            let mut msg_ctx = draft::MessageContext::Discord {
-                                teams: next_game.teams().cloned().collect(),
-                                team: Team::dummy(),
-                                transaction, guild_id, command_ids,
-                            };
-                            scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, next_game.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
-                            transaction = msg_ctx.into_transaction();
-                        }
-                    }
+            if let Entrant::MidosHouseTeam(winner) = winner
+                && let Entrant::MidosHouseTeam(loser) = loser
+                && let Some(draft_kind) = event.draft_kind()
+                && let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()?
+            {
+                let draft = Draft::for_next_game(&mut transaction, draft_kind, loser.id, winner.id).await.to_racetime()?;
+                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(&draft) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
+                if let Some(guild_id) = event.discord_guild
+                    && let Some(scheduling_thread) = next_game.scheduling_thread
+                    && (match_decided == Some(false) || cal_event.race.game.expect("found next game for race without game number") <= cal_event.race.game_count(&mut transaction).await.to_racetime()? / 2)
+                    && let discord_ctx = ctx.global_state.discord_ctx.read().await
+                    && let data = discord_ctx.data.read().await
+                    && let Some(Some(command_ids)) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied())
+                {
+                    let mut msg_ctx = draft::MessageContext::Discord {
+                        teams: next_game.teams().cloned().collect(),
+                        team: Team::dummy(),
+                        transaction, guild_id, command_ids,
+                    };
+                    scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, next_game.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
+                    transaction = msg_ctx.into_transaction();
                 }
             }
         }
@@ -574,17 +566,15 @@ impl Handler {
                             let mut teams = Vec::with_capacity(data.entrants.len());
                             for entrant in &data.entrants {
                                 if let Some(rt_user) = &entrant.user {
-                                    teams.push((if_chain! {
-                                        if let Some(user) = User::from_racetime(&mut *transaction, &rt_user.id).await.to_racetime()?;
-                                        if let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?;
-                                        then {
-                                            Entrant::MidosHouseTeam(team)
-                                        } else {
-                                            Entrant::Named {
-                                                name: rt_user.full_name.clone(),
-                                                racetime_id: Some(rt_user.id.clone()),
-                                                twitch_username: rt_user.twitch_name.clone(),
-                                            }
+                                    teams.push((if let Some(user) = User::from_racetime(&mut *transaction, &rt_user.id).await.to_racetime()?
+                                        && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?
+                                    {
+                                        Entrant::MidosHouseTeam(team)
+                                    } else {
+                                        Entrant::Named {
+                                            name: rt_user.full_name.clone(),
+                                            racetime_id: Some(rt_user.id.clone()),
+                                            twitch_username: rt_user.twitch_name.clone(),
                                         }
                                     }, tfb_scores.remove(&rt_user.id).expect("missing TFB score"), room.clone()));
                                 }
@@ -598,17 +588,15 @@ impl Handler {
                             let mut teams = Vec::with_capacity(data.entrants.len());
                             for entrant in &data.entrants {
                                 if let Some(rt_user) = &entrant.user {
-                                    teams.push((if_chain! {
-                                        if let Some(user) = User::from_racetime(&mut *transaction, &rt_user.id).await.to_racetime()?;
-                                        if let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?;
-                                        then {
-                                            Entrant::MidosHouseTeam(team)
-                                        } else {
-                                            Entrant::Named {
-                                                name: rt_user.full_name.clone(),
-                                                racetime_id: Some(rt_user.id.clone()),
-                                                twitch_username: rt_user.twitch_name.clone(),
-                                            }
+                                    teams.push((if let Some(user) = User::from_racetime(&mut *transaction, &rt_user.id).await.to_racetime()?
+                                        && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?
+                                    {
+                                        Entrant::MidosHouseTeam(team)
+                                    } else {
+                                        Entrant::Named {
+                                            name: rt_user.full_name.clone(),
+                                            racetime_id: Some(rt_user.id.clone()),
+                                            twitch_username: rt_user.twitch_name.clone(),
                                         }
                                     }, entrant.finish_time, room.clone()));
                                 }
@@ -680,15 +668,11 @@ impl Handler {
                                     all_teams_found = false;
                                 }
                             }
-                            if_chain! {
-                                if all_teams_found;
-                                if let Ok(teams) = teams.try_into();
-                                then {
-                                    transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
-                                } else { //TODO separate function for reporting 3-entrant results
-                                    let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
-                                    report_ffa(ctx, cal_event, event, room).await?;
-                                }
+                            if all_teams_found && let Ok(teams) = teams.try_into() {
+                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                            } else { //TODO separate function for reporting 3-entrant results
+                                let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
+                                report_ffa(ctx, cal_event, event, room).await?;
                             }
                         } else {
                             let mut all_teams_found = true;
@@ -704,15 +688,11 @@ impl Handler {
                                     all_teams_found = false;
                                 }
                             }
-                            if_chain! {
-                                if all_teams_found;
-                                if let Ok(teams) = teams.try_into();
-                                then {
-                                    transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
-                                } else { //TODO separate function for reporting 3-entrant results
-                                    let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
-                                    report_ffa(ctx, cal_event, event, room).await?;
-                                }
+                            if all_teams_found && let Ok(teams) = teams.try_into() {
+                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                            } else { //TODO separate function for reporting 3-entrant results
+                                let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
+                                report_ffa(ctx, cal_event, event, room).await?;
                             }
                         }
                     }

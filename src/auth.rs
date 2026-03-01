@@ -566,29 +566,27 @@ pub(crate) async fn merge_accounts(global: &GlobalState, me: User, racetime_user
         (false, false) => unreachable!("signed in but neither account connected"),
         (true, true) => return Err(MergeAccountsError::AlreadyMerged),
         (is_racetime, _) => if let Some(discord_user) = discord_user {
-            if_chain! {
-                if is_racetime;
-                if let Ok(Some(to_merge)) = User::from_discord(&mut *transaction, discord_user.id).await;
-                if to_merge.racetime.is_none();
-                let discord = to_merge.discord.expect("Discord user without Discord ID");
-                if sqlx::query!("DELETE FROM users WHERE id = $1", to_merge.id as _).execute(&mut *transaction).await.is_ok();
-                if sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", PgSnowflake(discord.id) as _, discord.display_name, discord.username_or_discriminator.as_ref().right() as _, discord.username_or_discriminator.as_ref().left(), me.id as _).execute(&mut *transaction).await.is_ok();
-                then {
-                    transaction.commit().await?;
-                    return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
-                } else {
-                    transaction.rollback().await?;
-                    transaction = global.db_pool.begin().await?;
-                    if let Some(racetime_user) = racetime_user {
-                        if let Ok(Some(to_merge)) = User::from_racetime(&mut *transaction, &racetime_user.id).await {
-                            if to_merge.discord.is_none() {
-                                if let Ok(Some(me)) = User::from_discord(&mut *transaction, discord_user.id).await {
-                                    let racetime = to_merge.racetime.expect("racetime.gg user without racetime.gg ID");
-                                    sqlx::query!("DELETE FROM users WHERE id = $1", racetime_user.id as _).execute(&mut *transaction).await?;
-                                    sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_discriminator = $3, racetime_pronouns = $4 WHERE id = $5", racetime.id, racetime.display_name, racetime.discriminator as _, racetime.pronouns as _, me.id as _).execute(&mut *transaction).await?;
-                                    transaction.commit().await?;
-                                    return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
-                                }
+            if is_racetime
+                && let Ok(Some(to_merge)) = User::from_discord(&mut *transaction, discord_user.id).await
+                && to_merge.racetime.is_none()
+                && let discord = to_merge.discord.expect("Discord user without Discord ID")
+                && sqlx::query!("DELETE FROM users WHERE id = $1", to_merge.id as _).execute(&mut *transaction).await.is_ok()
+                && sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", PgSnowflake(discord.id) as _, discord.display_name, discord.username_or_discriminator.as_ref().right() as _, discord.username_or_discriminator.as_ref().left(), me.id as _).execute(&mut *transaction).await.is_ok()
+            {
+                transaction.commit().await?;
+                return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
+            } else {
+                transaction.rollback().await?;
+                transaction = global.db_pool.begin().await?;
+                if let Some(racetime_user) = racetime_user {
+                    if let Ok(Some(to_merge)) = User::from_racetime(&mut *transaction, &racetime_user.id).await {
+                        if to_merge.discord.is_none() {
+                            if let Ok(Some(me)) = User::from_discord(&mut *transaction, discord_user.id).await {
+                                let racetime = to_merge.racetime.expect("racetime.gg user without racetime.gg ID");
+                                sqlx::query!("DELETE FROM users WHERE id = $1", racetime_user.id as _).execute(&mut *transaction).await?;
+                                sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_discriminator = $3, racetime_pronouns = $4 WHERE id = $5", racetime.id, racetime.display_name, racetime.discriminator as _, racetime.pronouns as _, me.id as _).execute(&mut *transaction).await?;
+                                transaction.commit().await?;
+                                return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
                             }
                         }
                     }

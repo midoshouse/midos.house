@@ -84,24 +84,20 @@ struct OnlinePlayer {
 impl OnlinePlayer {
     async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, entrant: &Entrant) -> Result<bool, cal::Error> {
         Ok(match entrant {
-            Entrant::MidosHouseTeam(team) => if_chain! {
-                if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one();
-                if let Some(Some(user_data)) = member.racetime_user_data(http_client).await?;
-                if let Some(twitch_name) = user_data.twitch_name;
-                then {
-                    twitch_name.eq_ignore_ascii_case(&self.streaming_from)
-                } else {
-                    false
-                }
+            Entrant::MidosHouseTeam(team) => if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one()
+                && let Some(Some(user_data)) = member.racetime_user_data(http_client).await?
+                && let Some(twitch_name) = user_data.twitch_name
+            {
+                twitch_name.eq_ignore_ascii_case(&self.streaming_from)
+            } else {
+                false
             },
-            Entrant::MidosHouseTeamMember { member, .. } => if_chain! {
-                if let Some(Some(user_data)) = member.racetime_user_data(http_client).await?;
-                if let Some(twitch_name) = user_data.twitch_name;
-                then {
-                    twitch_name.eq_ignore_ascii_case(&self.streaming_from)
-                } else {
-                    false
-                }
+            Entrant::MidosHouseTeamMember { member, .. } => if let Some(Some(user_data)) = member.racetime_user_data(http_client).await?
+                && let Some(twitch_name) = user_data.twitch_name
+            {
+                twitch_name.eq_ignore_ascii_case(&self.streaming_from)
+            } else {
+                false
             },
             Entrant::Discord { twitch_username: None, .. } | Entrant::Named { twitch_username: None, .. } => false,
             Entrant::Discord { twitch_username: Some(username), .. } | Entrant::Named { twitch_username: Some(username), .. } => username.eq_ignore_ascii_case(&self.streaming_from),
@@ -208,35 +204,33 @@ impl Restream {
                     transaction.commit().await?;
                     transaction = db_pool.begin().await?;
                     if let Some(thread) = cal_event.race.scheduling_thread {
-                        let msg = if_chain! {
-                            if let French = event.language;
-                            if cal_event.race.game.is_none();
-                            if overlapping_maintenance_windows.is_empty();
-                            then {
-                                MessageBuilder::default()
-                                    .push("Votre race a été planifiée pour le ")
-                                    .push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime)
-                                    .push('.')
-                                    .build()
-                            } else {
-                                let mut response_content = MessageBuilder::default();
-                                response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                        let msg = if let French = event.language
+                            && cal_event.race.game.is_none()
+                            && overlapping_maintenance_windows.is_empty()
+                        {
+                            MessageBuilder::default()
+                                .push("Votre race a été planifiée pour le ")
+                                .push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime)
+                                .push('.')
+                                .build()
+                        } else {
+                            let mut response_content = MessageBuilder::default();
+                            response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                            response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push('.');
+                            for (window, kind) in overlapping_maintenance_windows {
+                                response_content.push_line("");
+                                response_content.push_bold("Warning:");
+                                response_content.push(" this race may overlap with ");
+                                response_content.push(kind.to_string());
+                                response_content.push(" maintenance planned for ");
+                                response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                response_content.push(" until ");
+                                response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
                                 response_content.push('.');
-                                for (window, kind) in overlapping_maintenance_windows {
-                                    response_content.push_line("");
-                                    response_content.push_bold("Warning:");
-                                    response_content.push(" this race may overlap with ");
-                                    response_content.push(kind.to_string());
-                                    response_content.push(" maintenance planned for ");
-                                    response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                    response_content.push(" until ");
-                                    response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
-                                    response_content.push('.');
-                                }
-                                response_content.build()
                             }
+                            response_content.build()
                         };
                         thread.say(discord_ctx, msg).await?;
                     }
@@ -348,33 +342,31 @@ impl InPersonMatch {
                     transaction.commit().await?;
                     transaction = db_pool.begin().await?;
                     if let Some(thread) = cal_event.race.scheduling_thread {
-                        let msg = if_chain! {
-                            if let French = event.language;
-                            if cal_event.race.game.is_none();
-                            if scheduled_at - Utc::now() >= TimeDelta::minutes(30);
-                            then {
-                                MessageBuilder::default()
-                                    .push("Votre race a été planifiée pour le ")
-                                    .push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
-                                    .push('.')
-                                    .build()
-                            } else {
-                                let mut response_content = MessageBuilder::default();
-                                if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
-                                    for team in cal_event.active_teams() {
-                                        response_content.mention_team(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), team).await?;
-                                        response_content.push(' ');
-                                    }
+                        let msg = if let French = event.language
+                            && cal_event.race.game.is_none()
+                            && scheduled_at - Utc::now() >= TimeDelta::minutes(30)
+                        {
+                            MessageBuilder::default()
+                                .push("Votre race a été planifiée pour le ")
+                                .push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
+                                .push('.')
+                                .build()
+                        } else {
+                            let mut response_content = MessageBuilder::default();
+                            if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                                for team in cal_event.active_teams() {
+                                    response_content.mention_team(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), team).await?;
+                                    response_content.push(' ');
                                 }
-                                response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
-                                response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                response_content.push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
-                                response_content.push('.');
-                                if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
-                                    response_content.push(" Please get your equipment and report to the tournament room.");
-                                }
-                                response_content.build()
                             }
+                            response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                            response_content.push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push('.');
+                            if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                                response_content.push(" Please get your equipment and report to the tournament room.");
+                            }
+                            response_content.build()
                         };
                         thread.say(discord_ctx, msg).await?;
                     }
@@ -401,14 +393,12 @@ pub(crate) struct InPersonPlayer {
 impl InPersonPlayer {
     async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, entrant: &Entrant) -> Result<bool, cal::Error> {
         Ok(match entrant {
-            Entrant::MidosHouseTeam(team) => if_chain! {
-                if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one();
-                if let Some(ref discord) = member.discord;
-                then {
-                    discord.id == self.user.discord_id
-                } else {
-                    false
-                }
+            Entrant::MidosHouseTeam(team) => if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one()
+                && let Some(ref discord) = member.discord
+            {
+                discord.id == self.user.discord_id
+            } else {
+                false
             },
             Entrant::MidosHouseTeamMember { member, .. } => if let Some(ref discord) = member.discord {
                 discord.id == self.user.discord_id

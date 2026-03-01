@@ -591,25 +591,23 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 }
             }
             let num_qualified = entrant_data.values().filter(|(_, qualification_level)| *qualification_level == QualificationLevel::Qualified).count();
-            let choppin_block_finished = if_chain! {
-                if let Ok(race) = Race::for_event(transaction, &cache.http_client, data).await?.into_iter()
+            let choppin_block_finished = if let Ok(race) = Race::for_event(transaction, &cache.http_client, data).await?.into_iter()
                     .filter(|race| race.phase.as_ref().is_some_and(|phase| phase == "Choppin Block"))
-                    .exactly_one();
-                if let Ok(room) = race.rooms().exactly_one();
-                let room_data = cache.race_data(&room).await?;
-                if room_data.status.value == RaceStatusValue::Finished;
-                then {
-                    let mut entrants = room_data.entrants.clone();
-                    entrants.retain(|entrant| entrant.user.clone().map(racetime::model::UserData::try_from).transpose().is_ok_and(|user| entrant_data.entry(MemberUser::from(user)).or_default().1 == QualificationLevel::ChoppinBlock));
-                    entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
-                    for entrant in entrants.drain(..entrants.len().min(32 - num_qualified)) {
-                        let user = entrant.user.map(racetime::model::UserData::try_from).transpose()?;
-                        entrant_data.entry(MemberUser::from(user)).or_default().1 = QualificationLevel::Qualified;
-                    }
-                    true
-                } else {
-                    false
+                    .exactly_one()
+                && let Ok(room) = race.rooms().exactly_one()
+                && let room_data = cache.race_data(&room).await?
+                && room_data.status.value == RaceStatusValue::Finished
+            {
+                let mut entrants = room_data.entrants.clone();
+                entrants.retain(|entrant| entrant.user.clone().map(racetime::model::UserData::try_from).transpose().is_ok_and(|user| entrant_data.entry(MemberUser::from(user)).or_default().1 == QualificationLevel::ChoppinBlock));
+                entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                for entrant in entrants.drain(..entrants.len().min(32 - num_qualified)) {
+                    let user = entrant.user.map(racetime::model::UserData::try_from).transpose()?;
+                    entrant_data.entry(MemberUser::from(user)).or_default().1 = QualificationLevel::Qualified;
                 }
+                true
+            } else {
+                false
             };
             entrant_data.into_iter()
                 .filter(|(_, (_, qualification_level))|
@@ -1193,7 +1191,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
-                                                        enter::Requirement::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => : if_chain! {
+                                                        enter::Requirement::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => : {
                                                             let data = if let Some(event) = event {
                                                                 &Data::new(&mut transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
                                                             } else {
@@ -1201,10 +1199,10 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                                             };
                                                             let qualifier_kind = data.qualifier_kind(&mut transaction, None).await?;
                                                             let teams = signups_sorted(&mut transaction, &mut cache, None, data, is_organizer, qualifier_kind, Some(&entrant.user)).await?;
-                                                            if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == entrant.user));
-                                                            if let Qualification::Multiple { num_entered, num_finished, .. } = team.qualification;
-                                                            let num_qualifiers = if *need_finish { num_finished } else { num_entered };
-                                                            then {
+                                                            if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == entrant.user))
+                                                                && let Qualification::Multiple { num_entered, num_finished, .. } = team.qualification
+                                                            {
+                                                                let num_qualifiers = if *need_finish { num_finished } else { num_entered };
                                                                 if num_qualifiers < *min_races {
                                                                     html! {
                                                                         : "Not eligible (needs ";

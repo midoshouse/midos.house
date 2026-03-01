@@ -113,20 +113,18 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
         }
     }
     if let Ok(url) = Url::parse(id_or_url) {
-        return if_chain! {
-            if let Some("racetime.gg" | "www.racetime.gg") = url.host_str();
-            if let Some(mut path_segments) = url.path_segments();
-            if path_segments.next() == Some("user");
-            if let Some(url_part) = path_segments.next();
-            then {
-                match user_data(http_client, url_part).await {
-                    Ok(Some(user_data)) => Ok(user_data.id),
-                    Ok(None) => Err(ParseUserError::UrlNotFound),
-                    Err(e) => Err(e.into()),
-                }
-            } else {
-                Err(ParseUserError::InvalidUrl)
+        return if let Some("racetime.gg" | "www.racetime.gg") = url.host_str()
+            && let Some(mut path_segments) = url.path_segments()
+            && path_segments.next() == Some("user")
+            && let Some(url_part) = path_segments.next()
+        {
+            match user_data(http_client, url_part).await {
+                Ok(Some(user_data)) => Ok(user_data.id),
+                Ok(None) => Err(ParseUserError::UrlNotFound),
+                Err(e) => Err(e.into()),
             }
+        } else {
+            Err(ParseUserError::InvalidUrl)
         }
     }
     Err(ParseUserError::Format)
@@ -651,14 +649,10 @@ impl Goal {
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
-            Self::StandardRuleset => if_chain! {
-                if let Some(event) = event;
-                if event.series == Series::Standard && event.event == "w";
-                then {
-                    event.rando_version.clone().expect("no randomizer version configured for weeklies") //TODO allow weekly organizers to configure this
-                } else {
-                    unreachable!("official seeds should use the event's rando version")
-                }
+            Self::StandardRuleset => if let Some(event) = event && event.series == Series::Standard && event.event == "w" {
+                event.rando_version.clone().expect("no randomizer version configured for weeklies") //TODO allow weekly organizers to configure this
+            } else {
+                unreachable!("official seeds should use the event's rando version")
             },
             Self::StandardWeeklies => event.expect("event must be set for Goal::StandardWeeklies").rando_version.clone().expect("no randomizer version configured for weeklies"), //TODO allow weekly organizers to configure this
             Self::TournamentOfTruthS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) },
@@ -1609,77 +1603,73 @@ impl BotState {
         }));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            if_chain! {
-                if allow_web;
-                if let Some(web_version) = self.ootr_api_client.can_roll_on_web(false, None, &version, world_count, !plando.is_empty(), unlock_spoiler_log).await;
-                then {
-                    // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
-                    // This is especially true for open races, whose rooms are opened an entire hour before start.
-                    // To make this a bit more difficult, we delay the start of seed rolling depending on the goal.
-                    match preroll {
-                        // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
-                        // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
-                        PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
-                            sleep(sleep_duration).await;
+            if allow_web && let Some(web_version) = self.ootr_api_client.can_roll_on_web(false, None, &version, world_count, !plando.is_empty(), unlock_spoiler_log).await {
+                // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
+                // This is especially true for open races, whose rooms are opened an entire hour before start.
+                // To make this a bit more difficult, we delay the start of seed rolling depending on the goal.
+                match preroll {
+                    // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
+                    // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
+                    PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                        sleep(sleep_duration).await;
+                    },
+                    // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
+                    PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                        let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
+                        let sleep_duration = rng().random_range(min_sleep_duration..max_sleep_duration);
+                        sleep(sleep_duration).await;
+                    },
+                    // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
+                    // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+                        let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
+                        sleep(sleep_duration).await;
+                    },
+                    // The type of seed being rolled is extremely likely to require a very long time and/or a large number of attempts to generate.
+                    // Start rolling the seed immediately upon the room being opened.
+                    PrerollMode::Long => {}
+                }
+                match self.ootr_api_client.roll_seed_with_retry(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
+                    Ok(ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password }) => update_tx.send(SeedRollUpdate::Done {
+                        seed: seed::Data {
+                            file_hash: Some(file_hash),
+                            files: Some(seed::Files::OotrWeb {
+                                file_stem: Cow::Owned(file_stem),
+                                id, gen_time,
+                            }),
+                            progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
+                            password,
                         },
-                        // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
-                        PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
-                            let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
-                            let sleep_duration = rng().random_range(min_sleep_duration..max_sleep_duration);
-                            sleep(sleep_duration).await;
-                        },
-                        // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
-                        // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                        PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
-                            let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
-                            sleep(sleep_duration).await;
-                        },
-                        // The type of seed being rolled is extremely likely to require a very long time and/or a large number of attempts to generate.
-                        // Start rolling the seed immediately upon the room being opened.
-                        PrerollMode::Long => {}
-                    }
-                    match self.ootr_api_client.roll_seed_with_retry(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
-                        Ok(ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password }) => update_tx.send(SeedRollUpdate::Done {
-                            seed: seed::Data {
-                                file_hash: Some(file_hash),
-                                files: Some(seed::Files::OotrWeb {
-                                    file_stem: Cow::Owned(file_stem),
-                                    id, gen_time,
-                                }),
-                                progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
-                                password,
-                            },
-                            rsl_preset: None,
-                            unlock_spoiler_log,
-                        }).await?,
-                        Err(e) => update_tx.send(SeedRollUpdate::Error(e.into())).await?, //TODO fall back to rolling locally for network errors
-                    }
-                } else {
-                    update_tx.send(SeedRollUpdate::Started).await?;
-                    match roll_seed_locally(delay_until, version, match unlock_spoiler_log {
-                        UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
-                        UnlockSpoilerLog::Never => password_lock, // spoiler log needs to be generated so the backend can read the password
-                    }, settings, plando).await {
-                        Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.map(|spoiler_log_path| spoiler_log_path.into_os_string().into_string()).transpose() {
-                            Ok(locked_spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
-                                Some((_, file_stem)) => SeedRollUpdate::Done {
-                                    seed: seed::Data {
-                                        file_hash: None, password: None, // will be read from spoiler log
-                                        files: Some(seed::Files::MidosHouse {
-                                            file_stem: Cow::Owned(file_stem.to_owned()),
-                                            locked_spoiler_log_path,
-                                        }),
-                                        progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
-                                    },
-                                    rsl_preset: None,
-                                    unlock_spoiler_log,
+                        rsl_preset: None,
+                        unlock_spoiler_log,
+                    }).await?,
+                    Err(e) => update_tx.send(SeedRollUpdate::Error(e.into())).await?, //TODO fall back to rolling locally for network errors
+                }
+            } else {
+                update_tx.send(SeedRollUpdate::Started).await?;
+                match roll_seed_locally(delay_until, version, match unlock_spoiler_log {
+                    UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
+                    UnlockSpoilerLog::Never => password_lock, // spoiler log needs to be generated so the backend can read the password
+                }, settings, plando).await {
+                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.map(|spoiler_log_path| spoiler_log_path.into_os_string().into_string()).transpose() {
+                        Ok(locked_spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
+                            Some((_, file_stem)) => SeedRollUpdate::Done {
+                                seed: seed::Data {
+                                    file_hash: None, password: None, // will be read from spoiler log
+                                    files: Some(seed::Files::MidosHouse {
+                                        file_stem: Cow::Owned(file_stem.to_owned()),
+                                        locked_spoiler_log_path,
+                                    }),
+                                    progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
                                 },
-                                None => SeedRollUpdate::Error(RollError::PatchPath),
+                                rsl_preset: None,
+                                unlock_spoiler_log,
                             },
-                            Err(e) => SeedRollUpdate::Error(e.into())
-                        }).await?,
-                        Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
-                    }
+                            None => SeedRollUpdate::Error(RollError::PatchPath),
+                        },
+                        Err(e) => SeedRollUpdate::Error(e.into())
+                    }).await?,
+                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
             }
             Ok::<_, mpsc::error::SendError<_>>(())
@@ -2801,15 +2791,13 @@ impl Handler {
                     RaceState::Draft { state: ref mut draft, .. } => {
                         let is_active_team = if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
                             let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                            let is_active_team = if_chain! {
-                                if let Some(sender) = sender;
-                                if let Some(user) = User::from_racetime(&mut *transaction, &sender.id).await.to_racetime()?;
-                                if let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?;
-                                then {
-                                    draft.is_active_team(draft_kind, cal_event.race.game, team.id).await.to_racetime()?
-                                } else {
-                                    false
-                                }
+                            let is_active_team = if let Some(sender) = sender
+                                && let Some(user) = User::from_racetime(&mut *transaction, &sender.id).await.to_racetime()?
+                                && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?
+                            {
+                                draft.is_active_team(draft_kind, cal_event.race.game, team.id).await.to_racetime()?
+                            } else {
+                                false
                             };
                             transaction.commit().await.to_racetime()?;
                             is_active_team
@@ -3041,41 +3029,39 @@ impl RaceHandler<BotState> for Handler {
                         Err(msg) => ctx.say(msg).await?,
                     }
                 }
-                ctx.send_message(&if_chain! {
-                    if let French = goal.language();
-                    if !event.is_single_race();
-                    if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-                    if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
-                    then {
+                ctx.send_message(&if let French = goal.language()
+                    && !event.is_single_race()
+                    && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
+                    && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?
+                {
+                    format!(
+                        "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : {}",
+                        uri!(base_uri(), event::info(event.series, &*event.event)),
+                    )
+                } else {
+                    if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
                         format!(
-                            "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : {}",
+                            "Welcome to the {weekly_name} Weekly! Current settings: {}. See {} for details.",
+                            s::SHORT_WEEKLY_SETTINGS,
                             uri!(base_uri(), event::info(event.series, &*event.event)),
                         )
                     } else {
-                        if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
-                            format!(
-                                "Welcome to the {weekly_name} Weekly! Current settings: {}. See {} for details.",
-                                s::SHORT_WEEKLY_SETTINGS,
-                                uri!(base_uri(), event::info(event.series, &*event.event)),
-                            )
-                        } else {
-                            format!(
-                                "Welcome to {}! Learn more about the event at {}",
-                                if event.is_single_race() {
-                                    format!("the {}", event.display_name) //TODO remove “the” depending on event name
-                                } else {
-                                    match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
-                                        (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
-                                        (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
-                                        (Some(phase), Some(round)) => format!("this {phase} {round} race"),
-                                        (Some(phase), None) => format!("this {phase} race"),
-                                        (None, Some(round)) => format!("this {round} race"),
-                                        (None, None) => format!("this {} race", event.display_name),
-                                    }
-                                },
-                                uri!(base_uri(), event::info(event.series, &*event.event)),
-                            )
-                        }
+                        format!(
+                            "Welcome to {}! Learn more about the event at {}",
+                            if event.is_single_race() {
+                                format!("the {}", event.display_name) //TODO remove “the” depending on event name
+                            } else {
+                                match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
+                                    (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
+                                    (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
+                                    (Some(phase), Some(round)) => format!("this {phase} {round} race"),
+                                    (Some(phase), None) => format!("this {phase} race"),
+                                    (None, Some(round)) => format!("this {round} race"),
+                                    (None, None) => format!("this {} race", event.display_name),
+                                }
+                            },
+                            uri!(base_uri(), event::info(event.series, &*event.event)),
+                        )
                     }
                 }, true, Vec::default()).await?;
                 let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = cal_event.race.draft_kind(&event) {
@@ -3087,23 +3073,19 @@ impl RaceHandler<BotState> for Handler {
                         match cal_event.race.entrants {
                             Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => [format!("Team A"), format!("Team B")],
                             Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                let name1 = if_chain! {
-                                    if let Ok(member) = team1.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one();
-                                    if let Some(ref racetime) = member.racetime;
-                                    then {
-                                        racetime.display_name.clone()
-                                    } else {
-                                        team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned)
-                                    }
+                                let name1 = if let Ok(member) = team1.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one()
+                                    && let Some(ref racetime) = member.racetime
+                                {
+                                    racetime.display_name.clone()
+                                } else {
+                                    team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned)
                                 };
-                                let name2 = if_chain! {
-                                    if let Ok(member) = team2.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one();
-                                    if let Some(ref racetime) = member.racetime;
-                                    then {
-                                        racetime.display_name.clone()
-                                    } else {
-                                        team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned)
-                                    }
+                                let name2 = if let Ok(member) = team2.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one()
+                                    && let Some(ref racetime) = member.racetime
+                                {
+                                    racetime.display_name.clone()
+                                } else {
+                                    team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned)
                                 };
                                 if team1.id == state.high_seed {
                                     [name1, name2]
@@ -3227,16 +3209,14 @@ impl RaceHandler<BotState> for Handler {
                     }
                 }
                 if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value { //TODO also check this in official races
-                    if_chain! {
-                        if let Ok(log) = ctx.global_state.http_client.get(format!("https://{}{}/log", racetime_host(), data.url)).send().await;
-                        if let Ok(log) = log.detailed_error_for_status().await;
-                        if let Ok(log) = log.text().await; //TODO stream response
-                        if !log.to_ascii_lowercase().contains("break"); //TODO parse chatlog and recover breaks config instead of sending this
-                        then {
-                            // no breaks configured, can safely restart
-                        } else {
-                            ctx.say("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
-                        }
+                    if let Ok(log) = ctx.global_state.http_client.get(format!("https://{}{}/log", racetime_host(), data.url)).send().await
+                        && let Ok(log) = log.detailed_error_for_status().await
+                        && let Ok(log) = log.text().await //TODO stream response
+                        && !log.to_ascii_lowercase().contains("break") //TODO parse chatlog and recover breaks config instead of sending this
+                    {
+                        // no breaks configured, can safely restart
+                    } else {
+                        ctx.say("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
                     }
                 } else {
                     match race_state {
@@ -4057,25 +4037,21 @@ impl RaceHandler<BotState> for Handler {
                     }
                 }
                 let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
-                    if_chain! {
-                        if let French = goal.language();
-                        if let Ok((video_url, state)) = restreams.iter().exactly_one();
-                        if let Some(French) = state.language;
-                        then {
-                            format!("Cette race est restreamée en français chez {video_url} — l'auto-start est désactivé. Les organisateurs du tournoi peuvent utiliser “!monitor” pour devenir race monitor, puis pour inviter les restreamers en tant que race monitor et leur autoriser le force start.")
-                        } else {
-                            format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use “!monitor” to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
-                        }
+                    if let French = goal.language()
+                        && let Ok((video_url, state)) = restreams.iter().exactly_one()
+                        && let Some(French) = state.language
+                    {
+                        format!("Cette race est restreamée en français chez {video_url} — l'auto-start est désactivé. Les organisateurs du tournoi peuvent utiliser “!monitor” pour devenir race monitor, puis pour inviter les restreamers en tant que race monitor et leur autoriser le force start.")
+                    } else {
+                        format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use “!monitor” to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
                     }
                 } else if let Ok((video_url, state)) = restreams.iter().exactly_one() {
-                    if_chain! {
-                        if let French = goal.language();
-                        if let Some(French) = state.language;
-                        then {
-                            format!("Cette race est restreamée en français chez {video_url} — l'auto start est désactivé. Le restreamer peut utiliser “!ready” pour débloquer l'auto-start.")
-                        } else {
-                            format!("This race is being restreamed {restreams_text} — auto-start is disabled. The restreamer can use “!ready” to unlock auto-start.")
-                        }
+                    if let French = goal.language()
+                        && let Some(French) = state.language
+                    {
+                        format!("Cette race est restreamée en français chez {video_url} — l'auto start est désactivé. Le restreamer peut utiliser “!ready” pour débloquer l'auto-start.")
+                    } else {
+                        format!("This race is being restreamed {restreams_text} — auto-start is disabled. The restreamer can use “!ready” to unlock auto-start.")
                     }
                 } else {
                     format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
@@ -4266,27 +4242,25 @@ impl RaceHandler<BotState> for Handler {
                         if let Some(OfficialRaceData { ref cal_event, ref restreams, ref mut fpa_invoked, ref event, .. }) = self.official_data {
                             *fpa_invoked = true;
                             if restreams.is_empty() {
-                                ctx.say(if_chain! {
-                                    if let French = goal.language();
-                                    if let TeamConfig::Solo = event.team_config;
-                                    then {
-                                        format!(
-                                            "@everyone Le FPA a été appelé par {reply_to}.{} La race sera re-timée après le fin de celle-ci.",
-                                            if let RaceSchedule::Async { .. } = cal_event.race.schedule { "" } else { " Le joueur qui ne l'a pas demandé peut continuer à jouer." },
-                                        )
-                                    } else {
-                                        format!(
-                                            "@everyone FPA has been invoked by {reply_to}. T{}he race will be retimed once completed.",
-                                            if let RaceSchedule::Async { .. } = cal_event.race.schedule {
-                                                String::default()
-                                            } else {
-                                                format!(
-                                                    "he {player_team} that did not call FPA can continue playing; t",
-                                                    player_team = if let TeamConfig::Solo = event.team_config { "player" } else { "team" },
-                                                )
-                                            },
-                                        )
-                                    }
+                                ctx.say(if let French = goal.language()
+                                    && let TeamConfig::Solo = event.team_config
+                                {
+                                    format!(
+                                        "@everyone Le FPA a été appelé par {reply_to}.{} La race sera re-timée après le fin de celle-ci.",
+                                        if let RaceSchedule::Async { .. } = cal_event.race.schedule { "" } else { " Le joueur qui ne l'a pas demandé peut continuer à jouer." },
+                                    )
+                                } else {
+                                    format!(
+                                        "@everyone FPA has been invoked by {reply_to}. T{}he race will be retimed once completed.",
+                                        if let RaceSchedule::Async { .. } = cal_event.race.schedule {
+                                            String::default()
+                                        } else {
+                                            format!(
+                                                "he {player_team} that did not call FPA can continue playing; t",
+                                                player_team = if let TeamConfig::Solo = event.team_config { "player" } else { "team" },
+                                            )
+                                        },
+                                    )
                                 }).await?;
                             } else {
                                 ctx.say(if let French = goal.language() {
@@ -4377,14 +4351,12 @@ impl RaceHandler<BotState> for Handler {
             },
             "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = true;
-                ctx.say(if_chain! {
-                    if let French = goal.language();
-                    if !self.is_official();
-                    then {
-                        format!("Race verrouillée. Je ne génèrerai une seed que pour les race monitors.")
-                    } else {
-                        format!("Lock initiated. I will now only roll seeds for {}.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
-                    }
+                ctx.say(if let French = goal.language()
+                    && !self.is_official()
+                {
+                    format!("Race verrouillée. Je ne génèrerai une seed que pour les race monitors.")
+                } else {
+                    format!("Lock initiated. I will now only roll seeds for {}.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
                 }).await?;
             } else {
                 ctx.say(if let French = goal.language() {
@@ -4448,15 +4420,13 @@ impl RaceHandler<BotState> for Handler {
                     return Ok(())
                 }
                 if restreams.values().all(|state| state.ready) {
-                    ctx.say(if_chain! {
-                        if let French = goal.language();
-                        if let Ok((_, state)) = restreams.iter().exactly_one();
-                        if let Some(French) = state.language;
-                        then {
-                            "Restream prêt. Déverrouillage de l'auto-start."
-                        } else {
-                            "All restreams ready, unlocking auto-start…"
-                        }
+                    ctx.say(if let French = goal.language()
+                        && let Ok((_, state)) = restreams.iter().exactly_one()
+                        && let Some(French) = state.language
+                    {
+                        "Restream prêt. Déverrouillage de l'auto-start."
+                    } else {
+                        "All restreams ready, unlocking auto-start…"
                     }).await?;
                     let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
                     room_options(
@@ -4522,66 +4492,64 @@ impl RaceHandler<BotState> for Handler {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                 }).await?;
             },
-            "score" => if_chain! {
-                if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal;
-                if let Some(OfficialRaceData { ref event, ref mut scores, .. }) = self.official_data;
-                then {
-                    if let Some(UserData { mut ref id, .. }) = msg.user {
-                        let data = ctx.data().await;
-                        if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *id)) {
-                            if let Some(ref team) = entrant.team {
-                                id = &team.slug;
-                            }
-                        }
-                        if let Some(score) = scores.get_mut(id) {
-                            let old_score = *score;
-                            if_chain! {
-                                if let Some((pieces, duration)) = args.split_first();
-                                if let Ok(pieces) = pieces.parse();
-                                if pieces <= tfb::piece_count(event.team_config);
-                                then {
-                                    let new_score = tfb::Score {
-                                        team_config: event.team_config,
-                                        last_collection_time: if pieces == 0 {
-                                            Duration::default()
-                                        } else {
-                                            let Some(last_collection_time) = parse_duration(&duration.join(" "), None) else {
-                                                ctx.say(format!("Sorry {reply_to}, I don't recognize that time format. Example format: 1h23m45s")).await?;
-                                                return Ok(())
-                                            };
-                                            last_collection_time
-                                        },
-                                        pieces,
-                                    };
-                                    *score = Some(new_score);
-                                    ctx.say(if let Some(old_score) = old_score {
-                                        format!("Score edited: {new_score} (was: {old_score})")
-                                    } else {
-                                        format!("Score reported: {new_score}")
-                                    }).await?;
-                                    if self.check_tfb_finish(ctx).await? {
-                                        self.cleaned_up.store(true, atomic::Ordering::SeqCst);
-                                        if let Some(task) = self.cleanup_timeout.take() {
-                                            task.abort();
-                                        }
-                                    }
+            "score" => if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal
+                && let Some(OfficialRaceData { ref event, ref mut scores, .. }) = self.official_data
+            {
+                if let Some(UserData { id, .. }) = &msg.user {
+                    let data = ctx.data().await;
+                    let id = if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *id))
+                        && let Some(ref team) = entrant.team
+                    {
+                        &team.slug
+                    } else {
+                        id
+                    };
+                    if let Some(score) = scores.get_mut(id) {
+                        let old_score = *score;
+                        if let Some((pieces, duration)) = args.split_first()
+                            && let Ok(pieces) = pieces.parse()
+                            && pieces <= tfb::piece_count(event.team_config)
+                        {
+                            let new_score = tfb::Score {
+                                team_config: event.team_config,
+                                last_collection_time: if pieces == 0 {
+                                    Duration::default()
                                 } else {
-                                    ctx.send_message(
-                                        &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
-                                        false,
-                                        vec![tfb::report_score_button(event.team_config, None)],
-                                    ).await?;
+                                    let Some(last_collection_time) = parse_duration(&duration.join(" "), None) else {
+                                        ctx.say(format!("Sorry {reply_to}, I don't recognize that time format. Example format: 1h23m45s")).await?;
+                                        return Ok(())
+                                    };
+                                    last_collection_time
+                                },
+                                pieces,
+                            };
+                            *score = Some(new_score);
+                            ctx.say(if let Some(old_score) = old_score {
+                                format!("Score edited: {new_score} (was: {old_score})")
+                            } else {
+                                format!("Score reported: {new_score}")
+                            }).await?;
+                            if self.check_tfb_finish(ctx).await? {
+                                self.cleaned_up.store(true, atomic::Ordering::SeqCst);
+                                if let Some(task) = self.cleanup_timeout.take() {
+                                    task.abort();
                                 }
                             }
                         } else {
-                            ctx.say(format!("Sorry {reply_to}, only entrants who have already finished can do that.")).await?;
+                            ctx.send_message(
+                                &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
+                                false,
+                                vec![tfb::report_score_button(event.team_config, None)],
+                            ).await?;
                         }
                     } else {
-                        ctx.say(format!("Sorry {reply_to}, I was unable to read your user ID.")).await?;
+                        ctx.say(format!("Sorry {reply_to}, only entrants who have already finished can do that.")).await?;
                     }
                 } else {
-                    ctx.say(format!("Sorry {reply_to}, this command is only available for official Triforce Blitz races.")).await?;
+                    ctx.say(format!("Sorry {reply_to}, I was unable to read your user ID.")).await?;
                 }
+            } else {
+                ctx.say(format!("Sorry {reply_to}, this command is only available for official Triforce Blitz races.")).await?;
             },
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 lock!(@write state = self.race_state; match *state {
@@ -5029,12 +4997,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
         RaceHandleMode::Notify => Err("please get your equipment and report to the tournament room"),
         RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
             Ok((access_token, _)) => {
-                let info_user = if_chain! {
-                    if let French = event.language;
-                    if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-                    if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?;
-                    if cal_event.race.game.is_none();
-                    if let Some(entrants) = match cal_event.race.entrants {
+                let info_user = if let French = event.language
+                    && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
+                    && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?
+                    && cal_event.race.game.is_none()
+                    && let Some(entrants) = match cal_event.race.entrants {
                         Entrants::Open | Entrants::Count { .. } => Some(None), // no text
                         Entrants::Named(ref entrants) => Some(Some(entrants.clone())),
                         Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
@@ -5053,81 +5020,80 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                             },
                             cal::EventKind::Async1 | cal::EventKind::Async2 | cal::EventKind::Async3 => None,
                         },
-                    };
-                    then {
-                        if let Some(entrants) = entrants {
-                            format!("{phase_round} : {entrants}")
-                        } else {
-                            phase_round
-                        }
-                    } else {
-                        let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                            (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                            (Some(phase), None) => Some(phase.clone()),
-                            (None, Some(round)) => Some(round.clone()),
-                            (None, None) => None,
-                        };
-                        let mut info_user = match cal_event.race.entrants {
-                            Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
-                            Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
-                            Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
-                                cal::EventKind::Normal => format!(
-                                    "{}{} vs {}",
-                                    info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                                cal::EventKind::Async1 => format!(
-                                    "{} (async): {} vs {}",
-                                    info_prefix.clone().unwrap_or_default(),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                                cal::EventKind::Async2 => format!(
-                                    "{} (async): {} vs {}",
-                                    info_prefix.clone().unwrap_or_default(),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                                cal::EventKind::Async3 => unreachable!(),
-                            },
-                            Entrants::Three([ref team1, ref team2, ref team3]) => match cal_event.kind {
-                                cal::EventKind::Normal => format!(
-                                    "{}{} vs {} vs {}",
-                                    info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                                cal::EventKind::Async1 => format!(
-                                    "{} (async): {} vs {} vs {}",
-                                    info_prefix.clone().unwrap_or_default(),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                                cal::EventKind::Async2 => format!(
-                                    "{} (async): {} vs {} vs {}",
-                                    info_prefix.clone().unwrap_or_default(),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                                cal::EventKind::Async3 => format!(
-                                    "{} (async): {} vs {} vs {}",
-                                    info_prefix.clone().unwrap_or_default(),
-                                    team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                ),
-                            },
-                        };
-                        if let Some(game) = cal_event.race.game {
-                            info_user.push_str(", game ");
-                            info_user.push_str(&game.to_string());
-                        }
-                        info_user
                     }
+                {
+                    if let Some(entrants) = entrants {
+                        format!("{phase_round} : {entrants}")
+                    } else {
+                        phase_round
+                    }
+                } else {
+                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                        (Some(phase), None) => Some(phase.clone()),
+                        (None, Some(round)) => Some(round.clone()),
+                        (None, None) => None,
+                    };
+                    let mut info_user = match cal_event.race.entrants {
+                        Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
+                        Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
+                        Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
+                            cal::EventKind::Normal => format!(
+                                "{}{} vs {}",
+                                info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async1 => format!(
+                                "{} (async): {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async2 => format!(
+                                "{} (async): {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async3 => unreachable!(),
+                        },
+                        Entrants::Three([ref team1, ref team2, ref team3]) => match cal_event.kind {
+                            cal::EventKind::Normal => format!(
+                                "{}{} vs {} vs {}",
+                                info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async1 => format!(
+                                "{} (async): {} vs {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async2 => format!(
+                                "{} (async): {} vs {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async3 => format!(
+                                "{} (async): {} vs {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                        },
+                    };
+                    if let Some(game) = cal_event.race.game {
+                        info_user.push_str(", game ");
+                        info_user.push_str(&game.to_string());
+                    }
+                    info_user
                 };
                 let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
                 let race_slug = room_options(
@@ -5182,60 +5148,58 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
         }
     };
     let is_room_url = room_url.is_ok();
-    let msg = if_chain! {
-        if let French = event.language;
-        if let Ok(ref room_url_fr) = room_url;
-        if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4 AND display_fr IS NOT NULL) AS "exists!""#, event.series as _, &event.event, phase, round).fetch_one(&mut **transaction).await.to_racetime()?;
-        if cal_event.race.game.is_none();
-        then {
-            let mut msg = MessageBuilder::default();
-            msg.push("La race commence ");
-            msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
-            msg.push(" : ");
-            cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
-            msg.push(" <");
-            msg.push(room_url_fr.to_string());
-            msg.push('>');
-            msg.build()
+    let msg = if let French = event.language
+        && let Ok(ref room_url_fr) = room_url
+        && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
+        && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4 AND display_fr IS NOT NULL) AS "exists!""#, event.series as _, &event.event, phase, round).fetch_one(&mut **transaction).await.to_racetime()?
+        && cal_event.race.game.is_none()
+    {
+        let mut msg = MessageBuilder::default();
+        msg.push("La race commence ");
+        msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
+        msg.push(" : ");
+        cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
+        msg.push(" <");
+        msg.push(room_url_fr.to_string());
+        msg.push('>');
+        msg.build()
+    } else {
+        let ping_role = if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
+            Some(RoleId::new(640750480246571014)) // @Standard
+        } else if event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
+            Some(RoleId::new(1208091436608921730)) // @battle royale
         } else {
-            let ping_role = if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
-                Some(RoleId::new(640750480246571014)) // @Standard
-            } else if event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
-                Some(RoleId::new(1208091436608921730)) // @battle royale
-            } else {
-                None
-            };
-            let mut msg = MessageBuilder::default();
-            if let Some(ping_role) = ping_role {
-                msg.mention(&ping_role);
-                msg.push(' ');
-            }
-            msg.push("race starting ");
-            msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
-            msg.push(": ");
-            cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await.to_racetime()?;
-            match room_url {
-                Ok(room_url) => {
-                    msg.push(' ');
-                    if ping_role.is_none() {
-                        msg.push('<');
-                    }
-                    msg.push(room_url);
-                    if ping_role.is_none() {
-                        msg.push('>');
-                    }
-                }
-                Err(notification) => if cal_event.race.notified {
-                    return Ok(None)
-                } else {
-                    msg.push(" — ");
-                    msg.push(notification);
-                    cal_event.race.notified = true;
-                },
-            }
-            msg.build()
+            None
+        };
+        let mut msg = MessageBuilder::default();
+        if let Some(ping_role) = ping_role {
+            msg.mention(&ping_role);
+            msg.push(' ');
         }
+        msg.push("race starting ");
+        msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
+        msg.push(": ");
+        cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await.to_racetime()?;
+        match room_url {
+            Ok(room_url) => {
+                msg.push(' ');
+                if ping_role.is_none() {
+                    msg.push('<');
+                }
+                msg.push(room_url);
+                if ping_role.is_none() {
+                    msg.push('>');
+                }
+            }
+            Err(notification) => if cal_event.race.notified {
+                return Ok(None)
+            } else {
+                msg.push(" — ");
+                msg.push(notification);
+                cal_event.race.notified = true;
+            },
+        }
+        msg.build()
     };
     Ok(Some((is_room_url, msg)))
 }
@@ -5443,26 +5407,20 @@ async fn create_rooms(global_state: Arc<BotState>, mut shutdown: rocket::Shutdow
                                         }
                                     }
                                 }
+                            } else if !cal_event.is_private_async_part() && let Some(channel) = event.discord_race_room_channel {
+                                if let Some(thread) = cal_event.race.scheduling_thread {
+                                    thread.say(&*ctx, &msg).await?;
+                                    channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
+                                } else {
+                                    channel.say(&*ctx, msg).await?;
+                                }
                             } else {
-                                if_chain! {
-                                    if !cal_event.is_private_async_part();
-                                    if let Some(channel) = event.discord_race_room_channel;
-                                    then {
-                                        if let Some(thread) = cal_event.race.scheduling_thread {
-                                            thread.say(&*ctx, &msg).await?;
-                                            channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
-                                        } else {
-                                            channel.say(&*ctx, msg).await?;
-                                        }
-                                    } else {
-                                        if let Some(thread) = cal_event.race.scheduling_thread {
-                                            thread.say(&*ctx, msg).await?;
-                                        } else if let Some(channel) = event.discord_organizer_channel {
-                                            channel.say(&*ctx, msg).await?;
-                                        } else {
-                                            FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, msg).await?;
-                                        }
-                                    }
+                                if let Some(thread) = cal_event.race.scheduling_thread {
+                                    thread.say(&*ctx, msg).await?;
+                                } else if let Some(channel) = event.discord_organizer_channel {
+                                    channel.say(&*ctx, msg).await?;
+                                } else {
+                                    FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, msg).await?;
                                 }
                             }
                         }

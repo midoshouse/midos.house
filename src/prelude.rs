@@ -76,7 +76,6 @@ pub(crate) use {
             TryStreamExt as _,
         },
     },
-    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::{
         regex_captures,
