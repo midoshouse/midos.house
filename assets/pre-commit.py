@@ -4,6 +4,7 @@ import re
 import subprocess
 
 subprocess.run(['cargo', 'check'], check=True)
+subprocess.run(['cargo', 'msrv', 'verify'], check=True)
 subprocess.run(['wsl', '-d', 'ubuntu-m2', 'sudo', '-n', 'apt-get', 'install', '-y', 'pkg-config', 'libssl-dev'], check=True)
 subprocess.run(['wsl', '-d', 'ubuntu-m2', '/home/fenhl/.cargo/bin/rustup', 'update', 'stable'], check=True)
 subprocess.run(['wsl', '-d', 'ubuntu-m2', '/home/fenhl/.cargo/bin/cargo', 'install', 'sqlx-cli'], check=True)
