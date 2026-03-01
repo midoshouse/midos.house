@@ -1184,6 +1184,13 @@ impl Race {
         }
     }
 
+    pub(crate) fn stream_delay(&self, event: &event::Data<'_>) -> Duration {
+        match self.entrants {
+            Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
+            Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
+        }
+    }
+
     pub(crate) fn draft_kind(&self, event: &event::Data<'_>) -> Option<draft::Kind> {
         if let Some(format) = sco::Format::for_race(self) {
             format.draft_kind()
@@ -1968,7 +1975,7 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
     dtend
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, cal: &mut ICalendar<'_>, event: &event::Data<'_>, delay: bool) -> Result<(), Error> {
     let now = Utc::now();
     let mut latest_instantiated_weeklies = HashMap::new();
     for race in Race::for_event(transaction, &global.http_client, event).await?.into_iter() {
@@ -2045,8 +2052,8 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &G
                 } else {
                     summary_prefix
                 })));
-                cal_event.push(dtstart(start));
-                cal_event.push(dtend(race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + race_event.estimated_duration())));
+                cal_event.push(dtstart(start + if delay { race.stream_delay(event) } else { Duration::default() }));
+                cal_event.push(dtend(race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + race_event.estimated_duration()) + if delay { race.stream_delay(event) } else { Duration::default() }));
                 let mut urls = Vec::default();
                 for (language, video_url) in &race.video_urls {
                     urls.push((Cow::Owned(format!("{language} restream")), video_url.clone()));
@@ -2100,11 +2107,18 @@ pub(crate) async fn index_help(global: &GlobalState, me: Option<User>, uri: Orig
     let chests_event = events.choose(&mut rng());
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     page(transaction, global, &me, &uri, PageStyle::new(chests), "Calendar — Mido's House", html! {
-        p {
-            : "A calendar of all races across all events can be found at ";
-            code : uri!(base_uri(), index);
-            : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
+        p : "There are two calendars for all races across all events:";
+        ul {
+            li {
+                code : uri!(base_uri(), index(false));
+                : " uses the scheduled starting times";
+            }
+            li {
+                code : uri!(base_uri(), index(true));
+                : " adjusts for stream delay";
+            }
         }
+        p : "By pasting one of these links into your calendar app's “subscribe” feature, you can get automatic updates as races are scheduled:";
         ul {
             li {
                 : "In Google Calendar, select ";
@@ -2123,36 +2137,36 @@ pub(crate) async fn index_help(global: &GlobalState, me: Option<User>, uri: Orig
     }).await
 }
 
-#[rocket::get("/calendar.ics")]
-pub(crate) async fn index(global: &GlobalState) -> Result<Response<ICalendar<'static>>, Error> {
+#[rocket::get("/calendar.ics?<delay>")]
+pub(crate) async fn index(global: &GlobalState, delay: bool) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = global.db_pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed"#).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, global, &mut cal, &event).await?;
+        add_event_races(&mut transaction, global, &mut cal, &event, delay).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
-#[rocket::get("/series/<series>/calendar.ics")]
-pub(crate) async fn for_series(global: &GlobalState, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
+#[rocket::get("/series/<series>/calendar.ics?<delay>")]
+pub(crate) async fn for_series(global: &GlobalState, series: Series, delay: bool) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = global.db_pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, global, &mut cal, &event).await?;
+        add_event_races(&mut transaction, global, &mut cal, &event, delay).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
-#[rocket::get("/event/<series>/<event>/calendar.ics")]
-pub(crate) async fn for_event(global: &GlobalState, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
+#[rocket::get("/event/<series>/<event>/calendar.ics?<delay>")]
+pub(crate) async fn for_event(global: &GlobalState, series: Series, event: &str, delay: bool) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
     let mut transaction = global.db_pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, global, &mut cal, &event).await?;
+    add_event_races(&mut transaction, global, &mut cal, &event, delay).await?;
     transaction.commit().await?;
     Ok(Response(cal))
 }
