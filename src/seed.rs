@@ -66,6 +66,16 @@ impl HashIconExt for HashIcon {
     }
 }
 
+trait OcarinaNoteExt {
+    fn to_html(&self) -> RawHtml<String>;
+}
+
+impl OcarinaNoteExt for OcarinaNote {
+    fn to_html(&self) -> RawHtml<String> {
+        char::from(*self).to_html() //TODO button icons
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) struct Data {
@@ -237,8 +247,7 @@ enum SpoilerStatus {
     NotFound,
 }
 
-pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
-    //TODO show seed password when appropriate (like show_seed but at race start instead of 15 minutes before)
+pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, show_password: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(now).await?;
     let mut seed_links = match seed.files {
         Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => Some(html! {
@@ -289,21 +298,41 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
             });
         }
     }
-    Ok(match (extra.file_hash, seed_links) {
-        (None, None) => html! {},
-        (None, Some(seed_links)) => seed_links,
-        (Some(file_hash), None) => html! {
-            div(class = "hash") {
-                @for hash_icon in file_hash {
-                    : hash_icon.to_html();
-                }
-            }
-        },
-        (Some(file_hash), Some(seed_links)) => html! {
-            div(class = "seed") {
+    Ok(match (extra.file_hash, show_password, extra.password, seed_links) {
+        (None, false, _, None) | (None, _, None, None) => html! {},
+        (None, false, _, Some(seed_links)) | (None, _, None, Some(seed_links)) => seed_links,
+        (_, _, _, None) => html! {
+            @if let Some(file_hash) = extra.file_hash {
                 div(class = "hash") {
                     @for hash_icon in file_hash {
                         : hash_icon.to_html();
+                    }
+                }
+            }
+            @if show_password && let Some(password) = extra.password {
+                div(class = "password") {
+                    //TODO clef?
+                    @for note in password {
+                        : note.to_html();
+                    }
+                }
+            }
+        },
+        (_, _, _, Some(seed_links)) => html! {
+            div(class = "seed") {
+                @if let Some(file_hash) = extra.file_hash {
+                    div(class = "hash") {
+                        @for hash_icon in file_hash {
+                            : hash_icon.to_html();
+                        }
+                    }
+                }
+                @if show_password && let Some(password) = extra.password {
+                    div(class = "password") {
+                        //TODO clef?
+                        @for note in password {
+                            : note.to_html();
+                        }
                     }
                 }
                 div(class = "seed-links") : seed_links;
@@ -312,7 +341,7 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
     })
 }
 
-pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool, show_password: bool) -> Result<RawHtml<String>, ExtraDataError> {
     let mut seeds = pin!(seeds);
     let now = Utc::now();
     Ok(html! {
@@ -325,7 +354,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
             tbody {
                 @while let Some(seed) = seeds.next().await {
                     tr {
-                        td : table_cell(now, &seed, spoiler_logs, None).await?;
+                        td : table_cell(now, &seed, spoiler_logs, show_password, None).await?;
                     }
                 }
             }

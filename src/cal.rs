@@ -1076,6 +1076,12 @@ impl Race {
         self.cal_events().all(|event| event.is_private_async_part() || event.start().is_some_and(|start| start <= now + TimeDelta::minutes(15)) || event.end().is_some())
     }
 
+    /// The password remains hidden until it's posted in the last calendar event of this race.
+    pub(crate) fn show_password(&self) -> bool {
+        if let RaceSchedule::Unscheduled = self.schedule { return false }
+        self.cal_events().all(|event| event.end().is_some()) //TODO for cal events that aren't ended, check if race room state is at least pending
+    }
+
     pub(crate) fn is_ended(&self) -> bool {
         // Since the end time of a race isn't known in advance, we assume that if a race has an end time, that end time is in the past.
         self.schedule.end_time(&self.entrants).is_some()
@@ -2742,7 +2748,7 @@ pub(crate) async fn race_table(
                         @if has_seeds {
                             td {
                                 @if race.show_seed() {
-                                    : seed::table_cell(now, &race.seed, true, options.can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
+                                    : seed::table_cell(now, &race.seed, true, race.show_password(), options.can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                                 } else {
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half

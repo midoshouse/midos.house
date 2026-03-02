@@ -1279,7 +1279,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                     false, // no official races with progression spoilers so far
                                 );
                                 let extra = seed.extra(Utc::now()).await?;
-                                let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
+                                let seed_table = seed::table(stream::iter(iter::once(seed)), false, true).await?;
                                 let ctx = ctx.take_submit_async();
                                 let mut errors = ctx.errors().collect_vec();
                                 Some(html! {
@@ -1290,14 +1290,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                             : ".";
                                         };
                                         : seed_table;
-                                        @if let Some(password) = extra.password {
-                                            p { //TODO replace this hack with password support in seed::table
-                                                : "Password: ";
-                                                @for note in password {
-                                                    : char::from(note);
-                                                }
-                                            };
-                                        }
                                         p : "After playing the async, fill out the form below.";
                                         : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
                                             @match data.team_config {

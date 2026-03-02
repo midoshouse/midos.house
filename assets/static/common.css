@@ -395,8 +395,17 @@ td.numeric {
     text-align: start;
 }
 
-.hash {
+.seed-icons {
+    display: flex;
+    flex-direction: column;
+}
+
+.hash,
+.password {
     direction: ltr;
+}
+
+.hash {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
@@ -705,7 +714,8 @@ footer,
         opacity: 0%;
     }
 
-    tr:hover .seed > .hash {
+    tr:hover .seed .hash,
+    tr:hover .seed .password {
         opacity: 35%;
         filter: blur(2px);
     }
