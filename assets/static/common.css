@@ -403,27 +403,42 @@ td.numeric {
 .hash,
 .password {
     direction: ltr;
-}
-
-.hash {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
+}
+
+.hash {
     gap: 5px;
+}
+
+.password {
+    gap: 3px;
+}
+
+.hash-icon,
+.password-icon {
+    vertical-align: sub;
 }
 
 .hash-icon {
     width: 25px;
     height: 25px;
-    vertical-align: sub;
     filter: drop-shadow(1px 1px 0 black);
 }
 
-h1.hash {
+.password-icon {
+    width: 15px;
+    height: 15px;
+}
+
+h1.hash,
+h1.password {
     gap: 10px;
 }
 
-h1.hash .hash-icon {
+h1.hash .hash-icon,
+h1.password .password-icon {
     width: 50px;
     height: 50px;
 }
@@ -571,12 +586,16 @@ footer,
     }
 
     h1.hash,
-    .seeds .hash {
+    h1.password,
+    .seeds .hash,
+    .seeds .password {
         gap: 10px;
     }
 
     h1 .hash-icon,
-    .seeds .hash-icon {
+    h1 .password-icon,
+    .seeds .hash-icon,
+    .seeds .password-icon {
         width: 50px;
         height: 50px;
     }
@@ -714,13 +733,12 @@ footer,
         opacity: 0%;
     }
 
-    tr:hover .seed .hash,
-    tr:hover .seed .password {
+    tr:hover .seed-icons {
         opacity: 35%;
         filter: blur(2px);
     }
 
-    tr:hover .seed > .seed-links {
+    tr:hover .seed-links {
         opacity: 100%;
     }
 }

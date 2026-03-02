@@ -72,7 +72,16 @@ trait OcarinaNoteExt {
 
 impl OcarinaNoteExt for OcarinaNote {
     fn to_html(&self) -> RawHtml<String> {
-        char::from(*self).to_html() //TODO button icons
+        html! {
+            @match self {
+                //TODO SVG
+                Self::A => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/a.png"));
+                Self::CDown => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-down.png"));
+                Self::CRight => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-right.png"));
+                Self::CLeft => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-left.png"));
+                Self::CUp => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-up.png"));
+            }
+        }
     }
 }
 
@@ -302,24 +311,7 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
         (None, false, _, None) | (None, _, None, None) => html! {},
         (None, false, _, Some(seed_links)) | (None, _, None, Some(seed_links)) => seed_links,
         (_, _, _, None) => html! {
-            @if let Some(file_hash) = extra.file_hash {
-                div(class = "hash") {
-                    @for hash_icon in file_hash {
-                        : hash_icon.to_html();
-                    }
-                }
-            }
-            @if show_password && let Some(password) = extra.password {
-                div(class = "password") {
-                    //TODO clef?
-                    @for note in password {
-                        : note.to_html();
-                    }
-                }
-            }
-        },
-        (_, _, _, Some(seed_links)) => html! {
-            div(class = "seed") {
+            div(class = "seed-icons") {
                 @if let Some(file_hash) = extra.file_hash {
                     div(class = "hash") {
                         @for hash_icon in file_hash {
@@ -332,6 +324,27 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
                         //TODO clef?
                         @for note in password {
                             : note.to_html();
+                        }
+                    }
+                }
+            }
+        },
+        (_, _, _, Some(seed_links)) => html! {
+            div(class = "seed") {
+                div(class = "seed-icons") {
+                    @if let Some(file_hash) = extra.file_hash {
+                        div(class = "hash") {
+                            @for hash_icon in file_hash {
+                                : hash_icon.to_html();
+                            }
+                        }
+                    }
+                    @if show_password && let Some(password) = extra.password {
+                        div(class = "password") {
+                            //TODO clef?
+                            @for note in password {
+                                : note.to_html();
+                            }
                         }
                     }
                 }
