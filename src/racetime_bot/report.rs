@@ -8,8 +8,8 @@ use {
 };
 
 #[derive(Debug, thiserror::Error)]
-#[error("missing field in GraphQL query response")]
-struct GraphQLQueryResponseError;
+#[error("missing field in GraphQL query response for set {0}")]
+struct GraphQLQueryResponseError(startgg::ID);
 
 trait Score {
     type SortKey: Ord;
@@ -328,10 +328,10 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     } = startgg::query_uncached::<startgg::SetScoresQuery>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::set_scores_query::Variables {
                         set_id: set.clone(),
                     }).await.to_racetime()? else {
-                        return Err(GraphQLQueryResponseError).to_racetime()
+                        return Err(GraphQLQueryResponseError(set.clone())).to_racetime()
                     };
                     let mut game_data = games.into_iter().map(|game| {
-                        let Some(startgg::set_scores_query::SetScoresQuerySetGames { order_num: Some(game_num), winner_id: Some(winner_id) }) = game else { return Err(GraphQLQueryResponseError) };
+                        let Some(startgg::set_scores_query::SetScoresQuerySetGames { order_num: Some(game_num), winner_id: Some(winner_id) }) = game else { return Err(GraphQLQueryResponseError(set.clone())) };
                         Ok(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
                             winner_id: Some(startgg::ID(winner_id.to_string())),
                             entrant1_score: None,
@@ -354,7 +354,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     let match_decided = match set_games_type {
                         1 => i16::try_from(overall_won_games).ok().is_none_or(|overall_won_games| overall_won_games > game_count / 2), // best of
                         2 => i16::try_from(game_data.len()).ok().is_none_or(|overall_games| overall_games >= game_count), // total games
-                        _ => return Err(GraphQLQueryResponseError).to_racetime(),
+                        _ => return Err(GraphQLQueryResponseError(set.clone())).to_racetime(),
                     };
                     startgg::query_uncached::<startgg::ReportMultiGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_multi_game_result_mutation::Variables {
                         set_id: set.clone(),
