@@ -322,7 +322,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 if let Some(game) = cal_event.race.game {
                     let startgg::set_scores_query::ResponseData {
                         set: Some(startgg::set_scores_query::SetScoresQuerySet {
-                            games: Some(games),
+                            games,
                             set_games_type: Some(set_games_type),
                         }),
                     } = startgg::query_uncached::<startgg::SetScoresQuery>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::set_scores_query::Variables {
@@ -330,7 +330,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     }).await.to_racetime()? else {
                         return Err(GraphQLQueryResponseError(set.clone())).to_racetime()
                     };
-                    let mut game_data = games.into_iter().map(|game| {
+                    let mut game_data = games.into_iter().flatten().map(|game| {
                         let Some(startgg::set_scores_query::SetScoresQuerySetGames { order_num: Some(game_num), winner_id: Some(winner_id) }) = game else { return Err(GraphQLQueryResponseError(set.clone())) };
                         Ok(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
                             winner_id: Some(startgg::ID(winner_id.to_string())),
