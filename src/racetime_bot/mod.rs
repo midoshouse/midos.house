@@ -1840,24 +1840,6 @@ impl BotState {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
-            #[derive(Serialize)]
-            #[serde(rename_all = "UPPERCASE")]
-            enum UnlockSetting {
-                Always,
-                RaceTime,
-                Never,
-            }
-
-            #[derive(Serialize)]
-            struct SeedRequest {
-                version: &'static str,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                settings_preset: Option<&'static str>,
-                unlock_setting: UnlockSetting,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                racetime_room_url: Option<Url>,
-            }
-
             if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
                 // triforceblitz.com has a list of recently rolled seeds, making it easy to find a seed if you know when it was rolled.
                 // This is especially true for open races, whose rooms are opened an entire hour before start.
@@ -1867,23 +1849,23 @@ impl BotState {
             }
             update_tx.send(SeedRollUpdate::Started).await.allow_unreceived();
             let seed_request = match unlock_spoiler_log {
-                UnlockSpoilerLog::Now => SeedRequest {
-                    unlock_setting: UnlockSetting::Always,
+                UnlockSpoilerLog::Now => tfb::SeedRequest {
+                    unlock_setting: tfb::UnlockSetting::Always,
                     racetime_room_url: None,
                     version, settings_preset,
                 },
                 UnlockSpoilerLog::Progression => panic!("progression spoiler mode not supported by triforceblitz.com"),
                 UnlockSpoilerLog::After => if let Some(ref room) = room {
-                    SeedRequest {
-                        unlock_setting: UnlockSetting::RaceTime,
+                    tfb::SeedRequest {
+                        unlock_setting: tfb::UnlockSetting::RaceTime,
                         racetime_room_url: Some(room.parse()?),
                         version, settings_preset,
                     }
                 } else {
                     panic!("cannot set a Triforce Blitz seed to unlock after the race without a race room")
                 },
-                UnlockSpoilerLog::Never => SeedRequest {
-                    unlock_setting: UnlockSetting::Never,
+                UnlockSpoilerLog::Never => tfb::SeedRequest {
+                    unlock_setting: tfb::UnlockSetting::Never,
                     racetime_room_url: None,
                     version, settings_preset,
                 },
