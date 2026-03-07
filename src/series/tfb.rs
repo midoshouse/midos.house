@@ -10,6 +10,31 @@ use {
     },
 };
 
+#[derive(Deserialize)]
+pub(crate) struct SeedResponse {
+    pub(crate) id: Uuid,
+    pub(crate) hash_icons: [HashIcon; 5],
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SotdResponse {
+    pub(crate) entries: Vec<SotdEntry>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SotdEntry {
+    pub(crate) preset_key: String,
+    pub(crate) preset_display_name: String,
+    pub(crate) scheduled_spoiler_unlock_at_utc: DateTime<Utc>,
+    pub(crate) seed: SotdEntrySeed,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct SotdEntrySeed {
+    pub(crate) id: Uuid,
+    pub(crate) hash_icons: [HashIcon; 5],
+}
+
 pub(crate) fn piece_count(team_config: TeamConfig) -> u8 {
     3 * team_config.roles().len() as u8
 }
@@ -75,24 +100,6 @@ pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<D
         ]),
         submit: Some(format!("Submit")),
     })
-}
-
-pub(crate) fn parse_seed_url(seed: &Url) -> Option<(bool, Uuid)> {
-    if let Some(is_dev) = match seed.host_str() {
-            Some("triforceblitz.com" | "www.triforceblitz.com") => Some(false),
-            Some("dev.triforceblitz.com") => Some(true),
-            _ => None,
-        }
-        && let Some(mut path_segments) = seed.path_segments()
-        && path_segments.next() == Some(if is_dev { "seeds" } else { "seed" })
-        && let Some(segment) = path_segments.next()
-        && let Ok(uuid) = Uuid::parse_str(segment)
-        && path_segments.next().is_none()
-    {
-        Some((is_dev, uuid))
-    } else {
-        None
-    }
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {

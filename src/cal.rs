@@ -1292,8 +1292,7 @@ impl Race {
         let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, is_tfb_dev, tfb_uuid) = match self.seed.files {
             Some(seed::Files::MidosHouse { ref file_stem, ref locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), false, None),
             Some(seed::Files::OotrWeb { id, gen_time, ref file_stem }) => (Some(id), Some(gen_time), Some(file_stem), None, false, None),
-            Some(seed::Files::TriforceBlitz { is_dev, uuid }) => (None, None, None, None, is_dev, Some(uuid)),
-            Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
+            Some(seed::Files::TriforceBlitz { is_dev, uuid, scheduled_spoiler_unlock: _ }) => (None, None, None, None, is_dev, Some(uuid)),
             None => (None, None, None, None, false, None),
         };
         sqlx::query!("

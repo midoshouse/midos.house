@@ -109,10 +109,7 @@ pub(crate) enum Files {
     TriforceBlitz {
         is_dev: bool,
         uuid: Uuid,
-    },
-    TfbSotd {
-        date: NaiveDate,
-        ordinal: u64,
+        scheduled_spoiler_unlock: Option<DateTime<Utc>>,
     },
 }
 
@@ -144,7 +141,7 @@ impl Data {
             },
             password: password.map(|pw| pw.chars().map(|note| note.try_into().expect("invalid ocarina note in password, should be prevented by SQL constraint")).collect_vec().try_into().expect("invalid password length, should be prevented by SQL constraint")),
             files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
-                (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { is_dev: is_tfb_dev, uuid }),
+                (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { is_dev: is_tfb_dev, uuid, scheduled_spoiler_unlock: None }),
                 (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
                 (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(if let Some(first_start) = [start, async_start1, async_start2, async_start3].into_iter().filter_map(identity).min() {
                     Files::OotrWeb { id, gen_time: first_start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) }
@@ -170,7 +167,6 @@ impl Data {
             Some(Files::MidosHouse { .. }) => true,
             Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - WEB_TIMEOUT,
             Some(Files::TriforceBlitz { .. }) => false,
-            Some(Files::TfbSotd { .. }) => false,
             None => false,
         })
             && let Some((spoiler_path, spoiler_file_name)) = match self.files {
@@ -284,15 +280,12 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
                 }
             }
         }),
-        Some(Files::TriforceBlitz { is_dev, uuid }) => Some(html! {
+        Some(Files::TriforceBlitz { is_dev, uuid, .. }) => Some(html! {
             a(href = if is_dev {
                 format!("https://dev.triforceblitz.com/seeds/{uuid}")
             } else {
                 format!("https://triforceblitz.com/seed/{uuid}")
             }) : "View";
-        }),
-        Some(Files::TfbSotd { ordinal, .. }) => Some(html! {
-            a(href = format!("https://triforceblitz.com/seed/daily/{ordinal}")) : "View";
         }),
         None => None,
     };

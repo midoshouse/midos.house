@@ -234,12 +234,10 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
         let (seed_cache_tx, seed_cache_rx) = watch::channel(());
         let bot_state = Arc::new(racetime_bot::BotState::new(
             new_room_lock.clone(),
-            config.racetime_bot.clone(),
+            config.clone(),
             extra_room_tx,
             db_pool.clone(),
             http_client.clone(),
-            config.league_api_key.clone(),
-            config.startgg.clone(),
             ootr_api_client,
             discord_builder.ctx_fut.clone(),
             clean_shutdown.clone(),

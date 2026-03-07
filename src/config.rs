@@ -29,6 +29,7 @@ pub(crate) struct Config {
     pub(crate) startgg: String,
     #[serde(rename = "startggOAuth")]
     pub(crate) startgg_oauth: ConfigOAuth,
+    pub(crate) tfb_api_key: String,
 }
 
 impl Config {
