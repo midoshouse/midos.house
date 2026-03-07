@@ -288,11 +288,11 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
             a(href = if is_dev {
                 format!("https://dev.triforceblitz.com/seeds/{uuid}")
             } else {
-                format!("https://www.triforceblitz.com/seed/{uuid}")
+                format!("https://triforceblitz.com/seed/{uuid}")
             }) : "View";
         }),
         Some(Files::TfbSotd { ordinal, .. }) => Some(html! {
-            a(href = format!("https://www.triforceblitz.com/seed/daily/{ordinal}")) : "View";
+            a(href = format!("https://triforceblitz.com/seed/daily/{ordinal}")) : "View";
         }),
         None => None,
     };

@@ -7,7 +7,7 @@ This is the source code for <https://midos.house/>, a platform for organizing [O
 * [Mido's House Multiworld](https://github.com/midoshouse/ootr-multiworld) (creating official rooms, auto-tracking integration for restreams)
 * and many more.
 
-Mido's House is custom-built in close cooperation with event organizers to allow it to work with the features that make each event unique. For example, it supports the [Triforce Blitz](https://www.triforceblitz.com/) format's time limit, scoring system, and seed generator.
+Mido's House is custom-built in close cooperation with event organizers to allow it to work with the features that make each event unique. For example, it supports the [Triforce Blitz](https://triforceblitz.com/) format's time limit, scoring system, and seed generator.
 
 # Contributing
 

@@ -811,12 +811,13 @@ impl<'a> Data<'a> {
 
     async fn practice_buttons(&self, ootr_api_client: &ootr_web::ApiClient, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<PracticeButtons, Error> {
         let practice_seed_urls = match (self.series, &*self.event) {
+            //TODO query params no longer seem to work, roll directly using upcoming TFB API
             (Series::TriforceBlitz, "2") => {
-                let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
+                let url = Url::parse_with_params("https://triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
                 vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             (Series::TriforceBlitz, "3") => {
-                let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
+                let url = Url::parse_with_params("https://triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
                 vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             (Series::TriforceBlitz, "4coop") => {
@@ -824,7 +825,7 @@ impl<'a> Data<'a> {
                 vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             (Series::TriforceBlitz, "4") => {
-                let url = Url::parse("https://www.triforceblitz.com/generator")?;
+                let url = Url::parse("https://triforceblitz.com/generator")?;
                 vec![(false, url.to_html(), Some(url), format!("Roll Seed"))]
             }
             id => if let Some(draft_kind) = self.draft_kind() {
