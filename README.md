@@ -1,6 +1,6 @@
 This is the source code for <https://midos.house/>, a platform for organizing [Ocarina of Time randomizer](https://ootrandomizer.com/) events like tournaments and community races. It integrates with other platforms to automate some aspects of event management, including:
 
-* [racetime.gg](https://racetime.gg/) (creating official and practice race rooms, handling chat commands, handling results and [FPA](https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub) calls)
+* [racetime.gg](https://racetime.gg/) (creating official and practice race rooms, handling chat commands, handling results and [FPA](https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement) calls)
 * [Discord](https://discord.com/) (creating scheduling threads, handling commands for scheduling and settings drafting, posting results, notifying organizers when their attention is needed)
 * [start.gg](https://start.gg/) (handling matchups, reporting results)
 * [ootrandomizer.com](https://ootrandomizer.com/) (generating seeds, unlocking spoiler logs after races)

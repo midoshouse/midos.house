@@ -34,7 +34,7 @@ use {
 };
 pub(crate) use mhstatus::EventKind;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Source {
     Manual,
     Challonge {
@@ -58,7 +58,7 @@ pub(crate) enum Source {
     },
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) enum Entrant {
     MidosHouseTeam(Team),
     MidosHouseTeamMember {
@@ -178,7 +178,7 @@ impl PartialEq for Entrant {
 
 impl Eq for Entrant {}
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Entrants {
     Open,
     Count {
@@ -233,7 +233,7 @@ impl Entrants {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub(crate) enum RaceSchedule {
     #[default]
     Unscheduled,
@@ -363,7 +363,7 @@ impl RaceSchedule {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Restreamer {
     MidosHouse(Id<Users>),
     RaceTime(String),
@@ -426,7 +426,7 @@ impl Restreamer {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct Race {
     pub(crate) id: Id<Races>,
     pub(crate) series: Series,
@@ -1069,6 +1069,56 @@ impl Race {
         }
     }
 
+    async fn into_async_part_for(self, transaction: &mut Transaction<'_, Postgres>, user: &User) -> sqlx::Result<Result<Event, Self>> {
+        Ok(match self.schedule {
+            RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => Err(self),
+            RaceSchedule::Async { .. } => match self.entrants {
+                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Err(self),
+                Entrants::Two([ref team1, ref team2]) => {
+                    let matches_team1 = match team1 {
+                        Entrant::MidosHouseTeam(team) => team.member_ids(transaction).await?.contains(&user.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member == user,
+                        Entrant::Discord { id, racetime_id, .. } => user.discord.as_ref().is_some_and(|discord| discord.id == *id) || racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                        Entrant::Named { racetime_id, .. } => racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                    };
+                    if matches_team1 { return Ok(Ok(Event { race: self, kind: EventKind::Async1 })) }
+                    let matches_team2 = match team2 {
+                        Entrant::MidosHouseTeam(team) => team.member_ids(transaction).await?.contains(&user.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member == user,
+                        Entrant::Discord { id, racetime_id, .. } => user.discord.as_ref().is_some_and(|discord| discord.id == *id) || racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                        Entrant::Named { racetime_id, .. } => racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                    };
+                    if matches_team2 { return Ok(Ok(Event { race: self, kind: EventKind::Async2 })) }
+                    Err(self)
+                }
+                Entrants::Three([ref team1, ref team2, ref team3]) => {
+                    let matches_team1 = match team1 {
+                        Entrant::MidosHouseTeam(team) => team.member_ids(transaction).await?.contains(&user.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member == user,
+                        Entrant::Discord { id, racetime_id, .. } => user.discord.as_ref().is_some_and(|discord| discord.id == *id) || racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                        Entrant::Named { racetime_id, .. } => racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                    };
+                    if matches_team1 { return Ok(Ok(Event { race: self, kind: EventKind::Async1 })) }
+                    let matches_team2 = match team2 {
+                        Entrant::MidosHouseTeam(team) => team.member_ids(transaction).await?.contains(&user.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member == user,
+                        Entrant::Discord { id, racetime_id, .. } => user.discord.as_ref().is_some_and(|discord| discord.id == *id) || racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                        Entrant::Named { racetime_id, .. } => racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                    };
+                    if matches_team2 { return Ok(Ok(Event { race: self, kind: EventKind::Async2 })) }
+                    let matches_team3 = match team3 {
+                        Entrant::MidosHouseTeam(team) => team.member_ids(transaction).await?.contains(&user.id),
+                        Entrant::MidosHouseTeamMember { member, .. } => member == user,
+                        Entrant::Discord { id, racetime_id, .. } => user.discord.as_ref().is_some_and(|discord| discord.id == *id) || racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                        Entrant::Named { racetime_id, .. } => racetime_id.as_ref().is_some_and(|racetime_id| user.racetime.as_ref().is_some_and(|racetime| racetime.id == *racetime_id)),
+                    };
+                    if matches_team3 { return Ok(Ok(Event { race: self, kind: EventKind::Async3 })) }
+                    Err(self)
+                }
+            },
+        })
+    }
+
     /// The seed remains hidden until it's posted in the last calendar event of this race.
     pub(crate) fn show_seed(&self) -> bool {
         if let RaceSchedule::Unscheduled = self.schedule { return false }
@@ -1149,7 +1199,7 @@ impl Race {
         }
     }
 
-    pub(crate) fn has_room_for(&self, team: &Team) -> bool {
+    pub(crate) fn has_room_for(&self, team: &Team /*TODO take an &Entrant instead? */) -> bool {
         match &self.schedule {
             RaceSchedule::Unscheduled => false,
             RaceSchedule::Live { room, .. } => room.is_some(),
@@ -3577,6 +3627,358 @@ pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket
     }
 }
 
+enum RaceDetailsContext<'v> {
+    None,
+    RequestAsync(Context<'v>),
+    SubmitAsync(Context<'v>),
+}
+
+impl<'v> RaceDetailsContext<'v> {
+    fn take_request_async(&mut self) -> Context<'v> {
+        match mem::replace(self, Self::None) {
+            Self::RequestAsync(ctx) => ctx,
+            old_val => {
+                *self = old_val;
+                Context::default()
+            }
+        }
+    }
+
+    fn take_submit_async(&mut self) -> Context<'v> {
+        match mem::replace(self, Self::None) {
+            Self::SubmitAsync(ctx) => ctx,
+            old_val => {
+                *self = old_val;
+                Context::default()
+            }
+        }
+    }
+}
+
+async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, mut ctx: RaceDetailsContext<'_>) -> Result<RawHtml<String>, event::Error> {
+    let content = html! {
+        : event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
+        @if let Some(me) = &me {
+            @if let Ok(cal_event) = race.into_async_part_for(&mut transaction, me).await? {
+                @if let Ok(team) = cal_event.active_teams().exactly_one() {
+                    @if let Some(team_row) = sqlx::query!(r#"SELECT requested, submitted FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
+                        @if team_row.submitted.is_none() {
+                            @let extra = cal_event.race.seed.extra(Utc::now()).await?;
+                            @let seed_table = seed::table(stream::iter(iter::once(cal_event.race.seed.clone())), false, true).await?;
+                            @let ctx = ctx.take_submit_async();
+                            @let mut errors = ctx.errors().collect_vec();
+                            div(class = "info") {
+                                p {
+                                    : "You requested an async on ";
+                                    : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
+                                    : ".";
+                                };
+                                : seed_table;
+                                p : "After playing the async, fill out the form below.";
+                                : full_form(uri!(submit_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
+                                    @match event.team_config {
+                                        TeamConfig::Solo => {
+                                            @if let Series::TriforceBlitz = event.series {
+                                                : form_field("pieces", &mut errors, html! {
+                                                    label(for = "pieces") : "Number of Triforce Pieces found:";
+                                                    input(type = "number", min = "0", max = tfb::piece_count(event.team_config), name = "pieces", value? = ctx.field_value("pieces"));
+                                                });
+                                                : form_field("time1", &mut errors, html! {
+                                                    label(for = "time1") : "Time at which you found the most recent piece:";
+                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                    label(class = "help") : "(If you did not find any, leave this field blank.)";
+                                                });
+                                            } else {
+                                                : form_field("time1", &mut errors, html! {
+                                                    label(for = "time1") : "Finishing Time:";
+                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                    label(class = "help") : "(If you did not finish, leave this field blank.)";
+                                                });
+                                            }
+                                            : form_field("vod1", &mut errors, html! {
+                                                label(for = "vod1") : "VoD:";
+                                                input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                            });
+                                        }
+                                        TeamConfig::Pictionary => @unimplemented
+                                        TeamConfig::CoOp => {
+                                            : form_field("time1", &mut errors, html! {
+                                                label(for = "time1") : "Player 1 Finishing Time:";
+                                                input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                            });
+                                            : form_field("vod1", &mut errors, html! {
+                                                label(for = "vod1") : "Player 1 VoD:";
+                                                input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                            });
+                                            : form_field("time2", &mut errors, html! {
+                                                label(for = "time2") : "Player 2 Finishing Time:";
+                                                input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                                label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                            });
+                                            : form_field("vod2", &mut errors, html! {
+                                                label(for = "vod2") : "Player 2 VoD:";
+                                                input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                            });
+                                        }
+                                        TeamConfig::TfbCoOp => @unimplemented
+                                        TeamConfig::Multiworld => {
+                                            : form_field("time1", &mut errors, html! {
+                                                label(for = "time1", class = "power") : "Player 1 Finishing Time:";
+                                                input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                            });
+                                            : form_field("vod1", &mut errors, html! {
+                                                label(for = "vod1", class = "power") : "Player 1 VoD:";
+                                                input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                            });
+                                            : form_field("time2", &mut errors, html! {
+                                                label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
+                                                input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                                label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                            });
+                                            : form_field("vod2", &mut errors, html! {
+                                                label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
+                                                input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                            });
+                                            : form_field("time3", &mut errors, html! {
+                                                label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
+                                                input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
+                                                label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
+                                            });
+                                            : form_field("vod3", &mut errors, html! {
+                                                label(for = "vod3", class = "courage") : "Player 3 VoD:";
+                                                input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
+                                                label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                            });
+                                        }
+                                        TeamConfig::SlugOpen => @unimplemented
+                                    }
+                                    : form_field("fpa", &mut errors, html! {
+                                        label(for = "fpa") {
+                                            : "If you would like to invoke the ";
+                                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
+                                            : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
+                                        }
+                                        textarea(name = "fpa") : ctx.field_value("fpa");
+                                    });
+                                }, errors, "Submit");
+                            }
+                        }
+                    } else {
+                        @if cal_event.start().is_some_and(|start| start <= Utc::now() + TimeDelta::minutes(15)) {
+                            @let ctx = ctx.take_request_async();
+                            @let mut errors = ctx.errors().collect_vec();
+                            div(class = "info") {
+                                p : "Your async is ready.";
+                                : full_form(uri!(request_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
+                                    : form_field("confirm", &mut errors, html! {
+                                        input(type = "checkbox", id = "confirm", name = "confirm");
+                                        label(for = "confirm") {
+                                            @if let TeamConfig::Solo | TeamConfig::SlugOpen = event.team_config {
+                                                : "I am ready to play the seed";
+                                            } else {
+                                                : "We are ready to play the seed";
+                                            }
+                                        }
+                                    });
+                                }, errors, "Request Now");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Race — {}", event.display_name), content).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/races/<id>")]
+pub(crate) async fn race_details(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<Option<RawHtml<String>>, event::Error> {
+    let mut transaction = global.db_pool.begin().await?;
+    let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
+    Ok(Some(race_details_page(transaction, global, me, uri, csrf.as_ref(), event, race, RaceDetailsContext::None).await?))
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct RequestAsyncForm {
+    #[field(default = String::new())]
+    csrf: String,
+    confirm: bool,
+}
+
+#[rocket::post("/event/<series>/<event>/races/<id>/request-async", data = "<form>")]
+pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    Ok(if let Some(ref value) = form.value {
+        let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, me.id).await?;
+        if race.seed.files.is_none() {
+            form.context.push_error(form::Error::validation("The seed for this race has not been rolled yet."));
+        }
+        let cal_event = race.into_async_part_for(&mut transaction, &me).await?;
+        if cal_event.is_err() {
+            form.context.push_error(form::Error::validation("You don't have an async available for this race."));
+        }
+        if let Some(team) = &team {
+            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM race_async_teams WHERE race = $1 AND team = $2) AS "exists!""#, id as _, team.id as _).fetch_one(&mut *transaction).await? {
+                form.context.push_error(form::Error::validation("You have already requested this async."));
+            }
+        } else {
+            form.context.push_error(form::Error::validation("You haven't entered this event."));
+        }
+        if !value.confirm {
+            form.context.push_error(form::Error::validation("This field is required.").with_name("confirm"));
+        }
+        if form.context.errors().next().is_some() {
+            let race = match cal_event {
+                Ok(cal_event) => cal_event.race,
+                Err(race) => race,
+            };
+            transaction.rollback().await?;
+            RedirectOrContent::Content(race_details_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), event, race, RaceDetailsContext::RequestAsync(form.context)).await?)
+        } else {
+            let cal_event = cal_event.expect("validated");
+            let team = team.expect("validated");
+            sqlx::query!("INSERT INTO race_async_teams (race, team, requested) VALUES ($1, $2, NOW())", id as _, team.id as _).execute(&mut *transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(race_details(event.series, &*event.event, cal_event.race.id))))
+        }
+    } else {
+        transaction.rollback().await?;
+        RedirectOrContent::Content(race_details_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), event, race, RaceDetailsContext::RequestAsync(form.context)).await?)
+    })
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct SubmitAsyncForm {
+    #[field(default = String::new())]
+    csrf: String,
+    pieces: Option<i16>,
+    #[field(default = String::new())]
+    time1: String,
+    #[field(default = String::new())]
+    vod1: String,
+    #[field(default = String::new())]
+    time2: String,
+    #[field(default = String::new())]
+    vod2: String,
+    #[field(default = String::new())]
+    time3: String,
+    #[field(default = String::new())]
+    vod3: String,
+    #[field(default = String::new())]
+    fpa: String,
+}
+
+#[rocket::post("/event/<series>/<event>/races/<id>/submit-async", data = "<form>")]
+pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = global.db_pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    Ok(if let Some(ref value) = form.value {
+        let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, me.id).await?;
+        let cal_event = race.into_async_part_for(&mut transaction, &me).await?;
+        if cal_event.is_err() {
+            form.context.push_error(form::Error::validation("You don't have an async available for this race."));
+        }
+        if let Some(team) = &team {
+            if let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, id as _, team.id as _).fetch_optional(&mut *transaction).await? {
+                if submitted {
+                    form.context.push_error(form::Error::validation("You have already submitted this async."));
+                }
+            } else {
+                form.context.push_error(form::Error::validation("You haven't requested this async."));
+            }
+        } else {
+            form.context.push_error(form::Error::validation("You haven't entered this event."));
+        }
+        if let Series::TriforceBlitz = series {
+            if let Some(pieces) = value.pieces {
+                if pieces < 0 || pieces > i16::from(tfb::piece_count(event.team_config)) {
+                    form.context.push_error(form::Error::validation(format!("Must be a number from 0 to {}.", tfb::piece_count(event.team_config))).with_name("pieces"));
+                }
+            } else {
+                form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
+            }
+        }
+        let times = vec![
+            if value.time1.is_empty() {
+                None
+            } else if let Some(time) = parse_duration(&value.time1, None) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
+                None
+            },
+            if value.time2.is_empty() {
+                None
+            } else if let Some(time) = parse_duration(&value.time2, None) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time2"));
+                None
+            },
+            if value.time3.is_empty() {
+                None
+            } else if let Some(time) = parse_duration(&value.time3, None) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time3"));
+                None
+            },
+        ];
+        let vods = vec![
+            value.vod1.clone(),
+            value.vod2.clone(),
+            value.vod3.clone(),
+        ];
+        if form.context.errors().next().is_some() {
+            let race = match cal_event {
+                Ok(cal_event) => cal_event.race,
+                Err(race) => race,
+            };
+            transaction.rollback().await?;
+            RedirectOrContent::Content(race_details_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), event, race, RaceDetailsContext::SubmitAsync(form.context)).await?)
+        } else {
+            let cal_event = cal_event.expect("validated");
+            let team = team.expect("validated");
+            sqlx::query!("UPDATE race_async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE race = $3 AND team = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), cal_event.race.id as _, team.id as _).execute(&mut *transaction).await?;
+            let mut players = Vec::default();
+            for (((role, _), time), vod) in event.team_config.roles().iter().zip(&times).zip(&vods) {
+                let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
+                sqlx::query!("INSERT INTO race_async_players (race, player, time, vod) VALUES ($1, $2, $3, $4)", cal_event.race.id as _, player as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut *transaction).await?;
+                players.push(player);
+            }
+            //TODO report result (like Handler::official_race_finished in racetime_bot::report) if this concludes the race
+            if let Some(organizer_channel) = event.discord_organizer_channel {
+                let msg = MessageBuilder::default()
+                    .push("async submitted by ")
+                    .mention_team(&mut transaction, event.discord_guild, &team).await?
+                    //TODO details
+                    .build();
+                organizer_channel.say(discord_ctx!(global), msg).await?;
+            }
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(race_details(event.series, &*event.event, cal_event.race.id))))
+        }
+    } else {
+        transaction.rollback().await?;
+        RedirectOrContent::Content(race_details_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), event, race, RaceDetailsContext::SubmitAsync(form.context)).await?)
+    })
+}
+
 async fn practice_seed_favicon_url(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, id: Id<Races>) -> Result<Option<Url>, Error> {
     let race = Race::from_id(&mut *transaction, &global.http_client, id).await?;
     let Some((rando_version, settings)) = race.single_settings(transaction).await? else { return Ok(None) };
@@ -3591,7 +3993,7 @@ async fn practice_seed_favicon_url(transaction: &mut Transaction<'_, Postgres>, 
 async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let errors = ctx.errors().collect_vec();
     let content = html! {
-        : event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, false).await?;
+        : event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
         //TODO link back to race page
         h2 : "Practice";
         @if race.single_settings(&mut transaction).await?.is_some() {
@@ -4437,7 +4839,7 @@ pub(crate) async fn add_file_hash_post(global: &GlobalState, me: User, uri: Orig
 async fn volunteer_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: User, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let errors = ctx.errors().collect_vec();
     let content = html! {
-        : event.header(&mut transaction, global, Some(&me), csrf, Tab::Races, false).await?;
+        : event.header(&mut transaction, global, Some(&me), csrf, Tab::Races, true).await?;
         //TODO link back to race page
         h2 : "Volunteer";
         @for error in errors {

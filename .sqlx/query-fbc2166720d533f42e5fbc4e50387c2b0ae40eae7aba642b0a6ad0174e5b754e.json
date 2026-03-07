@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT requested, submitted FROM race_async_teams WHERE race = $1 AND team = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "requested",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "submitted",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "fbc2166720d533f42e5fbc4e50387c2b0ae40eae7aba642b0a6ad0174e5b754e"
+}

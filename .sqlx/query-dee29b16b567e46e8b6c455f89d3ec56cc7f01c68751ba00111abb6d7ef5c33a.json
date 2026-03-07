@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE race_async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE race = $3 AND team = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int2",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dee29b16b567e46e8b6c455f89d3ec56cc7f01c68751ba00111abb6d7ef5c33a"
+}

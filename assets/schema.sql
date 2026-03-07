@@ -612,6 +612,36 @@ CREATE TABLE public.prerolled_seeds (
 ALTER TABLE public.prerolled_seeds OWNER TO mido;
 
 --
+-- Name: race_async_players; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.race_async_players (
+    race bigint NOT NULL,
+    player bigint NOT NULL,
+    vod text,
+    "time" interval
+);
+
+
+ALTER TABLE public.race_async_players OWNER TO mido;
+
+--
+-- Name: race_async_teams; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.race_async_teams (
+    race bigint NOT NULL,
+    team bigint NOT NULL,
+    requested timestamp with time zone NOT NULL,
+    submitted timestamp with time zone,
+    fpa text,
+    pieces smallint
+);
+
+
+ALTER TABLE public.race_async_teams OWNER TO mido;
+
+--
 -- Name: race_player_videos; Type: TABLE; Schema: public; Owner: mido
 --
 
@@ -978,6 +1008,22 @@ ALTER TABLE ONLY public.prerolled_seeds
 
 
 --
+-- Name: race_async_players race_async_players_pkey; Type: CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_async_players
+    ADD CONSTRAINT race_async_players_pkey PRIMARY KEY (race, player);
+
+
+--
+-- Name: race_async_teams race_async_teams_pkey; Type: CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_async_teams
+    ADD CONSTRAINT race_async_teams_pkey PRIMARY KEY (race, team);
+
+
+--
 -- Name: races races_pkey; Type: CONSTRAINT; Schema: public; Owner: mido
 --
 
@@ -1207,6 +1253,38 @@ ALTER TABLE ONLY public.organizers
 
 ALTER TABLE ONLY public.phase_round_options
     ADD CONSTRAINT phase_round_options_series_fkey FOREIGN KEY (series, event) REFERENCES public.events(series, event);
+
+
+--
+-- Name: race_async_players race_async_players_player_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_async_players
+    ADD CONSTRAINT race_async_players_player_fkey FOREIGN KEY (player) REFERENCES public.users(id);
+
+
+--
+-- Name: race_async_players race_async_players_race_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_async_players
+    ADD CONSTRAINT race_async_players_race_fkey FOREIGN KEY (race) REFERENCES public.races(id);
+
+
+--
+-- Name: race_async_teams race_async_teams_race_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_async_teams
+    ADD CONSTRAINT race_async_teams_race_fkey FOREIGN KEY (race) REFERENCES public.races(id);
+
+
+--
+-- Name: race_async_teams race_async_teams_team_fkey; Type: FK CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.race_async_teams
+    ADD CONSTRAINT race_async_teams_team_fkey FOREIGN KEY (team) REFERENCES public.teams(id);
 
 
 --

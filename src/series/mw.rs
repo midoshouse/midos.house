@@ -1987,7 +1987,7 @@ pub(crate) fn async_rules(data: &Data<'_>, async_kind: AsyncKind) -> RawHtml<Str
             }
             li {
                 : "This should be run like an actual race. In the event of a technical issue, teams are allowed to invoke the ";
-                a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
+                a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
                 : " and have up to a 15 minute time where the affected runner can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
             }
         }

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO race_async_players (race, player, time, vod) VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Interval",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5c2bf318e48f9416b9717175ff445005e256f319555cac6eb8fbddeb576083e0"
+}

@@ -1200,6 +1200,7 @@ impl<'v> StatusContext<'v> {
             }
         }
     }
+
     fn take_edit(&mut self) -> Context<'v> {
         match mem::replace(self, Self::None) {
             Self::Edit(ctx) => ctx,
@@ -1378,7 +1379,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                             : form_field("fpa", &mut errors, html! {
                                                 label(for = "fpa") {
                                                     : "If you would like to invoke the ";
-                                                    a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
+                                                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
                                                     : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
                                                 }
                                                 textarea(name = "fpa") : ctx.field_value("fpa");
@@ -1432,7 +1433,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                                 @if let Series::CoOp | Series::Multiworld = data.series {
                                                     : "We have read the above and are ready to play the seed";
                                                 } else {
-                                                    @if let TeamConfig::Solo = data.team_config {
+                                                    @if let TeamConfig::Solo | TeamConfig::SlugOpen = data.team_config {
                                                         : "I am ready to play the seed";
                                                     } else {
                                                         : "We are ready to play the seed";

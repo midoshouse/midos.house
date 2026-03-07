@@ -85,7 +85,7 @@ impl OcarinaNoteExt for OcarinaNote {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) struct Data {
     pub(crate) file_hash: Option<[HashIcon; 5]>,
