@@ -824,7 +824,7 @@ impl Goal {
                 ctx.say("!seed jr: Jabu's Revenge").await?;
                 ctx.say("!seed s2: Triforce Blitz season 2 settings").await?;
                 ctx.say("!seed s1: Triforce Blitz season 1 settings").await?;
-                ctx.say("!seed daily <preset>: Triforce Blitz Seed of the Day (where <preset> is one of s5coop, midnight, s4, or s4coop)").await?;
+                ctx.say("!seed daily <preset>: Triforce Blitz Seed of the Day (where <preset> is one of s5coop or midnight)").await?;
             }
             Self::TriforceBlitzProgressionSpoiler => ctx.say("!seed: The current settings for the mode").await?,
         }
@@ -1410,8 +1410,6 @@ impl Goal {
                 [arg, preset] if arg == "daily" => {
                     let preset_key = match &**preset {
                         "midnight" => "Triforce Blitz S5 Midnight",
-                        "s4" => "Triforce Blitz S4",
-                        "s4coop" => "Triforce Blitz S4 Co-op",
                         "s5coop" => "Triforce Blitz S5 Co-op",
                         _ => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "unknown TFB Seed of the Day preset" }),
                     };
@@ -3872,15 +3870,13 @@ impl RaceHandler<GlobalState> for Handler {
                                             SurveyQuestion {
                                                 name: format!("preset"),
                                                 label: format!("Preset"),
-                                                default: None,
+                                                default: Some(json!("s5coop")),
                                                 help_text: None,
                                                 kind: SurveyQuestionKind::Select,
                                                 placeholder: None,
                                                 options: vec![
                                                     (format!("s5coop"), format!("S5 co-op")),
                                                     (format!("midnight"), format!("Midnight (1v1)")),
-                                                    (format!("s4"), format!("S4 1v1")),
-                                                    (format!("s4coop"), format!("S4 co-op")),
                                                 ],
                                             },
                                         ]),
@@ -4583,7 +4579,7 @@ impl RaceHandler<GlobalState> for Handler {
                         if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
                             if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
                                 // post password on Discord as a contingency for racetime.gg issues in large qualifiers
-                                //TODO implement custom emoji preloading on racetime.gg, then retire this feature
+                                //TODO get https://github.com/racetimeGG/racetime-app/pull/232 merged, then retire this feature
                                 let channel = match &*event.event {
                                     "8" => Some(ChannelId::new(1306254442298998884)),
                                     "9" => Some(ChannelId::new(1444301469011415111)),
