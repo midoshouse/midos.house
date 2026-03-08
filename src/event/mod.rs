@@ -751,16 +751,17 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @let PracticeButtons { practice_seed_buttons, practice_race_button } = self.practice_buttons(&global.ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await?;
-                @match (&*practice_seed_buttons, &practice_race_button) {
-                    ([], None) => {}
-                    ([], Some(button)) | ([button], None) => : button;
-                    (practice_seed_buttons, practice_race_button) => div(class = "popover-wrapper") {
+                @let PracticeButtons { practice_seed_buttons, seed_of_the_day_button, practice_race_button } = self.practice_buttons(global, csrf, &mut errors, PracticeButtonsContext::Navbar { tab, is_subpage }).await?;
+                @match (&*practice_seed_buttons, &seed_of_the_day_button, &practice_race_button) {
+                    ([], None, None) => {}
+                    ([button], None, None) | ([], Some(button), None) | ([], None, Some(button)) => : button;
+                    (practice_seed_buttons, seed_of_the_day_button, practice_race_button) => div(class = "popover-wrapper") {
                         div(id = "practice-menu", popover); //HACK workaround for lack of cross-browser support for CSS overlay property
                         div(class = "menu") {
                             @for practice_seed_button in practice_seed_buttons {
                                 : practice_seed_button;
                             }
+                            : seed_of_the_day_button;
                             : practice_race_button;
                         }
                         button(popovertarget = "practice-menu") : "Practice ⯆";
@@ -809,35 +810,35 @@ impl<'a> Data<'a> {
         })
     }
 
-    async fn practice_buttons(&self, ootr_api_client: &ootr_web::ApiClient, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<PracticeButtons, Error> {
+    async fn practice_buttons(&self, global: &GlobalState, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<PracticeButtons, Error> {
         let practice_seed_urls = if let Some(draft_kind) = self.draft_kind() {
             match draft_kind {
                 draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => vec![
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Base Settings)")),
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Random Settings)")),
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Random Settings, Advanced)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (Base Settings)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (Random Settings)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (Random Settings, Advanced)")),
                 ],
                 draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::S7 => vec![
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Base Settings)")),
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (Random Settings)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (Base Settings)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (Random Settings)")),
                 ],
                 draft::Kind::RslS7 => vec![
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (RSL Weights)")),
-                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::BaseLite), _)).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed (RSL-Lite Weights)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (RSL Weights)")),
+                    (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::BaseLite), _)).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed (RSL-Lite Weights)")),
                 ],
                 draft::Kind::SlugOpen => {
                     let mut urls = Vec::with_capacity(enum_iterator::cardinality::<sco::Format>());
                     for format in all::<sco::Format>() {
                         if let Some(draft_kind) = format.draft_kind() {
                             urls.extend([
-                                (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({}, Base Settings)", format.display_name())),
-                                (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({}, Random Settings)", format.display_name())),
+                                (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), Some(format))).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed ({}, Base Settings)", format.display_name())),
+                                (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), Some(format))).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed ({}, Random Settings)", format.display_name())),
                             ]);
                             if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 = draft_kind {
-                                urls.push((true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({}, Random Settings, Advanced)", format.display_name())));
+                                urls.push((true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), Some(format))).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed ({}, Random Settings, Advanced)", format.display_name())));
                             }
                         } else {
-                            urls.push((true, uri!(practice_seed_post(self.series, &*self.event, _, Some(format))).to_html(), practice_seed_favicon_url(ootr_api_client, self).await?, format!("Roll Seed ({})", format.display_name())));
+                            urls.push((true, uri!(practice_seed_post(self.series, &*self.event, _, Some(format))).to_html(), practice_seed_favicon_url(&global.ootr_api_client, self).await?, format!("Roll Seed ({})", format.display_name())));
                         }
                     }
                     urls
@@ -847,11 +848,15 @@ impl<'a> Data<'a> {
             vec![(
                 true,
                 uri!(practice_seed_post(self.series, &*self.event, _, _)).to_html(),
-                practice_seed_favicon_url(ootr_api_client, self).await?,
+                practice_seed_favicon_url(&global.ootr_api_client, self).await?,
                 format!("Roll Seed"),
             )]
         } else {
             Vec::default()
+        };
+        let seed_of_the_day_preset_key = match (self.series, &*self.event) {
+            (Series::TriforceBlitz, "5coop") => Some("Triforce Blitz S5 Co-op"),
+            _ => None,
         };
         let practice_race_url = if let Some(mut goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
             if self.series == Series::Standard && self.event == "w" && !s::RANDOBOT_CAN_ROLL_WEEKLY {
@@ -874,7 +879,7 @@ impl<'a> Data<'a> {
         };
         let num_practice_seed_buttons = practice_seed_urls.len();
         let practice_seed_buttons = practice_seed_urls.into_iter().map(|(post, url, favicon_url, label)| {
-            let content = if matches!(ctx, PracticeButtonsContext::Content) || num_practice_seed_buttons > 1 || practice_race_url.is_some() { &label } else { "Practice" };
+            let content = if matches!(ctx, PracticeButtonsContext::Content) || num_practice_seed_buttons > 1 || seed_of_the_day_preset_key.is_some() || practice_race_url.is_some() { &label } else { "Practice" };
             if post && match ctx { PracticeButtonsContext::Navbar { tab, is_subpage } => !matches!(tab, Tab::Practice) || is_subpage, PracticeButtonsContext::Content => true } {
                 let (new_errors, form) = if let Some(favicon_url) = favicon_url {
                     external_button_form(url, csrf, Vec::default(), &favicon_url, content)
@@ -903,17 +908,40 @@ impl<'a> Data<'a> {
                 }
             }
         }).collect_vec();
+        let seed_of_the_day_button = if let Some(preset_key) = seed_of_the_day_preset_key
+            && let response = global.http_client
+                .get("https://triforceblitz.com/api/v1/seed-of-the-day/current")
+                .bearer_auth(&global.config.tfb_api_key)
+                .send().await?
+                .detailed_error_for_status().await?
+                .json_with_text_in_error::<tfb::SotdResponse>().await?
+            && let Some(entry) = response.entries.into_iter().find(|entry| entry.preset_key == preset_key)
+        {
+            let url = format!("https://triforceblitz.com/seed/{}", entry.seed.id).parse()?;
+            Some(html! {
+                a(class = "button", href = url) {
+                    : favicon(&url);
+                    @if matches!(ctx, PracticeButtonsContext::Content) || !practice_seed_buttons.is_empty() || practice_race_url.is_some() {
+                        : "Seed of the Day";
+                    } else {
+                        : "Practice";
+                    }
+                }
+            })
+        } else {
+            None
+        };
         let practice_race_button = practice_race_url.map(|url| html! {
             a(class = "button", href = url) {
                 : favicon(&url);
-                @if matches!(ctx, PracticeButtonsContext::Content) || !practice_seed_buttons.is_empty() {
+                @if matches!(ctx, PracticeButtonsContext::Content) || !practice_seed_buttons.is_empty() || seed_of_the_day_preset_key.is_some() {
                     : "Start Race";
                 } else {
                     : "Practice";
                 }
             }
         });
-        Ok(PracticeButtons { practice_seed_buttons, practice_race_button })
+        Ok(PracticeButtons { practice_seed_buttons, seed_of_the_day_button, practice_race_button })
     }
 }
 
@@ -927,6 +955,7 @@ enum PracticeButtonsContext {
 
 struct PracticeButtons {
     practice_seed_buttons: Vec<RawHtml<String>>,
+    seed_of_the_day_button: Option<RawHtml<String>>,
     practice_race_button: Option<RawHtml<String>>,
 }
 
@@ -2457,7 +2486,7 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, global: 
             : render_form_error(error);
         }
         @let mut errors = RawHtml(String::default());
-        @let PracticeButtons { practice_seed_buttons, practice_race_button } = data.practice_buttons(&global.ootr_api_client, csrf, &mut errors, PracticeButtonsContext::Content).await?;
+        @let PracticeButtons { practice_seed_buttons, seed_of_the_day_button, practice_race_button } = data.practice_buttons(global, csrf, &mut errors, PracticeButtonsContext::Content).await?;
         : errors;
         @if practice_seed_buttons.is_empty() {
             article {
@@ -2468,6 +2497,9 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, global: 
                 : practice_seed_button;
             }
             //TODO allow making any necessary choices like draft picks
+        }
+        @if let Some(seed_of_the_day_button) = seed_of_the_day_button {
+            : seed_of_the_day_button;
         }
         @if let Some(practice_race_button) = practice_race_button {
             : practice_race_button;
