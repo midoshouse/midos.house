@@ -20,7 +20,7 @@ pub(crate) enum UnlockSetting {
 
 #[derive(Serialize)]
 pub(crate) struct SeedRequest {
-    pub(crate) version: &'static str,
+    pub(crate) display_name: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) settings_preset: Option<&'static str>,
     pub(crate) unlock_setting: UnlockSetting,

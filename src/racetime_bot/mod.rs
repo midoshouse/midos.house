@@ -1790,7 +1790,7 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, version: &'static str, settings_preset: Option<&'static str>, room: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, display_name: &'static str, settings_preset: Option<&'static str>, room: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -1806,18 +1806,18 @@ impl GlobalState {
                 (UnlockSpoilerLog::Now, _) => tfb::SeedRequest {
                     unlock_setting: tfb::UnlockSetting::Always,
                     racetime_room_url: None,
-                    version, settings_preset,
+                    display_name, settings_preset,
                 },
                 (UnlockSpoilerLog::Progression, _) => panic!("progression spoiler mode not supported by triforceblitz.com"),
                 (UnlockSpoilerLog::After, Some(room)) => tfb::SeedRequest {
                     unlock_setting: tfb::UnlockSetting::RaceTime,
                     racetime_room_url: Some(room.parse()?),
-                    version, settings_preset,
+                    display_name, settings_preset,
                 },
                 (UnlockSpoilerLog::After, None) | (UnlockSpoilerLog::Never, _) => tfb::SeedRequest {
                     unlock_setting: tfb::UnlockSetting::Never,
                     racetime_room_url: None,
-                    version, settings_preset,
+                    display_name, settings_preset,
                 },
             };
             let mut attempts = 0;

@@ -2680,13 +2680,13 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::TriforceBlitz {
-                let (version, settings_preset) = match event {
-                    "1" => ("v6.2.72-blitz-0.22", None),
-                    "2" => ("v7.1.3-blitz-0.42", None),
-                    "3" => ("v8.0.24-blitz-0.55", None),
-                    "4" => ("v8.3.23-blitz-0.94", Some("Triforce Blitz S4")),
-                    "4coop" => ("v8.3.23-blitz-0.94", Some("Triforce Blitz S4 Co-op")),
-                    "5coop" => ("v9.0.1-blitz-1.05", Some("Triforce Blitz S5 Co-op")),
+                let (display_name, settings_preset) = match event {
+                    "1" => ("Season 1", None),
+                    "2" => ("Season 2", None),
+                    "3" => ("Season 3", None),
+                    "4" => ("Season 4", Some("Triforce Blitz S4")),
+                    "4coop" => ("Season 4", Some("Triforce Blitz S4 Co-op")),
+                    "5coop" => ("Season 5 (Co-op)", Some("Triforce Blitz S5 Co-op")),
                     _ => {
                         if let Environment::Production = Environment::default() {
                             wheel::night_report(&format!("{}/error", night_path()), Some(&format!("no TFB preset specified for {}/{event}", series.slug()))).await?;
@@ -2700,7 +2700,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     .json(&tfb::SeedRequest {
                         unlock_setting: tfb::UnlockSetting::Always,
                         racetime_room_url: None,
-                        version, settings_preset,
+                        display_name, settings_preset,
                     })
                     .timeout(Duration::from_secs(5 * 60))
                     .send().await?
