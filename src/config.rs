@@ -94,10 +94,6 @@ pub(crate) struct ConfigRaceTime {
     pub(crate) client_secret: String,
 }
 
-impl TypeMapKey for ConfigRaceTime {
-    type Value = Self;
-}
-
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConfigDiscord {

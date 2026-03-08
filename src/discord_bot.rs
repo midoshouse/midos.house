@@ -153,40 +153,10 @@ impl MessageBuilderExt for MessageBuilder {
     }
 }
 
-enum DbPool {}
-
-impl TypeMapKey for DbPool {
-    type Value = PgPool;
-}
-
-pub(crate) enum HttpClient {}
-
-impl TypeMapKey for HttpClient {
-    type Value = reqwest::Client;
-}
-
 pub(crate) enum RacetimeHost {}
 
 impl TypeMapKey for RacetimeHost {
     type Value = racetime::HostInfo;
-}
-
-enum StartggToken {}
-
-impl TypeMapKey for StartggToken {
-    type Value = String;
-}
-
-pub(crate) enum NewRoomLock {}
-
-impl TypeMapKey for NewRoomLock {
-    type Value = Arc<Mutex<()>>;
-}
-
-pub(crate) enum ExtraRoomTx {}
-
-impl TypeMapKey for ExtraRoomTx {
-    type Value = Arc<RwLock<mpsc::Sender<String>>>;
 }
 
 #[derive(Clone, Copy)]
@@ -279,14 +249,9 @@ impl GenericInteraction for ComponentInteraction {
 
 //TODO refactor (MH admins should have permissions, room already being open should not remove permissions but only remove the team from return)
 async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl GenericInteraction, game: Option<i16>, allow_rooms_for_other_teams: bool, alternative_instructions: Option<&str>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
-    let (mut transaction, http_client) = {
-        let data = ctx.data.read().await;
-        (
-            data.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?,
-            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-        )
-    };
-    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, false).await?;
+    let global = ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").clone();
+    let mut transaction = global.db_pool.begin().await?;
+    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &global.http_client, interaction.channel_id(), game, false).await?;
     if let Some(Some(min_game)) = applicable_races.iter().map(|race| race.game).min() {
         // None < Some(_) so this code only runs if all applicable races are best-of-N
         applicable_races.retain(|race| race.game == Some(min_game));
@@ -297,7 +262,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interactio
                 .expect("interaction called from outside registered guild")
                 .expect("interaction called from guild with conflicting draft kinds");
             let mut content = MessageBuilder::default();
-            match (Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, true).await?.is_empty(), game.is_some()) {
+            match (Race::for_scheduling_channel(&mut transaction, &global.http_client, interaction.channel_id(), game, true).await?.is_empty(), game.is_some()) {
                 (false, false) => {
                     content.push("Sorry, this thread is not associated with any upcoming races. ");
                     if let Some(alternative_instructions) = alternative_instructions {
@@ -606,22 +571,16 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
         .and_then(|timestamp| Utc.timestamp_opt(timestamp, 0).single())
 }
 
-pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, clean_shutdown: Arc<Mutex<CleanShutdown>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
+pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global: Arc<GlobalState>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
         .error_notifier(ErrorNotifier::User(FENHL)) //TODO also print to stderr and/or report to night
-        .data::<DbPool>(db_pool)
-        .data::<HttpClient>(http_client)
+        .data::<GlobalState>(global)
         .data::<RacetimeHost>(racetime::HostInfo {
             hostname: Cow::Borrowed(racetime_host()),
             ..racetime::HostInfo::default()
         })
-        .data::<ConfigRaceTime>(config.racetime_bot.clone())
-        .data::<StartggToken>(config.startgg)
-        .data::<NewRoomLock>(new_room_lock)
-        .data::<ExtraRoomTx>(extra_room_tx)
-        .data::<CleanShutdown>(clean_shutdown)
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
-            let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
+            let mut transaction = ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").db_pool.begin().await?;
             let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, PgSnowflake(guild.id) as _).fetch_all(&mut *transaction).await?;
             let mut guild_events = Vec::with_capacity(guild_event_rows.len());
             for row in guild_event_rows {
@@ -1106,7 +1065,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.claim {
-                            let Some(user) = User::from_discord(ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context"), interaction.user_id()).await? else {
+                            let Some(user) = User::from_discord(&ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").db_pool, interaction.user_id()).await? else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
                                     .content("Sorry, your Discord account doesn't seem to be connected to a Mido's House account.")
@@ -1126,7 +1085,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                                 return Ok(())
                             };
-                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
+                            let mut transaction = ctx.data.read().await.get::<GlobalState>().as_ref().expect("global state missing from Discord context").db_pool.begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(parent_channel) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 match event.match_source() {
@@ -1363,7 +1322,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                                 return Ok(())
                             };
-                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
+                            let mut transaction = ctx.data.read().await.get::<GlobalState>().as_ref().expect("global state missing from Discord context").db_pool.begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(parent_channel) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id)) {
@@ -1400,11 +1359,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     )).await?;
                                     return Ok(())
                                 };
-                                let http_client = {
-                                    let data = ctx.data.read().await;
-                                    data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone()
-                                };
-                                match Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, true).await?.into_iter().at_most_one() {
+                                let global = ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").clone();
+                                match Race::for_scheduling_channel(&mut transaction, &global.http_client, interaction.channel_id(), game, true).await?.into_iter().at_most_one() {
                                     Ok(None) => {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
@@ -1545,19 +1501,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
                                                 }
                                                 if start - Utc::now() < TimeDelta::minutes(30) {
-                                                    let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
+                                                    let (global, racetime_host) = {
                                                         let data = ctx.data.read().await;
                                                         (
-                                                            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                                            data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                                                            data.get::<GlobalState>().expect("global state missing from Discord context").clone(),
                                                             data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
-                                                            data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                                                            data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
-                                                            data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
                                                         )
                                                     };
-                                                    lock!(new_room_lock = new_room_lock; {
-                                                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
+                                                    lock!(new_room_lock = global.new_room_lock; {
+                                                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
                                                             if let Some(channel) = event.discord_race_room_channel {
                                                                 channel.say(ctx, &msg).await?;
                                                             }
@@ -1589,7 +1541,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
-                                                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
@@ -1774,19 +1726,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
                                                 }
                                                 if start - Utc::now() < TimeDelta::minutes(30) {
-                                                    let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
+                                                    let (global, racetime_host) = {
                                                         let data = ctx.data.read().await;
                                                         (
-                                                            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                                            data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                                                            data.get::<GlobalState>().expect("global state missing from Discord context").clone(),
                                                             data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
-                                                            data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                                                            data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
-                                                            data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
                                                         )
                                                     };
-                                                    lock!(new_room_lock = new_room_lock; {
-                                                        let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
+                                                    lock!(new_room_lock = global.new_room_lock; {
+                                                        let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
                                                             if is_room_url && cal_event.is_private_async_part() {
                                                                 msg = match cal_event.race.entrants {
                                                                     Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
@@ -1836,7 +1784,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
-                                                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
@@ -2400,43 +2348,31 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once("__")) {
                         draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
                     } else if let Some(speedgaming_id) = custom_id.strip_prefix("sgdisambig_") {
-                        let (db_pool, http_client) = {
-                            let data = ctx.data.read().await;
-                            (
-                                data.get::<DbPool>().expect("database connection pool missing from Discord context").clone(),
-                                data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                            )
-                        };
-                        let mut transaction = db_pool.begin().await?;
+                        let global = ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").clone();
+                        let mut transaction = global.db_pool.begin().await?;
                         let speedgaming_id = speedgaming_id.parse()?;
                         let ComponentInteractionDataKind::StringSelect { ref values } = interaction.data.kind else { panic!("sgdisambig interaction with unexpected payload") };
                         let race_id = values.iter().exactly_one().expect("sgdisambig interaction with unexpected payload").parse()?;
-                        let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &http_client, race_id).await?, kind: cal::EventKind::Normal };
+                        let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &global.http_client, race_id).await?, kind: cal::EventKind::Normal };
                         let event = cal_event.race.event(&mut transaction).await?;
                         let Some(ref speedgaming_slug) = event.speedgaming_slug else { panic!("sgdisambig interaction for race from non-SpeedGaming event") };
-                        let schedule = sgl::online_schedule(&http_client, speedgaming_slug).await?;
+                        let schedule = sgl::online_schedule(&global.http_client, speedgaming_slug).await?;
                         let restream = schedule.into_iter().find(|restream| restream.matches().any(|restream_match| restream_match.id == speedgaming_id)).expect("no such SpeedGaming match ID");
-                        transaction = restream.update_race(&db_pool, transaction, ctx, &event, &mut cal_event, speedgaming_id).await?;
+                        transaction = restream.update_race(&global.db_pool, transaction, ctx, &event, &mut cal_event, speedgaming_id).await?;
                         cal_event.race.save(&mut transaction).await?;
                         transaction.commit().await?;
                     } else if let Some(speedgaming_id) = custom_id.strip_prefix("sgonsitedisambig_") {
-                        let (db_pool, http_client) = {
-                            let data = ctx.data.read().await;
-                            (
-                                data.get::<DbPool>().expect("database connection pool missing from Discord context").clone(),
-                                data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                            )
-                        };
-                        let mut transaction = db_pool.begin().await?;
+                        let global = ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").clone();
+                        let mut transaction = global.db_pool.begin().await?;
                         let speedgaming_id = speedgaming_id.parse::<i64>()?;
                         let ComponentInteractionDataKind::StringSelect { ref values } = interaction.data.kind else { panic!("sgonsitedisambig interaction with unexpected payload") };
                         let race_id = values.iter().exactly_one().expect("sgonsitedisambig interaction with unexpected payload").parse()?;
-                        let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &http_client, race_id).await?, kind: cal::EventKind::Normal };
+                        let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &global.http_client, race_id).await?, kind: cal::EventKind::Normal };
                         let event = cal_event.race.event(&mut transaction).await?;
                         let Some(speedgaming_in_person_id) = event.speedgaming_in_person_id else { panic!("sgonsitedisambig interaction for race from non-SpeedGaming-on-site event") };
-                        let schedule = sgl::in_person_schedule(&http_client, speedgaming_in_person_id).await?;
+                        let schedule = sgl::in_person_schedule(&global.http_client, speedgaming_in_person_id).await?;
                         let schedule_match = schedule.into_iter().find(|schedule_match| schedule_match.id == speedgaming_id).expect("no such SpeedGaming on-site match ID");
-                        transaction = schedule_match.update_race(&db_pool, transaction, ctx, &event, &mut cal_event).await?;
+                        transaction = schedule_match.update_race(&global.db_pool, transaction, ctx, &event, &mut cal_event).await?;
                         cal_event.race.save(&mut transaction).await?;
                         transaction.commit().await?;
                     } else {
@@ -2626,13 +2562,4 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
         thread.id
     });
     Ok(transaction)
-}
-
-pub(crate) async fn handle_race() {
-    //TODO start Discord race handler (in DMs for private async parts, in scheduling thread for public ones):
-    // * post seed 15 minutes before start
-    // * reminder to go live for public async parts
-    // * Ready button to post password and start countdown
-    // * Done/Forfeit/FPA buttons
-    // * reminder to send vod to organizers
 }

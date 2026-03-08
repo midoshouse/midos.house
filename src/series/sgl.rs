@@ -141,19 +141,15 @@ impl Restream {
                 };
 
                 if self.when_countdown - Utc::now() < TimeDelta::minutes(30) {
-                    let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
+                    let (global, racetime_host) = {
                         let data = discord_ctx.data.read().await;
                         (
-                            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                            data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                            data.get::<GlobalState>().expect("global state missing from Discord context").clone(),
                             data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
-                            data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                            data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
-                            data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
                         )
                     };
-                    lock!(new_room_lock = new_room_lock; {
-                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, discord_ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, cal_event, &event).await? {
+                    lock!(new_room_lock = global.new_room_lock; {
+                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, cal_event, &event).await? {
                             if let Some(channel) = event.discord_race_room_channel {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
                                     thread.say(discord_ctx, &msg).await?;
@@ -196,7 +192,7 @@ impl Restream {
                             .fetch(&mut *transaction)
                             .map_ok(|row| (row.start..row.end_time, row.kind))
                             .try_collect().await?,
-                        RaceHandleMode::Discord => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, self.when_countdown + cal_event.estimated_duration(), self.when_countdown - TimeDelta::minutes(30))
+                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, self.when_countdown + cal_event.estimated_duration(), self.when_countdown - TimeDelta::minutes(30))
                             .fetch(&mut *transaction)
                             .map_ok(|row| (row.start..row.end_time, row.kind))
                             .try_collect().await?,

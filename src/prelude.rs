@@ -217,10 +217,7 @@ pub(crate) use {
             RaceSchedule,
         },
         challonge,
-        config::{
-            Config,
-            ConfigRaceTime,
-        },
+        config::Config,
         discord_bot::{
             self,
             CommandIds,
@@ -286,6 +283,7 @@ pub(crate) use {
             VersionedBranch,
         },
         racetime_host,
+        racetime_host_info,
         seed,
         series::*,
         startgg,

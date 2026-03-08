@@ -712,7 +712,7 @@ impl Goal {
         }
     }
 
-    async fn send_presets(&self, ctx: &RaceContext<BotState>) -> Result<(), Error> {
+    async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
             | Self::Pic7
                 => ctx.say("!seed: The settings used for the race").await?,
@@ -888,7 +888,7 @@ impl Goal {
         }
     }
 
-    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global_state: &BotState, is_official: bool, spoiler_seed: bool, no_password: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
+    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, is_official: bool, spoiler_seed: bool, no_password: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
         let unlock_spoiler_log = self.unlock_spoiler_log(is_official, spoiler_seed);
         Ok(match self {
             | Self::CoOpS3
@@ -933,7 +933,7 @@ impl Goal {
                         seed_password,
                         progression_spoiler
                     "#, self.as_str(), no_password).fetch_optional(&mut **transaction).await.to_racetime()? {
-                        let _ = global_state.seed_cache_tx.send(());
+                        let _ = global.seed_cache_tx.send(());
                         SeedCommandParseResult::QueueExisting {
                             data: seed::Data::from_db(
                                 None,
@@ -1289,7 +1289,7 @@ impl Goal {
                 [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
                 [arg] if arg == "s8" => SeedCommandParseResult::Regular { settings: s::s8_settings(), plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "an", description: format!("S8 seed") },
                 [arg] if arg == "weekly" => {
-                    let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
+                    let mut transaction = global.db_pool.begin().await.to_racetime()?;
                     let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
                     transaction.commit().await.to_racetime()?;
                     let (_, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
@@ -1300,7 +1300,7 @@ impl Goal {
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
             Self::StandardWeeklies => {
-                let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
+                let mut transaction = global.db_pool.begin().await.to_racetime()?;
                 let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
                 transaction.commit().await.to_racetime()?;
                 let (_, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
@@ -1415,9 +1415,9 @@ impl Goal {
                         "s5coop" => "Triforce Blitz S5 Co-op",
                         _ => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "unknown TFB Seed of the Day preset" }),
                     };
-                    let response = global_state.http_client
+                    let response = global.http_client
                         .get("https://triforceblitz.com/api/v1/seed-of-the-day/current")
-                        .bearer_auth(&global_state.tfb_api_key)
+                        .bearer_auth(&global.config.tfb_api_key)
                         .send().await?
                         .detailed_error_for_status().await.to_racetime()?
                         .json_with_text_in_error::<tfb::SotdResponse>().await.to_racetime()?;
@@ -1534,59 +1534,13 @@ impl CleanShutdown {
     }
 }
 
-impl TypeMapKey for CleanShutdown {
-    type Value = Arc<Mutex<CleanShutdown>>;
-}
-
 #[derive(Default, Clone)]
 pub(crate) struct SeedMetadata {
     pub(crate) locked_spoiler_log_path: Option<String>,
     pub(crate) progression_spoiler: bool,
 }
 
-pub(crate) struct BotState {
-    /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
-    new_room_lock: Arc<Mutex<()>>,
-    host_info: racetime::HostInfo,
-    racetime_config: ConfigRaceTime,
-    extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
-    pub(crate) db_pool: PgPool,
-    pub(crate) http_client: reqwest::Client,
-    league_api_key: String,
-    tfb_api_key: String,
-    startgg_token: String,
-    ootr_api_client: Arc<ootr_web::ApiClient>,
-    pub(crate) discord_ctx: RwFuture<DiscordCtx>,
-    clean_shutdown: Arc<Mutex<CleanShutdown>>,
-    seed_cache_tx: watch::Sender<()>,
-    seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>,
-}
-
-impl BotState {
-    pub(crate) async fn new(
-        new_room_lock: Arc<Mutex<()>>,
-        config: Config,
-        extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
-        db_pool: PgPool,
-        http_client: reqwest::Client,
-        ootr_api_client: Arc<ootr_web::ApiClient>,
-        discord_ctx: RwFuture<DiscordCtx>,
-        clean_shutdown: Arc<Mutex<CleanShutdown>>,
-        seed_cache_tx: watch::Sender<()>,
-        seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>,
-    ) -> Self {
-        Self {
-            host_info: racetime::HostInfo {
-                hostname: Cow::Borrowed(racetime_host()),
-                ..racetime::HostInfo::default()
-            },
-            racetime_config: config.racetime_bot,
-            league_api_key: config.league_api_key,
-            tfb_api_key: config.tfb_api_key,
-            startgg_token: config.startgg,
-            new_room_lock, extra_room_tx, db_pool, http_client, ootr_api_client, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
-        }
-    }
+impl GlobalState {
 
     pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
@@ -1848,23 +1802,19 @@ impl BotState {
                 sleep(sleep_duration).await;
             }
             update_tx.send(SeedRollUpdate::Started).await.allow_unreceived();
-            let seed_request = match unlock_spoiler_log {
-                UnlockSpoilerLog::Now => tfb::SeedRequest {
+            let seed_request = match (unlock_spoiler_log, &room) {
+                (UnlockSpoilerLog::Now, _) => tfb::SeedRequest {
                     unlock_setting: tfb::UnlockSetting::Always,
                     racetime_room_url: None,
                     version, settings_preset,
                 },
-                UnlockSpoilerLog::Progression => panic!("progression spoiler mode not supported by triforceblitz.com"),
-                UnlockSpoilerLog::After => if let Some(ref room) = room {
-                    tfb::SeedRequest {
-                        unlock_setting: tfb::UnlockSetting::RaceTime,
-                        racetime_room_url: Some(room.parse()?),
-                        version, settings_preset,
-                    }
-                } else {
-                    panic!("cannot set a Triforce Blitz seed to unlock after the race without a race room")
+                (UnlockSpoilerLog::Progression, _) => panic!("progression spoiler mode not supported by triforceblitz.com"),
+                (UnlockSpoilerLog::After, Some(room)) => tfb::SeedRequest {
+                    unlock_setting: tfb::UnlockSetting::RaceTime,
+                    racetime_room_url: Some(room.parse()?),
+                    version, settings_preset,
                 },
-                UnlockSpoilerLog::Never => tfb::SeedRequest {
+                (UnlockSpoilerLog::After, None) | (UnlockSpoilerLog::Never, _) => tfb::SeedRequest {
                     unlock_setting: tfb::UnlockSetting::Never,
                     racetime_room_url: None,
                     version, settings_preset,
@@ -1875,7 +1825,7 @@ impl BotState {
                 attempts += 1;
                 let response = self.http_client
                     .post("https://triforceblitz.com/api/v1/seeds")
-                    .bearer_auth(&self.tfb_api_key)
+                    .bearer_auth(&self.config.tfb_api_key)
                     .json(&seed_request)
                     .timeout(Duration::from_secs(5 * 60))
                     .send().await?
@@ -2071,6 +2021,8 @@ pub(crate) enum RollError {
     },
     #[error("there is nothing waiting for this seed anymore")]
     ChannelClosed,
+    #[error("attempted to roll seed for unfinished settings draft")]
+    Draft,
     #[error("not allowing practice seed due to low disk space")]
     InsufficientStorage,
     #[cfg(unix)]
@@ -2152,7 +2104,7 @@ pub(crate) enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<BotState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -2335,7 +2287,7 @@ impl SeedRollUpdate {
                                         }
                                     }
                                     if !all_notified {
-                                        FENHL.create_dm_channel(&*ctx.global_state.discord_ctx.read().await).await.to_racetime()?.say(&*ctx.global_state.discord_ctx.read().await, format!("auto-tracker room for {reply_to}: `{tracker_room_name}`")).await.to_racetime()?;
+                                        FENHL.create_dm_channel(discord_ctx!(ctx.global_state)).await.to_racetime()?.say(discord_ctx!(ctx.global_state), format!("auto-tracker room for {reply_to}: `{tracker_room_name}`")).await.to_racetime()?;
                                     }
                                 }
                                 mw_rooms_created += 1;
@@ -2439,7 +2391,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
     }
 }
 
-async fn set_bot_raceinfo(ctx: &RaceContext<BotState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
+async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
     let extra = seed.extra(Utc::now()).await.to_racetime()?;
     ctx.set_bot_raceinfo(&format!(
         "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}",
@@ -2498,6 +2450,106 @@ enum RaceState {
     SpoilerSent,
 }
 
+trait SeedHandler {
+    type Ctx;
+    type SeedResult;
+
+    async fn roll_seed(&self, ctx: &Self::Ctx, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
+    async fn roll_rsl_seed(&self, ctx: &Self::Ctx, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
+    async fn roll_tfb_seed(&self, ctx: &Self::Ctx, version: &'static str, preset: Option<&'static str>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
+    async fn queue_existing_seed(&self, ctx: &Self::Ctx, seed: seed::Data, language: Language, article: &'static str, description: String) -> Self::SeedResult;
+    async fn advance_draft(&self, ctx: &Self::Ctx, state: &RaceState) -> Result<Self::SeedResult, Error>;
+
+    async fn roll_official_seed(&self, ctx: &Self::Ctx, event: &event::Data<'_>, state: &RaceState, existing_seed: seed::Data) -> Result<Option<Self::SeedResult>, Error> {
+        Ok(Some(if existing_seed.files.is_some() {
+            self.queue_existing_seed(ctx, existing_seed, English, "a", format!("seed")).await //TODO better article/description
+        } else if let Some(goal) = Goal::for_event(event.series, &*event.event) {
+            let event_id = Some((event.series, &*event.event));
+            match *state {
+                RaceState::Init => match goal {
+                    | Goal::CoOpS3
+                    | Goal::CopaDoBrasil
+                    | Goal::LeagueS5
+                    | Goal::LeagueS6
+                    | Goal::LeagueS7
+                    | Goal::LeagueS8
+                    | Goal::LeagueS9
+                    | Goal::MixedPoolsS2
+                    | Goal::MixedPoolsS3
+                    | Goal::MixedPoolsS4
+                    | Goal::Mq
+                    | Goal::Pic7
+                    | Goal::S6
+                    | Goal::S8
+                    | Goal::ScrubsS5
+                    | Goal::ScrubsS6
+                    | Goal::ScrubsS7
+                    | Goal::Sgl2023
+                    | Goal::Sgl2024
+                    | Goal::Sgl2025
+                    | Goal::SongsOfHope
+                    | Goal::TournamentOfTruthS2
+                    | Goal::TriforceBlitzProgressionSpoiler
+                        => self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                    | Goal::WeTryToBeBetterS1
+                    | Goal::WeTryToBeBetterS2
+                        => self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
+                    | Goal::Cc7
+                    | Goal::MultiworldS3
+                    | Goal::MultiworldS4
+                    | Goal::MultiworldS5
+                    | Goal::Rsl
+                    | Goal::S7
+                    | Goal::TournoiFrancoS3
+                    | Goal::TournoiFrancoS4
+                    | Goal::TournoiFrancoS5
+                        => unreachable!("should have draft state set"),
+                    Goal::BattleRoyaleS1 => {
+                        let (settings, plando) = ohko::s1_settings();
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                    }
+                    Goal::BattleRoyaleS2 => {
+                        let (settings, plando) = ohko::s2_settings();
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                    }
+                    Goal::CopaLatinoamerica2025 => {
+                        let (settings, plando) = latam::settings_2025();
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                    }
+                    Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
+                    Goal::PicRs2 => self.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
+                        version: Some((Version::new(2, 3, 8), 10)),
+                        preset: rsl::DevFenhlPreset::Pictionary,
+                    }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                    Goal::PotsOfTime => {
+                        let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?;
+                        weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
+                        self.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
+                            version: None, //TODO freeze version after the tournament
+                            weights,
+                        }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                    }
+                    Goal::StandardRuleset | Goal::StandardWeeklies => {
+                        let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured Standard event");
+                        let mut settings = settings.into_owned();
+                        settings.insert(format!("password_lock"), json!(true));
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, if event.event == "w" { "a" } else { "an" }, match &*event.event {
+                            "9" | "9cc" => format!("S9 seed"),
+                            "w" => format!("weekly seed"),
+                            _ => unimplemented!(),
+                        }).await
+                    }
+                    Goal::TriforceBlitz => self.roll_tfb_seed(ctx, "v9.0.1-blitz-1.05", Some("Triforce Blitz S5 Co-op"), goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
+                },
+                RaceState::Draft { .. } => self.advance_draft(ctx, &state).await?,
+                RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => return Ok(None),
+            }
+        } else {
+            return Ok(None)
+        }))
+    }
+}
+
 #[derive(Clone)]
 struct OfficialRaceData {
     cal_event: cal::Event,
@@ -2536,7 +2588,7 @@ struct Handler {
 
 impl Handler {
     /// For `existing_state`, `Some(None)` means this is an existing race room with unknown state, while `None` means this is a new race room.
-    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<BotState>, existing_state: Option<Option<&Self>>) -> bool {
+    async fn should_handle_inner(race_data: &RaceData, global: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> bool {
         if Goal::from_race_data(race_data).is_none() { return false }
         if let Some(existing_state) = existing_state {
             if let Some(existing_state) = existing_state {
@@ -2554,7 +2606,7 @@ impl Handler {
             }
         } else {
             if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
-            lock!(clean_shutdown = global_state.clean_shutdown; {
+            lock!(clean_shutdown = global.clean_shutdown; {
                 if !clean_shutdown.should_handle_new() {
                     unlock!();
                     return false
@@ -2572,7 +2624,7 @@ impl Handler {
 
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
-    async fn goal(&self, ctx: &RaceContext<BotState>) -> Result<Goal, GoalFromStrError> {
+    async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Result<Goal, GoalFromStrError> {
         if let Some(OfficialRaceData { goal, .. }) = self.official_data {
             Ok(goal)
         } else {
@@ -2588,7 +2640,7 @@ impl Handler {
         }
     }
 
-    async fn can_monitor(&self, ctx: &RaceContext<BotState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
+    async fn can_monitor(&self, ctx: &RaceContext<GlobalState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
         if is_monitor { return Ok(true) }
         if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
             if let Some(UserData { ref id, .. }) = msg.user {
@@ -2600,7 +2652,7 @@ impl Handler {
         Ok(false)
     }
 
-    async fn send_settings(&self, ctx: &RaceContext<BotState>, preface: &str, reply_to: &str) -> Result<(), Error> {
+    async fn send_settings(&self, ctx: &RaceContext<GlobalState>, preface: &str, reply_to: &str) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(draft_kind) = self.draft_kind(goal) {
             let available_settings = lock!(@read state = self.race_state; if let RaceState::Draft { state: ref draft, .. } = *state {
@@ -2644,36 +2696,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn advance_draft(&self, ctx: &RaceContext<BotState>, state: &RaceState) -> Result<(), Error> {
-        let goal = self.goal(ctx).await.to_racetime()?;
-        let Some(draft_kind) = self.draft_kind(goal) else { unreachable!() };
-        let RaceState::Draft { state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
-        let step = draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
-        match step.kind {
-            draft::StepKind::Done(settings) => {
-                let (article, description) = if let French = goal.language() {
-                    ("une", format!("seed avec {}", step.message))
-                } else {
-                    ("a", format!("seed with {}", step.message))
-                };
-                let event = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| event);
-                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, serde_json::Map::default(), unlock_spoiler_log, goal.language(), article, description).await;
-            }
-            draft::StepKind::DoneRsl { preset, world_count } => {
-                let (article, description) = if let French = goal.language() {
-                    ("une", format!("seed avec {}", step.message))
-                } else {
-                    ("a", format!("seed with {}", step.message))
-                };
-                self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, goal.language(), article, description).await;
-            }
-            draft::StepKind::DoneSlugOpen(_) => unimplemented!("SlugCentral Open format draft in race room"),
-            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim => ctx.say(step.message).await?,
-        }
-        Ok(())
-    }
-
-    async fn draft_action(&self, ctx: &RaceContext<BotState>, sender: Option<&UserData>, action: draft::Action) -> Result<(), Error> {
+    async fn draft_action(&self, ctx: &RaceContext<GlobalState>, sender: Option<&UserData>, action: draft::Action) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -2745,7 +2768,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed_inner(&self, ctx: &RaceContext<BotState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
+    async fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
@@ -2791,36 +2814,8 @@ impl Handler {
         });
     }
 
-    async fn roll_seed(&self, ctx: &RaceContext<BotState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
-        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_seed(preroll, true, delay_until, version, settings, plando, unlock_spoiler_log), language, article, description).await;
-    }
-
-    async fn roll_rsl_seed(&self, ctx: &RaceContext<BotState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
-        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log), language, article, description).await;
-    }
-
-    async fn roll_tfb_seed(&self, ctx: &RaceContext<BotState>, version: &'static str, preset: Option<&'static str>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
-        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        // Triforce Blitz website's auto unlock doesn't know about async parts so has to be disabled for asyncs
-        let unlock_spoiler_log = if unlock_spoiler_log == UnlockSpoilerLog::After && self.official_data.as_ref().is_some_and(|official_data| official_data.cal_event.is_private_async_part()) { UnlockSpoilerLog::Never } else { unlock_spoiler_log };
-        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_seed(delay_until, version, preset, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
-    }
-
-    async fn queue_existing_seed(&self, ctx: &RaceContext<BotState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
-        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        let (tx, rx) = mpsc::channel(1);
-        tx.send(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed }).await.unwrap();
-        self.roll_seed_inner(ctx, delay_until, rx, language, article, description).await;
-    }
-
     /// Returns `false` if this race was already finished/cancelled.
-    async fn unlock_spoiler_log(&self, ctx: &RaceContext<BotState>, goal: Goal) -> Result<bool, Error> {
+    async fn unlock_spoiler_log(&self, ctx: &RaceContext<GlobalState>, goal: Goal) -> Result<bool, Error> {
         lock!(@write state = self.race_state; {
             match *state {
                 RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().is_none_or(|official_data| !official_data.cal_event.is_private_async_part()) {
@@ -2851,22 +2846,84 @@ impl Handler {
     }
 }
 
-#[async_trait]
-impl RaceHandler<BotState> for Handler {
-    async fn should_handle(race_data: &RaceData, global_state: Arc<BotState>) -> Result<bool, Error> {
-        Ok(Self::should_handle_inner(race_data, global_state, None).await)
+impl SeedHandler for Handler {
+    type Ctx = RaceContext<GlobalState>;
+    type SeedResult = ();
+
+    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_seed(preroll, true, delay_until, version, settings, plando, unlock_spoiler_log), language, article, description).await;
     }
 
-    async fn should_stop(&mut self, ctx: &RaceContext<BotState>) -> Result<bool, Error> {
+    async fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log), language, article, description).await;
+    }
+
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, version: &'static str, preset: Option<&'static str>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        // Triforce Blitz website's auto unlock doesn't know about async parts so has to be disabled for asyncs
+        let unlock_spoiler_log = if unlock_spoiler_log == UnlockSpoilerLog::After && self.official_data.as_ref().is_some_and(|official_data| official_data.cal_event.is_private_async_part()) { UnlockSpoilerLog::Never } else { unlock_spoiler_log };
+        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_seed(delay_until, version, preset, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
+    }
+
+    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        let (tx, rx) = mpsc::channel(1);
+        tx.send(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed }).await.unwrap();
+        self.roll_seed_inner(ctx, delay_until, rx, language, article, description).await;
+    }
+
+    async fn advance_draft(&self, ctx: &RaceContext<GlobalState>, state: &RaceState) -> Result<(), Error> {
+        let goal = self.goal(ctx).await.to_racetime()?;
+        let Some(draft_kind) = self.draft_kind(goal) else { unreachable!() };
+        let RaceState::Draft { state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
+        let step = draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
+        match step.kind {
+            draft::StepKind::Done(settings) => {
+                let (article, description) = if let French = goal.language() {
+                    ("une", format!("seed avec {}", step.message))
+                } else {
+                    ("a", format!("seed with {}", step.message))
+                };
+                let event = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| event);
+                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, serde_json::Map::default(), unlock_spoiler_log, goal.language(), article, description).await;
+            }
+            draft::StepKind::DoneRsl { preset, world_count } => {
+                let (article, description) = if let French = goal.language() {
+                    ("une", format!("seed avec {}", step.message))
+                } else {
+                    ("a", format!("seed with {}", step.message))
+                };
+                self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, goal.language(), article, description).await;
+            }
+            draft::StepKind::DoneSlugOpen(_) => unimplemented!("SlugCentral Open format draft in race room"),
+            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim => ctx.say(step.message).await?,
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl RaceHandler<GlobalState> for Handler {
+    async fn should_handle(race_data: &RaceData, global: Arc<GlobalState>) -> Result<bool, Error> {
+        Ok(Self::should_handle_inner(race_data, global, None).await)
+    }
+
+    async fn should_stop(&mut self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(Some(self))).await)
     }
 
-    async fn task(global_state: Arc<BotState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+    async fn task(global: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
             let res = join_handle.await;
             lock!(@read data = race_data; {
-                lock!(clean_shutdown = global_state.clean_shutdown; {
+                lock!(clean_shutdown = global.clean_shutdown; {
                     let room = OpenRoom::RaceTime {
                         room_url: data.url.clone(),
                         public: !data.unlisted,
@@ -2888,7 +2945,7 @@ impl RaceHandler<BotState> for Handler {
         Ok(())
     }
 
-    async fn new(ctx: &RaceContext<BotState>) -> Result<Self, Error> {
+    async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
         let data = ctx.data().await;
         let goal = data.goal.name.parse::<Goal>().to_racetime()?;
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = lock!(new_room_lock = ctx.global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
@@ -2896,7 +2953,7 @@ impl RaceHandler<BotState> for Handler {
             let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", racetime_host(), ctx.data().await.url).parse()?).await.to_racetime()? {
                 let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                 let mut entrants = Vec::default();
-                for member in cal_event.racetime_users_to_invite(&mut transaction, &*ctx.global_state.discord_ctx.read().await, &event).await.to_racetime()? {
+                for member in cal_event.racetime_users_to_invite(&mut transaction, discord_ctx!(ctx.global_state), &event).await.to_racetime()? {
                     match member {
                         Ok(member) => {
                             if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == member)) {
@@ -3972,98 +4029,13 @@ impl RaceHandler<BotState> for Handler {
                 ctx.send_message(&text, true, Vec::default()).await?;
             }
             lock!(@read state = this.race_state; {
-                if existing_seed.files.is_some() {
-                    this.queue_existing_seed(ctx, existing_seed, English, "a", format!("seed")).await; //TODO better article/description
-                } else {
-                    let event_id = Some((event.series, &*event.event));
-                    match *state {
-                        RaceState::Init => match goal {
-                            | Goal::CoOpS3
-                            | Goal::CopaDoBrasil
-                            | Goal::LeagueS5
-                            | Goal::LeagueS6
-                            | Goal::LeagueS7
-                            | Goal::LeagueS8
-                            | Goal::LeagueS9
-                            | Goal::MixedPoolsS2
-                            | Goal::MixedPoolsS3
-                            | Goal::MixedPoolsS4
-                            | Goal::Mq
-                            | Goal::Pic7
-                            | Goal::S6
-                            | Goal::S8
-                            | Goal::ScrubsS5
-                            | Goal::ScrubsS6
-                            | Goal::ScrubsS7
-                            | Goal::Sgl2023
-                            | Goal::Sgl2024
-                            | Goal::Sgl2025
-                            | Goal::SongsOfHope
-                            | Goal::TournamentOfTruthS2
-                            | Goal::TriforceBlitzProgressionSpoiler
-                                => this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            | Goal::WeTryToBeBetterS1
-                            | Goal::WeTryToBeBetterS2
-                                => this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
-                            | Goal::Cc7
-                            | Goal::MultiworldS3
-                            | Goal::MultiworldS4
-                            | Goal::MultiworldS5
-                            | Goal::Rsl
-                            | Goal::S7
-                            | Goal::TournoiFrancoS3
-                            | Goal::TournoiFrancoS4
-                            | Goal::TournoiFrancoS5
-                                => unreachable!("should have draft state set"),
-                            Goal::BattleRoyaleS1 => {
-                                let (settings, plando) = ohko::s1_settings();
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
-                            }
-                            Goal::BattleRoyaleS2 => {
-                                let (settings, plando) = ohko::s2_settings();
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
-                            }
-                            Goal::CopaLatinoamerica2025 => {
-                                let (settings, plando) = latam::settings_2025();
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
-                            }
-                            Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
-                            Goal::PicRs2 => this.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
-                                version: Some((Version::new(2, 3, 8), 10)),
-                                preset: rsl::DevFenhlPreset::Pictionary,
-                            }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            Goal::PotsOfTime => {
-                                let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?;
-                                weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
-                                this.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
-                                    version: None, //TODO freeze version after the tournament
-                                    weights,
-                                }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
-                            }
-                            Goal::StandardRuleset | Goal::StandardWeeklies => {
-                                let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                                let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured Standard event");
-                                transaction.commit().await.to_racetime()?;
-                                let mut settings = settings.into_owned();
-                                settings.insert(format!("password_lock"), json!(true));
-                                this.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, if event.event == "w" { "a" } else { "an" }, match &*event.event {
-                                    "9" | "9cc" => format!("S9 seed"),
-                                    "w" => format!("weekly seed"),
-                                    _ => unimplemented!(),
-                                }).await
-                            }
-                            Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "v9.0.1-blitz-1.05", Some("Triforce Blitz S5 Co-op"), goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
-                        },
-                        RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
-                        RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => {}
-                    }
-                }
+                this.roll_official_seed(ctx, event, &state, existing_seed).await?;
             });
         }
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext<BotState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
@@ -4341,13 +4313,13 @@ impl RaceHandler<BotState> for Handler {
                     } else {
                         "All restreams ready, unlocking auto-start…"
                     }).await?;
-                    let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
+                    let (access_token, _) = racetime::authorize_with_host(&racetime_host_info(), &ctx.global_state.config.racetime_bot.client_id, &ctx.global_state.config.racetime_bot.client_secret, &ctx.global_state.http_client).await?;
                     room_options(
                         goal, event, cal_event,
                         ctx.data().await.info_user.clone().unwrap_or_default(),
                         ctx.data().await.info_bot.clone().unwrap_or_default(),
                         true,
-                    ).await.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                    ).await.edit_with_host(&racetime_host_info(), &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                 } else {
                     ctx.say(format!("Restream ready, still waiting for other restreams.")).await?;
                 }
@@ -4371,13 +4343,13 @@ impl RaceHandler<BotState> for Handler {
                             match parse_user(&mut transaction, &ctx.global_state.http_client, restreamer).await {
                                 Ok(restreamer_racetime_id) => {
                                     if restreams.is_empty() {
-                                        let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
+                                        let (access_token, _) = racetime::authorize_with_host(&racetime_host_info(), &ctx.global_state.config.racetime_bot.client_id, &ctx.global_state.config.racetime_bot.client_secret, &ctx.global_state.http_client).await?;
                                         room_options(
                                             goal, event, cal_event,
                                             ctx.data().await.info_user.clone().unwrap_or_default(),
                                             ctx.data().await.info_bot.clone().unwrap_or_default(),
                                             false,
-                                        ).await.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                                        ).await.edit_with_host(&racetime_host_info(), &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                                     }
                                     restreams.entry(restream_url).or_default().restreamer_racetime_id = Some(restreamer_racetime_id.clone());
                                     ctx.say("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
@@ -4565,7 +4537,7 @@ impl RaceHandler<BotState> for Handler {
         Ok(())
     }
 
-    async fn race_data(&mut self, ctx: &RaceContext<BotState>, _old_race_data: RaceData) -> Result<(), Error> {
+    async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
         let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(OfficialRaceData { ref event, ref entrants, ref mut scores, .. }) = self.official_data {
@@ -4630,7 +4602,7 @@ impl RaceHandler<BotState> for Handler {
                                     for note in password {
                                         msg.push_emoji(&ocarina_note_to_ootr_discord_emoji(note));
                                     }
-                                    channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+                                    channel.say(discord_ctx!(ctx.global_state), msg.build()).await.to_racetime()?;
                                 }
                             }
                         }
@@ -4832,7 +4804,7 @@ impl RaceHandler<BotState> for Handler {
                                             }
                                             msg.push(" after adjusting the times");
                                         }
-                                        let _ = organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await;
+                                        let _ = organizer_channel.say(discord_ctx!(ctx.global_state), msg.build()).await;
                                     }
                                 }
                             }
@@ -4862,13 +4834,13 @@ impl RaceHandler<BotState> for Handler {
                             "id" => id.to_string(),
                         ];
                         let request = ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportCancelFromMidoHouse")
-                            .bearer_auth(&ctx.global_state.league_api_key)
+                            .bearer_auth(&ctx.global_state.config.league_api_key)
                             .form(&form);
                         println!("reporting cancel to League website: {:?}", serde_urlencoded::to_string(&form));
                         request.send().await?.detailed_error_for_status().await.to_racetime()?;
                     } else {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
-                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                            organizer_channel.say(discord_ctx!(ctx.global_state), MessageBuilder::default()
                                 .push("race cancelled: <https://")
                                 .push(racetime_host())
                                 .push(&ctx.data().await.url)
@@ -4889,7 +4861,7 @@ impl RaceHandler<BotState> for Handler {
         Ok(())
     }
 
-    async fn error(&mut self, _: &RaceContext<BotState>, mut errors: Vec<String>) -> Result<(), Error> {
+    async fn error(&mut self, _: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
         errors.retain(|error|
             !error.ends_with(" is not allowed to join this race.") // failing to invite a user should not crash the race handler
             && !error.ends_with(" is already an entrant.") // failing to invite a user should not crash the race handler
@@ -4903,11 +4875,11 @@ impl RaceHandler<BotState> for Handler {
     }
 }
 
-pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, clean_shutdown: Arc<Mutex<CleanShutdown>>, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String)>, Error> {
+pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String)>, Error> {
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await.to_racetime()? {
         RaceHandleMode::None => return Ok(None),
-        RaceHandleMode::Notify => Err("please get your equipment and report to the tournament room"),
-        RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
+        RaceHandleMode::Notify => Err(Cow::Borrowed("please get your equipment and report to the tournament room")),
+        RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, &global.config.racetime_bot.client_id, &global.config.racetime_bot.client_secret, &global.http_client).await {
             Ok((access_token, _)) => {
                 let info_user = if let French = event.language
                     && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
@@ -4917,7 +4889,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         Entrants::Open | Entrants::Count { .. } => Some(None), // no text
                         Entrants::Named(ref entrants) => Some(Some(entrants.clone())),
                         Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
-                            cal::EventKind::Normal => if let (Some(team1), Some(team2)) = (team1.name(&mut *transaction, discord_ctx).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx).await.to_racetime()?) {
+                            cal::EventKind::Normal => if let (Some(team1), Some(team2)) = (team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?) {
                                 Some(Some(format!("{team1} vs {team2}")))
                             } else {
                                 None // no French translation available
@@ -4925,7 +4897,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                             cal::EventKind::Async1 | cal::EventKind::Async2 | cal::EventKind::Async3 => None,
                         },
                         Entrants::Three([ref team1, ref team2, ref team3]) => match cal_event.kind {
-                            cal::EventKind::Normal => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx).await.to_racetime()?, team3.name(&mut *transaction, discord_ctx).await.to_racetime()?) {
+                            cal::EventKind::Normal => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?, team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?) {
                                 Some(Some(format!("{team1} vs {team2} vs {team3}")))
                             } else {
                                 None // no French translation available
@@ -4953,20 +4925,20 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                             cal::EventKind::Normal => format!(
                                 "{}{} vs {}",
                                 info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async1 => format!(
                                 "{} (async): {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async2 => format!(
                                 "{} (async): {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async3 => unreachable!(),
                         },
@@ -4974,30 +4946,30 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                             cal::EventKind::Normal => format!(
                                 "{}{} vs {} vs {}",
                                 info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async1 => format!(
                                 "{} (async): {} vs {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async2 => format!(
                                 "{} (async): {} vs {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async3 => format!(
                                 "{} (async): {} vs {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                         },
                     };
@@ -5013,10 +4985,10 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     info_user,
                     String::default(),
                     cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty(),
-                ).await.start_with_host(host_info, &access_token, &http_client, CATEGORY).await?;
+                ).await.start_with_host(host_info, &access_token, &global.http_client, CATEGORY).await?;
                 let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", host_info.hostname))?;
                 *cal_event.room_mut().expect("opening room for official race without start time") = Some(room_url.clone());
-                lock!(@read extra_room_tx = extra_room_tx; extra_room_tx.send(race_slug).await.allow_unreceived());
+                lock!(@read extra_room_tx = global.extra_room_tx; extra_room_tx.send(race_slug).await.allow_unreceived());
                 Ok(room_url)
             }
             Err(Error::Reqwest(e)) if e.status().is_some_and(|status| status.is_server_error()) => {
@@ -5026,37 +4998,95 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             }
             Err(e) => return Err(e),
         },
-        RaceHandleMode::Discord => {
-            let task_clean_shutdown = clean_shutdown.clone();
-            lock!(clean_shutdown = clean_shutdown; {
-                if clean_shutdown.should_handle_new() {
-                    let room = OpenRoom::Discord { id: cal_event.race.id.into(), kind: cal_event.kind };
-                    assert!(clean_shutdown.open_rooms.insert(room.clone()));
-                    clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
-                    let cal_event = cal_event.clone();
-                    tokio::spawn(async move {
-                        println!("Discord race handler started");
-                        let res = tokio::spawn(discord_bot::handle_race()).await;
-                        lock!(clean_shutdown = task_clean_shutdown; {
-                            let room = OpenRoom::Discord { id: cal_event.race.id.into(), kind: cal_event.kind };
-                            assert!(clean_shutdown.open_rooms.remove(&room));
-                            clean_shutdown.updates.send(CleanShutdownUpdate::RoomClosed(room)).allow_unreceived();
-                            if clean_shutdown.open_rooms.is_empty() {
-                                clean_shutdown.updates.send(CleanShutdownUpdate::Empty).allow_unreceived();
-                            }
-                        });
-                        if let Ok(()) = res {
-                            println!("Discord race handler stopped");
-                        } else {
-                            eprintln!("Discord race handler panicked");
-                            if let Environment::Production = Environment::default() {
-                                let _ = wheel::night_report(&format!("{}/error", night_path()), Some("Discord race handler panicked")).await;
-                            }
-                        }
-                    });
+        RaceHandleMode::AsyncForm => {
+            struct AsyncSeedHandler {
+                start: DateTime<Utc>,
+            }
+
+            impl SeedHandler for AsyncSeedHandler {
+                type Ctx = Arc<GlobalState>;
+                type SeedResult = mpsc::Receiver<SeedRollUpdate>;
+
+                async fn roll_seed(&self, global: &Arc<GlobalState>, _: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
+                    let delay_until = Some(self.start - TimeDelta::minutes(15));
+                    global.clone().roll_seed(PrerollMode::Long, true, delay_until, version, settings, plando, unlock_spoiler_log)
                 }
-            });
-            Err("remember to send your video to an organizer once you're done") //TODO “please check your direct messages” for private async parts, “will be handled here in the match thread” for public async parts
+
+                async fn roll_rsl_seed(&self, global: &Arc<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
+                    let delay_until = Some(self.start - TimeDelta::minutes(15));
+                    global.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log)
+                }
+
+                async fn roll_tfb_seed(&self, global: &Arc<GlobalState>, version: &'static str, preset: Option<&'static str>, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
+                    let delay_until = Some(self.start - TimeDelta::minutes(15));
+                    global.clone().roll_tfb_seed(delay_until, version, preset, None, unlock_spoiler_log)
+                }
+
+                async fn queue_existing_seed(&self, _: &Arc<GlobalState>, seed: seed::Data, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
+                    let (tx, rx) = mpsc::channel(1);
+                    tx.send(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed }).await.unwrap();
+                    rx
+                }
+
+                async fn advance_draft(&self, _: &Arc<GlobalState>, _: &RaceState) -> Result<Self::SeedResult, Error> {
+                    let (tx, rx) = mpsc::channel(1);
+                    tx.send(SeedRollUpdate::Error(RollError::Draft)).await.unwrap();
+                    Ok(rx)
+                }
+            }
+
+            let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
+            let race_state = if cal_event.race.draft_kind(&event).is_some() {
+                RaceState::Draft {
+                    state: cal_event.race.draft.clone().expect("missing draft state"),
+                    unlock_spoiler_log: goal.unlock_spoiler_log(true, false),
+                }
+            } else {
+                RaceState::Init
+            };
+            if let Some(mut rx) = (AsyncSeedHandler { start: cal_event.start().expect("opening room for official race without start time") }).roll_official_seed(&global, event, &race_state, cal_event.race.seed.clone()).await? {
+                let mut msg = Cow::Borrowed("there was an error rolling your seed, please ask an organizer to roll it manually");
+                while let Some(update) = rx.recv().await {
+                    match update {
+                        SeedRollUpdate::Queued(_) | SeedRollUpdate::MovedForward(_) | SeedRollUpdate::Started => {}
+                        #[cfg(unix)] SeedRollUpdate::Message(_) => {}
+                        SeedRollUpdate::Done { mut seed, rsl_preset: _, unlock_spoiler_log: _ } => {
+                            let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                            seed.file_hash = extra.file_hash;
+                            seed.password = extra.password;
+                            // reload race data in case anything changed during seed rolling
+                            if !cal_event.race.has_any_room() {
+                                cal_event.race.seed = seed;
+                                cal_event.race.save(&mut *transaction).await.to_racetime()?;
+                            }
+                            msg = MessageBuilder::default()
+                                .push("go to ")
+                                .push_named_link_no_preview("the race page", uri!(base_uri(), cal::race_details(event.series, &*event.event, cal_event.race.id)).to_string())
+                                .push(" to request the seed")
+                                .build()
+                                .into();
+                            break
+                        }
+                        SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) | SeedRollUpdate::Error(RollError::OotrWeb(ootr_web::Error::Retries { num_retries, last_error })) => {
+                            if let Some(last_error) = last_error {
+                                eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                            } else {
+                                eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                            }
+                            msg = format!("the randomizer reported an error {num_retries} times and the deadline was reached, so I'm giving up on rolling the seed, please ask an organizer to roll it manually").into();
+                            break
+                        }
+                        SeedRollUpdate::Error(e) => {
+                            eprintln!("seed roll error for async: {e} ({e:?})");
+                            msg = "there was an error rolling your seed, please ask an organizer to roll it manually".into();
+                            break
+                        }
+                    }
+                }
+                Err(msg)
+            } else {
+                Err("there was an error rolling your seed, please ask an organizer to roll it manually".into())
+            }
         }
     };
     let is_room_url = room_url.is_ok();
@@ -5125,11 +5155,11 @@ pub(crate) enum PrepareSeedsError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 
-async fn prepare_seeds(global_state: Arc<BotState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), PrepareSeedsError> {
+async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), PrepareSeedsError> {
     'outer: loop {
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE NOT ignored AND room IS NULL AND async_room1 IS NULL AND async_room2 IS NULL AND async_room3 IS NULL AND file_stem IS NULL AND tfb_uuid IS NULL"#).fetch_all(&global_state.db_pool).await? {
-            let mut transaction = global_state.db_pool.begin().await?;
-            let race = Race::from_id(&mut transaction, &global_state.http_client, id).await?;
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE NOT ignored AND room IS NULL AND async_room1 IS NULL AND async_room2 IS NULL AND async_room3 IS NULL AND file_stem IS NULL AND tfb_uuid IS NULL"#).fetch_all(&global.db_pool).await? {
+            let mut transaction = global.db_pool.begin().await?;
+            let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
             let event = race.event(&mut transaction).await?;
             if let Some(goal) = Goal::for_event(event.series, &*event.event) {
                 if let PrerollMode::Long = goal.preroll_seeds(Some((event.series, &*event.event))) {
@@ -5143,7 +5173,7 @@ async fn prepare_seeds(global_state: Arc<BotState>, mut seed_cache_rx: watch::Re
                         && start > Utc::now()
                         {
                             'seed: loop {
-                                let mut seed_rx = global_state.clone().roll_seed(
+                                let mut seed_rx = global.clone().roll_seed(
                                     PrerollMode::Long,
                                     false,
                                     Some(start),
@@ -5164,8 +5194,8 @@ async fn prepare_seeds(global_state: Arc<BotState>, mut seed_cache_rx: watch::Re
                                                 seed.file_hash = extra.file_hash;
                                                 seed.password = extra.password;
                                                 // reload race data in case anything changed during seed rolling
-                                                let mut transaction = global_state.db_pool.begin().await?;
-                                                let mut race = Race::from_id(&mut transaction, &global_state.http_client, race.id).await?;
+                                                let mut transaction = global.db_pool.begin().await?;
+                                                let mut race = Race::from_id(&mut transaction, &global.http_client, race.id).await?;
                                                 if !race.has_any_room() {
                                                     race.seed = seed;
                                                     race.save(&mut transaction).await?;
@@ -5192,18 +5222,18 @@ async fn prepare_seeds(global_state: Arc<BotState>, mut seed_cache_rx: watch::Re
                 }
             }
         }
-        let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await?;
+        let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global.db_pool).await?;
         for goal in all::<Goal>() {
             if let Some(settings) = goal.single_settings() {
                 if goal.preroll_seeds(None) == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
-                    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global_state.db_pool).await? { break }
+                    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global.db_pool).await? { break }
                     'seed: loop {
-                        let mut seed_rx = global_state.clone().roll_seed(
+                        let mut seed_rx = global.clone().roll_seed(
                             PrerollMode::Long,
                             false,
                             None,
                             if let Goal::StandardWeeklies = goal {
-                                let mut transaction = global_state.db_pool.begin().await?;
+                                let mut transaction = global.db_pool.begin().await?;
                                 let rando_version = event::Data::new(&mut transaction, Series::Standard, "w").await?.expect("missing weeklies event").rando_version.expect("no randomizer version configured for weeklies"); //TODO allow weekly organizers to configure this
                                 transaction.commit().await?;
                                 rando_version
@@ -5244,7 +5274,7 @@ async fn prepare_seeds(global_state: Arc<BotState>, mut seed_cache_rx: watch::Re
                                                     hash5 as _,
                                                     extra.password.map(|password| password.into_iter().map(char::from).collect::<String>()),
                                                     goal.unlock_spoiler_log(false, false) == UnlockSpoilerLog::Progression,
-                                                ).execute(&global_state.db_pool).await?;
+                                                ).execute(&global.db_pool).await?;
                                             }
                                             _ => unimplemented!("unexpected seed files in prerolled seed"),
                                         }
@@ -5290,17 +5320,17 @@ pub(crate) enum CreateRoomsError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 
-async fn create_rooms(global_state: Arc<BotState>, mut shutdown: rocket::Shutdown) -> Result<(), CreateRoomsError> {
+async fn create_rooms(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), CreateRoomsError> {
     loop {
         select! {
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(30)) => { //TODO exact timing (coordinate with everything that can change the schedule)
-                lock!(new_room_lock = global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
-                    let mut transaction = global_state.db_pool.begin().await?;
-                    for mut cal_event in cal::Event::rooms_to_open(&mut transaction, &global_state.http_client).await? {
+                lock!(new_room_lock = global.new_room_lock; { // make sure a new room isn't handled before it's added to the database
+                    let mut transaction = global.db_pool.begin().await?;
+                    for mut cal_event in cal::Event::rooms_to_open(&mut transaction, &global.http_client).await? {
                         let event = cal_event.race.event(&mut transaction).await?;
-                        if let Some((is_room_url, msg)) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, global_state.clean_shutdown.clone(), &mut cal_event, &event).await? {
-                            let ctx = global_state.discord_ctx.read().await;
+                        if let Some((is_room_url, msg)) = create_room(&mut transaction, &global, &racetime_host_info(), &mut cal_event, &event).await? {
+                            let ctx = discord_ctx!(global);
                             if is_room_url && cal_event.is_private_async_part() {
                                 let msg = match cal_event.race.entrants {
                                     Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
@@ -5308,31 +5338,31 @@ async fn create_rooms(global_state: Arc<BotState>, mut shutdown: rocket::Shutdow
                                     _ => format!("unlisted room for async part: {msg}"),
                                 };
                                 if let Some(channel) = event.discord_organizer_channel {
-                                    channel.say(&*ctx, &msg).await?;
+                                    channel.say(ctx, &msg).await?;
                                 } else {
-                                    FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, &msg).await?;
+                                    FENHL.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
                                 }
                                 for team in cal_event.active_teams() {
                                     for member in team.members(&mut transaction).await? {
                                         if let Some(discord) = member.discord {
-                                            discord.id.create_dm_channel(&*ctx).await?.say(&*ctx, &msg).await?;
+                                            discord.id.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
                                         }
                                     }
                                 }
                             } else if !cal_event.is_private_async_part() && let Some(channel) = event.discord_race_room_channel {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(&*ctx, &msg).await?;
-                                    channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
+                                    thread.say(ctx, &msg).await?;
+                                    channel.send_message(ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
                                 } else {
-                                    channel.say(&*ctx, msg).await?;
+                                    channel.say(ctx, msg).await?;
                                 }
                             } else {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(&*ctx, msg).await?;
+                                    thread.say(ctx, msg).await?;
                                 } else if let Some(channel) = event.discord_organizer_channel {
-                                    channel.say(&*ctx, msg).await?;
+                                    channel.say(ctx, msg).await?;
                                 } else {
-                                    FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, msg).await?;
+                                    FENHL.create_dm_channel(ctx).await?.say(ctx, msg).await?;
                                 }
                             }
                         }
@@ -5352,19 +5382,19 @@ pub(crate) enum HandleRoomsError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
-async fn handle_rooms(global_state: Arc<BotState>, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), HandleRoomsError> {
+async fn handle_rooms(global: Arc<GlobalState>, shutdown: rocket::Shutdown) -> Result<(), HandleRoomsError> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
-        match racetime::BotBuilder::new(CATEGORY, &racetime_config.client_id, &racetime_config.client_secret)
-            .state(global_state.clone())
-            .host(global_state.host_info.clone())
+        match racetime::BotBuilder::new(CATEGORY, &global.config.racetime_bot.client_id, &global.config.racetime_bot.client_secret)
+            .state(global.clone())
+            .host(racetime_host_info())
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION"), " (https://github.com/midoshouse/midos.house)"))
             .scan_races_every(Duration::from_secs(5))
             .build().await
         {
             Ok(bot) => {
-                lock!(@write extra_room_tx = global_state.extra_room_tx; *extra_room_tx = bot.extra_room_sender());
+                lock!(@write extra_room_tx = global.extra_room_tx; *extra_room_tx = bot.extra_room_sender());
                 let () = bot.run_until::<Handler, _, _>(shutdown).await?;
                 break Ok(())
             }
@@ -5400,11 +5430,11 @@ pub(crate) enum MainError {
     #[error(transparent)] PrepareSeeds(#[from] PrepareSeedsError),
 }
 
-pub(crate) async fn main(config: Config, shutdown: rocket::Shutdown, global_state: Arc<BotState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), MainError> {
+pub(crate) async fn main(global: Arc<GlobalState>, shutdown: rocket::Shutdown, seed_cache_rx: watch::Receiver<()>) -> Result<(), MainError> {
     let ((), (), ()) = tokio::try_join!(
-        prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()).err_into::<MainError>(),
-        create_rooms(global_state.clone(), shutdown.clone()).err_into(),
-        handle_rooms(global_state, &config.racetime_bot, shutdown).err_into(),
+        prepare_seeds(global.clone(), seed_cache_rx, shutdown.clone()).err_into::<MainError>(),
+        create_rooms(global.clone(), shutdown.clone()).err_into(),
+        handle_rooms(global, shutdown).err_into(),
     )?;
     Ok(())
 }

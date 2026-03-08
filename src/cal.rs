@@ -1672,11 +1672,11 @@ impl Event {
             {
                 // don't create racetime.gg rooms for in-person races
                 RaceHandleMode::Notify
-            } else if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() {
+            } else if let EventKind::Normal = self.kind {
                 RaceHandleMode::RaceTime
             } else {
-                // racetime.gg doesn't support single-entrant races
-                RaceHandleMode::Discord
+                // racetime.gg doesn't support asyncs, see https://github.com/racetimeGG/racetime-app/issues/8
+                RaceHandleMode::AsyncForm
             }
         } else {
             // the organizers of this event didn't request for Mido to handle official races, so we ignore this race even if it would otherwise not be handled on racetime.gg
@@ -1913,7 +1913,7 @@ pub(crate) enum RaceHandleMode {
     None,
     Notify,
     RaceTime,
-    Discord,
+    AsyncForm,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -3222,9 +3222,9 @@ impl IsNetworkError for AutoImportError {
     }
 }
 
-async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shutdown, new_room_lock: Arc<Mutex<()>>) -> Result<(), AutoImportError> {
+async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shutdown) -> Result<(), AutoImportError> {
     loop {
-        lock!(new_room_lock = new_room_lock; {
+        lock!(new_room_lock = global.new_room_lock; {
             let mut transaction = global.db_pool.begin().await?;
             for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
                 let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
@@ -3588,11 +3588,11 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
     Ok(())
 }
 
-pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket::Shutdown, new_room_lock: Arc<Mutex<()>>) -> Result<(), AutoImportError> {
+pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket::Shutdown) -> Result<(), AutoImportError> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
-        match auto_import_races_inner(&global, shutdown.clone(), new_room_lock.clone()).await {
+        match auto_import_races_inner(&global, shutdown.clone()).await {
             Ok(()) => break Ok(()),
             Err(AutoImportError::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)) | AutoImportError::Event(event::Error::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)))) => {
                 let wait_time = Duration::from_secs(60);
