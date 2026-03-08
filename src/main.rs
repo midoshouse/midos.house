@@ -9,10 +9,7 @@ use {
     serde_json_inner as _, // `preserve_order` feature required to correctly render progression spoilers
     sqlx::{
         ConnectOptions as _,
-        postgres::{
-            PgConnectOptions,
-            PgPoolOptions,
-        },
+        postgres::PgPoolOptions,
     },
     crate::prelude::*,
 };

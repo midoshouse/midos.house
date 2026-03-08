@@ -712,3 +712,11 @@ pub(crate) async fn rocket(global: Arc<GlobalState>, port: u16) -> Result<Rocket
     .manage(global)
     .ignite().await?)
 }
+
+/// Ensures no route collisions
+#[tokio::test]
+async fn test_rocket() -> Result<(), crate::Error> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let Rocket { .. } = rocket(GlobalState::dummy().await?, 24814).await?;
+    Ok(())
+}

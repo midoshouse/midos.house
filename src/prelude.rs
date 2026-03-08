@@ -162,8 +162,9 @@ pub(crate) use {
     },
     sqlx::{
         PgPool,
-        Postgres,
         Transaction,
+        Postgres,
+        postgres::PgConnectOptions,
     },
     tokio::{
         io::{

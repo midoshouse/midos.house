@@ -14,6 +14,22 @@ impl GlobalState {
     pub(crate) fn new(config: Config, db_pool: PgPool, discord_ctx_: RwFuture<DiscordCtx>, http_client: reqwest::Client, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>, ootr_api_client: Arc<ootr_web::ApiClient>) -> Arc<Self> {
         Arc::new(Self { config, db_pool, discord_ctx_, http_client, seed_metadata, ootr_api_client })
     }
+
+    #[cfg(test)]
+    pub(crate) async fn dummy() -> sqlx::Result<Arc<Self>> {
+        Ok(Arc::new(Self {
+            config: Config::dummy(),
+            db_pool: PgPool::connect_with(PgConnectOptions::default()
+                .username("mido")
+                .database("fados_house")
+                .application_name("midos-house")
+            ).await?,
+            discord_ctx_: RwFuture::new(future::pending()),
+            http_client: reqwest::Client::new(),
+            seed_metadata: Arc::default(),
+            ootr_api_client: Arc::new(ootr_web::ApiClient::new(reqwest::Client::new(), String::default(), String::default())),
+        }))
+    }
 }
 
 #[async_trait]

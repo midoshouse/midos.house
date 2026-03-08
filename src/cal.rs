@@ -3797,7 +3797,7 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
     Ok(page(transaction, global, &me, &uri, PageStyle::new(event.chests().await?), &format!("Race — {}", event.display_name), content).await?)
 }
 
-#[rocket::get("/event/<series>/<event>/races/<id>")]
+#[rocket::get("/event/<series>/<event>/races/<id>", rank = 100 /* try endpoints like new and import first */)]
 pub(crate) async fn race_details(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<Option<RawHtml<String>>, event::Error> {
     let mut transaction = global.db_pool.begin().await?;
     let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };

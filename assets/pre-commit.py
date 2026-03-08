@@ -3,7 +3,7 @@ import sys
 import re
 import subprocess
 
-subprocess.run(['cargo', 'check'], check=True)
+subprocess.run(['cargo', 'test'], check=True)
 subprocess.run(['cargo', 'msrv', 'verify'], check=True)
 subprocess.run(['wsl', '-d', 'ubuntu-m2', 'sudo', '-n', 'apt-get', 'install', '-y', 'pkg-config', 'libssl-dev'], check=True)
 subprocess.run(['wsl', '-d', 'ubuntu-m2', '/home/fenhl/.cargo/bin/rustup', 'update', 'stable'], check=True)

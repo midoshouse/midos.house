@@ -50,6 +50,40 @@ impl Config {
             })
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn dummy() -> Self {
+        Self {
+            challonge: ConfigOAuth {
+                client_id: String::default(),
+                client_secret: String::default(),
+            },
+            challonge_api_key: String::default(),
+            discord: ConfigDiscord {
+                client_id: ApplicationId::new(1),
+                client_secret: String::default(),
+                bot_token: String::default(),
+            },
+            league_api_key: String::default(),
+            ootr_api_key: String::default(),
+            ootr_api_key_encryption: String::default(),
+            racetime_bot: ConfigRaceTime {
+                client_id: String::default(),
+                client_secret: String::default(),
+            },
+            racetime_oauth: ConfigRaceTime {
+                client_id: String::default(),
+                client_secret: String::default(),
+            },
+            secret_key: format!("SY6LI8modMlaLp6dq6Bm/aWkr4OZ+Y73NzGN2/EoKp21gR3Cphlyl8sdGltKPEPDfvIeT35a3FHfm7wLboU17A=="),
+            startgg: String::default(),
+            startgg_oauth: ConfigOAuth {
+                client_id: String::default(),
+                client_secret: String::default(),
+            },
+            tfb_api_key: String::default(),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize)]
