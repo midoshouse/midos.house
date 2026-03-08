@@ -201,7 +201,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalSta
                                     }
                                     Ok(SeedCommandParseResult::Tfb { version, preset, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global.clone().roll_tfb_seed(None, version, preset, None, unlock_spoiler_log)
+                                        global.clone().roll_tfb_seed(None, version, preset, None, !no_password, unlock_spoiler_log)
                                     }
                                     Ok(SeedCommandParseResult::QueueExisting { data, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");

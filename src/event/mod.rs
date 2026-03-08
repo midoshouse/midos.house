@@ -2700,6 +2700,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     .json(&tfb::SeedRequest {
                         unlock_setting: tfb::UnlockSetting::Always,
                         racetime_room_url: None,
+                        password_lock: false,
                         display_name, settings_preset,
                     })
                     .timeout(Duration::from_secs(5 * 60))

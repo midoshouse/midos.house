@@ -26,12 +26,14 @@ pub(crate) struct SeedRequest {
     pub(crate) unlock_setting: UnlockSetting,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) racetime_room_url: Option<Url>,
+    pub(crate) password_lock: bool,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct SeedResponse {
     pub(crate) id: Uuid,
     pub(crate) hash_icons: [HashIcon; 5],
+    pub(crate) seed_password: Option<[OcarinaNote; 6]>,
     pub(crate) seed_url: Url,
 }
 
