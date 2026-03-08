@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT video FROM race_player_videos WHERE race = $1 AND player = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "video",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "54098e65f96eed8ce4aea0f0d0d2490d9a6e158a9091bfde673c1d426c4a6fa7"
+}

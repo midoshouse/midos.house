@@ -1183,10 +1183,20 @@ impl Race {
     }
 
     pub(crate) async fn player_video_urls(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<(User, Url)>, Error> {
-        let rows = sqlx::query!(r#"SELECT player AS "player: Id<Users>", video FROM race_player_videos WHERE race = $1"#, self.id as _).fetch_all(&mut **transaction).await?;
-        let mut tuples = Vec::with_capacity(rows.len());
-        for row in rows {
-            tuples.push((User::from_id(&mut **transaction, row.player).await?.expect("foreign key constraint violated"), row.video.parse()?));
+        // hide vods of private async parts until public part finished
+        //TODO show to the team that played the private async part
+        let all_ended = self.cal_events().all(|event| event.end().is_some());
+        let mut tuples = Vec::default();
+        for event in self.cal_events() {
+            if all_ended || !event.is_private_async_part() {
+                for team in event.active_teams() {
+                    for member in team.members(&mut *transaction).await? {
+                        if let Some(video) = sqlx::query_scalar!(r#"SELECT video FROM race_player_videos WHERE race = $1 AND player = $2"#, self.id as _, member.id as _).fetch_optional(&mut **transaction).await? {
+                            tuples.push((member, video.parse()?));
+                        }
+                    }
+                }
+            }
         }
         Ok(tuples)
     }
@@ -3958,16 +3968,68 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
             for (((role, _), time), vod) in event.team_config.roles().iter().zip(&times).zip(&vods) {
                 let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
                 sqlx::query!("INSERT INTO race_async_players (race, player, time, vod) VALUES ($1, $2, $3, $4)", cal_event.race.id as _, player as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut *transaction).await?;
+                for video in vod.split_whitespace() {
+                    if let Ok(video) = Url::parse(video) {
+                        sqlx::query!("INSERT INTO race_player_videos (race, player, video) VALUES ($1, $2, $3)", cal_event.race.id as _, player as _, video.as_str()).execute(&mut *transaction).await?;
+                    }
+                }
                 players.push(player);
             }
             //TODO report result (like Handler::official_race_finished in racetime_bot::report) if this concludes the race
             if let Some(organizer_channel) = event.discord_organizer_channel {
-                let msg = MessageBuilder::default()
-                    .push("async submitted by ")
-                    .mention_team(&mut transaction, event.discord_guild, &team).await?
-                    //TODO details
-                    .build();
-                organizer_channel.say(discord_ctx!(global), msg).await?;
+                let mut message = MessageBuilder::default();
+                message.push("async submitted by ");
+                message.mention_team(&mut transaction, event.discord_guild, &team).await?;
+                message.push(" who");
+                if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
+                    if let Some(pieces) = value.pieces {
+                        message.push(" finished with a score of ");
+                        message.push(pieces.to_string());
+                        message.push(if pieces == 1 { " piece at " } else { " pieces at " });
+                    } else {
+                        message.push(" finished with a time of ");
+                    }
+                    message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
+                } else {
+                    message.push(" did not finish");
+                }
+                match players.into_iter().zip(&times).zip(&vods).exactly_one() {
+                    Ok(((_, _), vod)) => if vod.is_empty() {
+                        message.push_line("");
+                    } else {
+                        message.push(' ');
+                        message.push_line_safe(vod);
+                    },
+                    Err(data) => {
+                        message.push_line("");
+                        for (i, ((player, time), vod)) in data.enumerate() {
+                            if let Some(player) = User::from_id(&mut *transaction, player).await? {
+                                message.mention_user(&player);
+                            } else {
+                                message.push("player ");
+                                message.push((i + 1).to_string());
+                            }
+                            message.push(": ");
+                            if let Some(time) = *time {
+                                message.push(English.format_duration(time, false));
+                            } else {
+                                message.push("DNF");
+                            }
+                            if vod.is_empty() {
+                                message.push_line("");
+                            } else {
+                                message.push(' ');
+                                message.push_line_safe(vod);
+                            }
+                        }
+                    }
+                }
+                if !value.fpa.is_empty() {
+                    message.push("FPA call:");
+                    message.quote_rest();
+                    message.push_safe(&value.fpa);
+                }
+                organizer_channel.say(discord_ctx!(global), message.build()).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(race_details(event.series, &*event.event, cal_event.race.id))))
