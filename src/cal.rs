@@ -1675,17 +1675,17 @@ impl Event {
     }
 
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
-        Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).is_some() {
+        Ok(if let Some(goal) = racetime_bot::Goal::for_event(self.race.series, &self.race.event) {
             if self.race.series == Series::SpeedGaming && event.speedgaming_in_person_id.is_some()
                 && let Some(race_start) = self.start()
                 && event.start(transaction).await?.is_some_and(|event_start| event_start <= race_start)
             {
                 // don't create racetime.gg rooms for in-person races
                 RaceHandleMode::Notify
-            } else if let EventKind::Normal = self.kind {
+            } else if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() && !goal.is_custom() {
                 RaceHandleMode::RaceTime
             } else {
-                // racetime.gg doesn't support asyncs, see https://github.com/racetimeGG/racetime-app/issues/8
+                // racetime.gg doesn't properly support asyncs, see https://github.com/racetimeGG/racetime-app/issues/8
                 RaceHandleMode::AsyncForm
             }
         } else {
