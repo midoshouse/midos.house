@@ -3880,7 +3880,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 ],
                                             },
                                         ]),
-                                        submit: None,
+                                        submit: Some(format!("Post")),
                                     }),
                                     ("More presets", ActionButton::Message {
                                         message: format!("!seed ${{preset}}"),
