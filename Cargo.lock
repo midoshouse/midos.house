@@ -4010,9 +4010,9 @@ dependencies = [
 
 [[package]]
 name = "image"
-version = "0.25.9"
+version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6506c6c10786659413faa717ceebcb8f70731c0a60cbae39795fdf114519c1a"
+checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
@@ -4476,7 +4476,7 @@ dependencies = [
 [[package]]
 name = "mhstatus"
 version = "0.1.0"
-source = "git+https://github.com/midoshouse/status.midos.house#1223ef00422b781bd8fff56bde409ea869f35f54"
+source = "git+https://github.com/midoshouse/status.midos.house#83bb92a2f9fa20ba10a99ff807834d13071c1f17"
 dependencies = [
  "async-proto",
  "base64 0.22.1",
@@ -4488,7 +4488,7 @@ dependencies = [
  "dir-lock",
  "directories",
  "futures",
- "gix 0.78.0",
+ "gix 0.80.0",
  "hmac",
  "itermore",
  "itertools",
@@ -4663,9 +4663,9 @@ dependencies = [
 
 [[package]]
 name = "moxcms"
-version = "0.7.11"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac9557c559cd6fc9867e122e20d2cbefc9ca29d80d027a8e39310920ed2f0a97"
+checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
@@ -5280,9 +5280,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.13"
+version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
+checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -5757,7 +5757,7 @@ dependencies = [
 [[package]]
 name = "rocket-util"
 version = "0.2.17"
-source = "git+https://github.com/fenhl/rocket-util?branch=forms#cfdb867580325763cbecfe8e771b7d7c0d1b6910"
+source = "git+https://github.com/fenhl/rocket-util?branch=forms#9c85ce57cadb194e20dad848195c94360aada950"
 dependencies = [
  "ics",
  "image",
@@ -5771,7 +5771,7 @@ dependencies = [
 [[package]]
 name = "rocket-util"
 version = "0.2.17"
-source = "git+https://github.com/fenhl/rocket-util#ed84b721c69db4be8e9c2c0b22bc122212f816ee"
+source = "git+https://github.com/fenhl/rocket-util#d3e87d359a023fb91bcead38f46d894ffa90d019"
 dependencies = [
  "rocket 0.5.1",
  "rocket-util-derive 0.2.17 (git+https://github.com/fenhl/rocket-util)",
@@ -5782,7 +5782,7 @@ dependencies = [
 [[package]]
 name = "rocket-util-derive"
 version = "0.2.17"
-source = "git+https://github.com/fenhl/rocket-util?branch=forms#cfdb867580325763cbecfe8e771b7d7c0d1b6910"
+source = "git+https://github.com/fenhl/rocket-util?branch=forms#9c85ce57cadb194e20dad848195c94360aada950"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5792,7 +5792,7 @@ dependencies = [
 [[package]]
 name = "rocket-util-derive"
 version = "0.2.17"
-source = "git+https://github.com/fenhl/rocket-util#ed84b721c69db4be8e9c2c0b22bc122212f816ee"
+source = "git+https://github.com/fenhl/rocket-util#d3e87d359a023fb91bcead38f46d894ffa90d019"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6222,9 +6222,9 @@ dependencies = [
 
 [[package]]
 name = "schannel"
-version = "0.1.28"
+version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
+checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -7077,9 +7077,9 @@ checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
 name = "tempfile"
-version = "3.26.0"
+version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82a72c767771b47409d2345987fda8628641887d5466101319899796367354a0"
+checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
  "getrandom 0.4.2",
@@ -8058,7 +8058,7 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.15.3"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#4f4d66bb3dae2eadda3ad8243e56321aee915425"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#2b8d8ed4f1b4533dec8bafac3e541fde45796253"
 dependencies = [
  "async-proto",
  "async-trait",
@@ -8068,6 +8068,7 @@ dependencies = [
  "console-subscriber",
  "futures",
  "itertools",
+ "noisy_float",
  "racetime",
  "reqwest 0.13.2",
  "rocket 0.6.0-dev",
@@ -8085,7 +8086,7 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.15.3"
-source = "git+https://github.com/fenhl/wheel#22d18284cbb6fa9572eca9799c182a7f914c1ba4"
+source = "git+https://github.com/fenhl/wheel#2756e0088ae47ce940fe5c5e04b96103b67853f3"
 dependencies = [
  "async-trait",
  "clap",
@@ -8093,6 +8094,7 @@ dependencies = [
  "console-subscriber",
  "futures",
  "itertools",
+ "noisy_float",
  "rocket 0.5.1",
  "rocket-util 0.2.17 (git+https://github.com/fenhl/rocket-util)",
  "serde",
@@ -8106,7 +8108,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.3"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#4f4d66bb3dae2eadda3ad8243e56321aee915425"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#2b8d8ed4f1b4533dec8bafac3e541fde45796253"
 dependencies = [
  "itertools",
  "proc-macro2",
@@ -8117,7 +8119,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.3"
-source = "git+https://github.com/fenhl/wheel#22d18284cbb6fa9572eca9799c182a7f914c1ba4"
+source = "git+https://github.com/fenhl/wheel#2756e0088ae47ce940fe5c5e04b96103b67853f3"
 dependencies = [
  "itertools",
  "proc-macro2",
@@ -8815,18 +8817,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.40"
+version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a789c6e490b576db9f7e6b6d661bcc9799f7c0ac8352f56ea20193b2681532e5"
+checksum = "f2578b716f8a7a858b7f02d5bd870c14bf4ddbbcf3a4c05414ba6503640505e3"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.40"
+version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f65c489a7071a749c849713807783f70672b28094011623e200cb86dcb835953"
+checksum = "7e6cc098ea4d3bd6246687de65af3f920c430e236bee1e3bf2e441463f08a02f"
 dependencies = [
  "proc-macro2",
  "quote",
