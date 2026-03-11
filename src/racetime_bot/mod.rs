@@ -1399,14 +1399,14 @@ impl Goal {
             }
             Self::TriforceBlitz => match args {
                 [] => SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" },
-                [arg] if arg == "midnight" => SeedCommandParseResult::Tfb { version: "v9.0.1-blitz-1.05", preset: Some("Triforce Blitz S5 Midnight"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Midnight seed") },
-                [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "v7.1.143-blitz-0.43", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
-                [arg] if arg == "s1" => SeedCommandParseResult::Tfb { version: "v6.2.72-blitz-0.22", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S1 seed") },
-                [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
-                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "v8.0.24-blitz-0.55", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
-                [arg] if arg == "s4" => SeedCommandParseResult::Tfb { version: "v8.3.23-blitz-0.94", preset: Some("Triforce Blitz S4"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
-                [arg] if arg == "s4coop" => SeedCommandParseResult::Tfb { version: "v8.3.23-blitz-0.94", preset: Some("Triforce Blitz S4 Co-op"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 co-op seed") },
-                [arg] if arg == "s5coop" => SeedCommandParseResult::Tfb { version: "v9.0.1-blitz-1.05", preset: Some("Triforce Blitz S5 Co-op"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S5 co-op seed") },
+                [arg] if arg == "midnight" => SeedCommandParseResult::Tfb { display_name: "Season 5 (Co-op)", preset: Some("Triforce Blitz S5 Midnight"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Midnight seed") },
+                [arg] if arg == "jr" => SeedCommandParseResult::Tfb { display_name: "Season 2 - Jabu's Revenge", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
+                [arg] if arg == "s1" => SeedCommandParseResult::Tfb { display_name: "Season 1", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S1 seed") },
+                [arg] if arg == "s2" => SeedCommandParseResult::Tfb { display_name: "Season 2", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
+                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { display_name: "Season 3", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
+                [arg] if arg == "s4" => SeedCommandParseResult::Tfb { display_name: "Season 4", preset: Some("Triforce Blitz S4"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
+                [arg] if arg == "s4coop" => SeedCommandParseResult::Tfb { display_name: "Season 4", preset: Some("Triforce Blitz S4 Co-op"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 co-op seed") },
+                [arg] if arg == "s5coop" => SeedCommandParseResult::Tfb { display_name: "Season 5 (Co-op)", preset: Some("Triforce Blitz S5 Co-op"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S5 co-op seed") },
                 [arg, preset] if arg == "daily" => {
                     let preset_key = match &**preset {
                         "midnight" => "Triforce Blitz S5 Midnight",
@@ -1470,7 +1470,7 @@ pub(crate) enum SeedCommandParseResult {
         description: String,
     },
     Tfb {
-        version: &'static str,
+        display_name: &'static str,
         preset: Option<&'static str>,
         unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
@@ -2454,7 +2454,7 @@ trait SeedHandler {
 
     async fn roll_seed(&self, ctx: &Self::Ctx, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn roll_rsl_seed(&self, ctx: &Self::Ctx, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
-    async fn roll_tfb_seed(&self, ctx: &Self::Ctx, version: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
+    async fn roll_tfb_seed(&self, ctx: &Self::Ctx, display_name: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn queue_existing_seed(&self, ctx: &Self::Ctx, seed: seed::Data, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn advance_draft(&self, ctx: &Self::Ctx, state: &RaceState) -> Result<Self::SeedResult, Error>;
 
@@ -2537,7 +2537,7 @@ trait SeedHandler {
                             _ => unimplemented!(),
                         }).await
                     }
-                    Goal::TriforceBlitz => self.roll_tfb_seed(ctx, "v9.0.1-blitz-1.05", Some("Triforce Blitz S5 Co-op"), true, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
+                    Goal::TriforceBlitz => self.roll_tfb_seed(ctx, "Season 5 (Co-op)", Some("Triforce Blitz S5 Co-op"), true, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
                 },
                 RaceState::Draft { .. } => self.advance_draft(ctx, &state).await?,
                 RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => return Ok(None),
@@ -2860,12 +2860,12 @@ impl SeedHandler for Handler {
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log), language, article, description).await;
     }
 
-    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, version: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, display_name: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         // Triforce Blitz website's auto unlock doesn't know about async parts so has to be disabled for asyncs
         let unlock_spoiler_log = if unlock_spoiler_log == UnlockSpoilerLog::After && self.official_data.as_ref().is_some_and(|official_data| official_data.cal_event.is_private_async_part()) { UnlockSpoilerLog::Never } else { unlock_spoiler_log };
-        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_seed(delay_until, version, preset, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), password_lock, unlock_spoiler_log), language, article, description).await;
+        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_seed(delay_until, display_name, preset, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), password_lock, unlock_spoiler_log), language, article, description).await;
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
@@ -4452,7 +4452,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 self.roll_seed(ctx, goal.preroll_seeds(event.as_ref().map(|event| (event.series, &*event.event))), goal.rando_version(event.as_deref()), settings, plando, unlock_spoiler_log, language, article, description).await
                             },
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
-                            SeedCommandParseResult::Tfb { version, preset, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, version, preset, true, unlock_spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::Tfb { display_name, preset, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, display_name, preset, true, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::QueueExisting { data, language, article, description } => self.queue_existing_seed(ctx, data, language, article, description).await,
                             SeedCommandParseResult::SendPresets { language, msg } => {
                                 ctx.say(if let French = language {
@@ -5013,9 +5013,9 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                     global.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log)
                 }
 
-                async fn roll_tfb_seed(&self, global: &Arc<GlobalState>, version: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
+                async fn roll_tfb_seed(&self, global: &Arc<GlobalState>, display_name: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
                     let delay_until = Some(self.start - TimeDelta::minutes(15));
-                    global.clone().roll_tfb_seed(delay_until, version, preset, None, password_lock, unlock_spoiler_log)
+                    global.clone().roll_tfb_seed(delay_until, display_name, preset, None, password_lock, unlock_spoiler_log)
                 }
 
                 async fn queue_existing_seed(&self, _: &Arc<GlobalState>, seed: seed::Data, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {

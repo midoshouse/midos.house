@@ -755,18 +755,6 @@ CREATE TABLE public.races (
 ALTER TABLE public.races OWNER TO mido;
 
 --
--- Name: racetime_maintenance; Type: TABLE; Schema: public; Owner: mido
---
-
-CREATE TABLE public.racetime_maintenance (
-    start timestamp with time zone NOT NULL,
-    end_time timestamp with time zone NOT NULL
-);
-
-
-ALTER TABLE public.racetime_maintenance OWNER TO mido;
-
---
 -- Name: restreamers; Type: TABLE; Schema: public; Owner: mido
 --
 
@@ -1037,22 +1025,6 @@ ALTER TABLE ONLY public.races
 
 ALTER TABLE ONLY public.races
     ADD CONSTRAINT races_pkey1 PRIMARY KEY (id);
-
-
---
--- Name: racetime_maintenance racetime_maintenance_end_time_key; Type: CONSTRAINT; Schema: public; Owner: mido
---
-
-ALTER TABLE ONLY public.racetime_maintenance
-    ADD CONSTRAINT racetime_maintenance_end_time_key UNIQUE (end_time);
-
-
---
--- Name: racetime_maintenance racetime_maintenance_start_key; Type: CONSTRAINT; Schema: public; Owner: mido
---
-
-ALTER TABLE ONLY public.racetime_maintenance
-    ADD CONSTRAINT racetime_maintenance_start_key UNIQUE (start);
 
 
 --
