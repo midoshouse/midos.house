@@ -1529,12 +1529,12 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                     if let Some(discord_guild) = data.discord_guild {
                                         if discord_guild.member(discord_ctx!(global), discord.id).await.is_err() {
                                             //TODO only check if Requirement::DiscordGuild is present
-                                            form.context.push_error(form::Error::validation("This user has not joined the tournament's Discord server.").with_name(format!("roles[{}]", member.id)));
+                                            form.context.push_error(form::Error::validation(format!("{} has not joined the tournament's Discord server.", member.name)).with_name(format!("roles[{}]", member.id)));
                                         }
                                     }
                                 } else {
                                     //TODO only check if Requirement::Discord is present
-                                    form.context.push_error(form::Error::validation("This Mido's House account is not associated with a Discord account.").with_name(format!("roles[{}]", member.id)));
+                                    form.context.push_error(form::Error::validation(format!("The Mido's House account for {} is not associated with a Discord account.", member.name)).with_name(format!("roles[{}]", member.id)));
                                 }
                                 if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                                     id = team
@@ -1547,7 +1547,7 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                 }
                                 users.push(user);
                             } else {
-                                form.context.push_error(form::Error::validation("This racetime.gg account is not associated with a Mido's House account.").with_name(format!("roles[{}]", member.id)));
+                                form.context.push_error(form::Error::validation(format!("The racetime.gg account for {} is not associated with a Mido's House account.", member.name)).with_name(format!("roles[{}]", member.id)));
                                 all_accounts_exist = false;
                             }
                             if team_config.has_distinct_roles() {
@@ -1607,19 +1607,21 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                 _ => unimplemented!("exact proposed team check for {} members", users.len()),
                             }
                         }
-                        for (required_role, label) in team_config.roles() {
-                            let mut found = false;
-                            for (member_id, role) in &value.roles {
-                                if role == required_role {
-                                    if found {
-                                        form.context.push_error(form::Error::validation("Each team member must have a different role.").with_name(format!("roles[{member_id}]")));
-                                    } else {
-                                        found = true;
+                        if team_config.has_distinct_roles() {
+                            for (required_role, label) in team_config.roles() {
+                                let mut found = false;
+                                for (member_id, role) in &value.roles {
+                                    if role == required_role {
+                                        if found {
+                                            form.context.push_error(form::Error::validation("Each team member must have a different role.").with_name(format!("roles[{member_id}]")));
+                                        } else {
+                                            found = true;
+                                        }
                                     }
                                 }
-                            }
-                            if !found {
-                                form.context.push_error(form::Error::validation(format!("No team member is assigned as {label}.")));
+                                if !found {
+                                    form.context.push_error(form::Error::validation(format!("No team member is assigned as {label}.")));
+                                }
                             }
                         }
                         match team_config {

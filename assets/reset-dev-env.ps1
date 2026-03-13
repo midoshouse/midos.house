@@ -147,3 +147,8 @@ ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (tea
 if (-not $?) {
     throw 'Native Failure'
 }
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, listed, short_name, team_config) VALUES (''sco'', ''2026'', ''SlugCentral Open 2026'', TRUE, ''Slug Open'', ''slugopen'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
