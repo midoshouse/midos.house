@@ -837,7 +837,9 @@ CREATE TABLE public.team_members (
     member bigint NOT NULL,
     status public.signup_status NOT NULL,
     role public.team_role NOT NULL,
-    startgg_id character varying(8)
+    startgg_id character varying(8),
+    hard_settings_ok boolean DEFAULT false NOT NULL,
+    mq_ok boolean DEFAULT false NOT NULL
 );
 
 

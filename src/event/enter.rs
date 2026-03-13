@@ -877,6 +877,15 @@ enum BoolRadio {
     No,
 }
 
+impl From<BoolRadio> for bool {
+    fn from(value: BoolRadio) -> Self {
+        match value {
+            BoolRadio::No => false,
+            BoolRadio::Yes => true,
+        }
+    }
+}
+
 #[derive(FromForm, CsrfForm)]
 pub(crate) struct EnterForm {
     #[field(default = String::new())]
@@ -904,6 +913,8 @@ pub(crate) struct EnterForm {
     text_field: String,
     #[field(default = String::new())]
     text_field2: String,
+    member_hard_settings_ok: HashMap<String, BoolRadio>,
+    member_mq_ok: HashMap<String, BoolRadio>,
 }
 
 pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
@@ -1109,54 +1120,120 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                         input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
                         input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
                     });
-                    @for (member_idx, team_member) in team_members.into_iter().enumerate() {
-                        @if team_config.has_distinct_roles() {
-                            : form_field(&format!("roles[{}]", team_member.id), &mut errors, html! {
-                                label(for = &format!("roles[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
-                                @for (role, display_name) in team_config.roles() {
-                                    @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
-                                    input(id = &format!("roles[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("roles[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
-                                    label(class = css_class, for = &format!("roles[{}]-{css_class}", team_member.id)) : display_name;
+                    @if let TeamConfig::SlugOpen = team_config {
+                        table {
+                            thead {
+                                tr {
+                                    th;
+                                    @for team_member in &team_members {
+                                        th : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                                    }
                                 }
-                            });
+                            }
+                            tbody {
+                                @if let MatchSource::StartGG(_) = data.match_source() {
+                                    tr {
+                                        th {
+                                            : "start.gg User ID";
+                                            br;
+                                            small(style = "font-weight: normal;") {
+                                                : "Optional. Can be copied by going to your ";
+                                                a(href = "https://start.gg/") : "start.gg";
+                                                : " profile and clicking your name.";
+                                            }
+                                        }
+                                        @for team_member in &team_members {
+                                            @let field_name = format!("startgg_id[{}]", team_member.id);
+                                            : form_table_cell(&field_name, &mut errors, html! {
+                                                input(type = "text", name = &field_name, value? = defaults.startgg_id(&team_member.id));
+                                            });
+                                        }
+                                    }
+                                }
+                                tr {
+                                    th {
+                                        : "Allow hardcore settings";
+                                        br;
+                                        small(style = "font-weight: normal;") : "in Franco format";
+                                    }
+                                    @for team_member in &team_members {
+                                        @let field_name = format!("member_hard_settings_ok[{}]", team_member.id);
+                                        : form_table_cell(&field_name, &mut errors, html! {
+                                            input(id = format!("{field_name}-yes"), type = "radio", name = &field_name, value = "yes", checked? = defaults.field_value(&field_name).is_some_and(|value| value == "yes"));
+                                            label(for = format!("{field_name}-yes")) : "Yes";
+                                            input(id = format!("{field_name}-no"), type = "radio", name = &field_name, value = "no", checked? = defaults.field_value(&field_name).is_some_and(|value| value == "no"));
+                                            label(for = format!("{field_name}-no")) : "No";
+                                        });
+                                    }
+                                }
+                                tr {
+                                    th {
+                                        : "Allow Master Quest";
+                                        br;
+                                        small(style = "font-weight: normal;") : "in Franco format";
+                                    }
+                                    @for team_member in &team_members {
+                                        @let field_name = format!("member_mq_ok[{}]", team_member.id);
+                                        : form_table_cell(&field_name, &mut errors, html! {
+                                            input(id = format!("{field_name}-yes"), type = "radio", name = &field_name, value = "yes", checked? = defaults.field_value(&field_name).is_some_and(|value| value == "yes"));
+                                            label(for = format!("{field_name}-yes")) : "Yes";
+                                            input(id = format!("{field_name}-no"), type = "radio", name = &field_name, value = "no", checked? = defaults.field_value(&field_name).is_some_and(|value| value == "no"));
+                                            label(for = format!("{field_name}-no")) : "No";
+                                        });
+                                    }
+                                }
+                            }
                         }
-                        : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
-                            label(for = &format!("startgg_id[{}]", team_member.id)) {
-                                : "start.gg User ID (";
-                                : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
-                                : "):";
+                    } else {
+                        @for (member_idx, team_member) in team_members.into_iter().enumerate() {
+                            @if team_config.has_distinct_roles() {
+                                : form_field(&format!("roles[{}]", team_member.id), &mut errors, html! {
+                                    label(for = &format!("roles[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                                    @for (role, display_name) in team_config.roles() {
+                                        @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
+                                        input(id = &format!("roles[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("roles[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
+                                        label(class = css_class, for = &format!("roles[{}]-{css_class}", team_member.id)) : display_name;
+                                    }
+                                });
                             }
-                            input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
-                            label(class = "help") {
-                                : "(Optional. Can be copied by going to your ";
-                                a(href = "https://start.gg/") : "start.gg";
-                                : " profile and clicking your name.)";
-                            }
-                        });
-                        @if let Series::CoOp = data.series {
-                            @let field_name = match member_idx {
-                                0 => "text_field",
-                                1 => "text_field2",
-                                _ => unreachable!("co-op event with team size > 2"),
-                            };
-                            : form_field(field_name, &mut errors, html! {
-                                label(for = field_name) {
-                                    : "Nationality (";
+                            : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
+                                label(for = &format!("startgg_id[{}]", team_member.id)) {
+                                    : "start.gg User ID (";
                                     : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
                                     : "):";
                                 }
-                                input(type = "text", name = field_name, value? = defaults.field_value(field_name));
+                                input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
+                                label(class = "help") {
+                                    : "(Optional. Can be copied by going to your ";
+                                    a(href = "https://start.gg/") : "start.gg";
+                                    : " profile and clicking your name.)";
+                                }
+                            });
+                            @if let Series::CoOp = data.series {
+                                @let field_name = match member_idx {
+                                    0 => "text_field",
+                                    1 => "text_field2",
+                                    _ => unreachable!("co-op event with team size > 2"),
+                                };
+                                : form_field(field_name, &mut errors, html! {
+                                    label(for = field_name) {
+                                        : "Nationality (";
+                                        : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                                        : "):";
+                                    }
+                                    input(type = "text", name = field_name, value? = defaults.field_value(field_name));
+                                });
+                            }
+                        }
+                        @if let TeamConfig::Multiworld = team_config {
+                            : form_field("mw_impl", &mut errors, html! {
+                                label(for = "mw_impl") : "Multiworld plugin:";
+                                input(id = "mw_impl-bizhawk_co_op", type = "radio", name = "mw_impl", value = "bizhawk_co_op", checked? = defaults.mw_impl() == Some(mw::Impl::BizHawkCoOp));
+                                label(for = "mw_impl-bizhawk_co_op") : "bizhawk-co-op";
+                                input(id = "mw_impl-midos_house", type = "radio", name = "mw_impl", value = "midos_house", checked? = defaults.mw_impl() == Some(mw::Impl::MidosHouse));
+                                label(for = "mw_impl-midos_house") : "Mido's House Multiworld";
                             });
                         }
-                    }
-                    @if let TeamConfig::Multiworld = team_config {
-                        : form_field("mw_impl", &mut errors, html! {
-                            label(for = "mw_impl") : "Multiworld plugin:";
-                            input(id = "mw_impl-bizhawk_co_op", type = "radio", name = "mw_impl", value = "bizhawk_co_op", checked? = defaults.mw_impl() == Some(mw::Impl::BizHawkCoOp));
-                            label(for = "mw_impl-bizhawk_co_op") : "bizhawk-co-op";
-                            input(id = "mw_impl-midos_house", type = "radio", name = "mw_impl", value = "midos_house", checked? = defaults.mw_impl() == Some(mw::Impl::MidosHouse));
-                            label(for = "mw_impl-midos_house") : "Mido's House Multiworld";
-                        });
                     }
                     : form_field("restream_consent_radio", &mut errors, html! {
                         label(for = "restream_consent_radio") {
@@ -1434,7 +1511,7 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                     form.context.push_error(form::Error::validation("This field is required.").with_name("racetime_team"));
                     None
                 };
-                let (team_slug, team_name, users, roles, startgg_ids) = if value.step2 {
+                let (team_slug, team_name, users, roles, startgg_ids, member_hard_settings_ok, member_mq_ok) = if value.step2 {
                     if let Some(ref racetime_team) = racetime_team {
                         let mut all_accounts_exist = true;
                         let mut users = Vec::default();
@@ -1444,6 +1521,8 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                             team_config.roles().iter().map(|&(role, _)| role).collect()
                         };
                         let mut startgg_ids = Vec::default();
+                        let mut member_hard_settings_ok = Vec::default();
+                        let mut member_mq_ok = Vec::default();
                         for member in &racetime_team.members {
                             if let Some(user) = User::from_racetime(&mut *transaction, &member.id).await? {
                                 if let Some(ref discord) = user.discord {
@@ -1488,6 +1567,22 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                 }
                             } else {
                                 startgg_ids.push(None);
+                            }
+                            if let Some(hard_settings_ok) = value.member_hard_settings_ok.get(&member.id) {
+                                member_hard_settings_ok.push(bool::from(*hard_settings_ok));
+                            } else {
+                                if let TeamConfig::SlugOpen = team_config {
+                                    form.context.push_error(form::Error::validation("Please select one of the options.").with_name(format!("member_hard_settings_ok[{}]", member.id)));
+                                }
+                                member_hard_settings_ok.push(false);
+                            }
+                            if let Some(mq_ok) = value.member_mq_ok.get(&member.id) {
+                                member_mq_ok.push(bool::from(*mq_ok));
+                            } else {
+                                if let TeamConfig::SlugOpen = team_config {
+                                    form.context.push_error(form::Error::validation("Please select one of the options.").with_name(format!("member_mq_ok[{}]", member.id)));
+                                }
+                                member_mq_ok.push(false);
                             }
                         }
                         if all_accounts_exist {
@@ -1541,7 +1636,7 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                             },
                             _ => {}
                         }
-                        (racetime_team.slug.clone(), racetime_team.name.clone(), users, roles, startgg_ids)
+                        (racetime_team.slug.clone(), racetime_team.name.clone(), users, roles, startgg_ids, member_hard_settings_ok, member_mq_ok)
                     } else {
                         Default::default()
                     }
@@ -1567,10 +1662,10 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                             value.lite_ok == Some(BoolRadio::Yes),
                             value.mw_impl as _,
                         ).execute(&mut *transaction).await?;
-                        for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
+                        for ((((user, role), startgg_id), hard_settings_ok), mq_ok) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids).zip_eq(member_hard_settings_ok).zip_eq(member_mq_ok) {
                             sqlx::query!(
-                                "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
-                                id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, role as _, startgg_id,
+                                "INSERT INTO team_members (team, member, status, role, startgg_id, hard_settings_ok, mq_ok) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                                id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, role as _, startgg_id, hard_settings_ok, mq_ok,
                             ).execute(&mut *transaction).await?;
                         }
                         transaction.commit().await?;

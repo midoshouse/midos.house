@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
+  "query": "INSERT INTO team_members (team, member, status, role, startgg_id, hard_settings_ok, mq_ok) VALUES ($1, $2, $3, $4, $5, $6, $7)",
   "describe": {
     "columns": [],
     "parameters": {
@@ -34,10 +34,12 @@
             }
           }
         },
-        "Varchar"
+        "Varchar",
+        "Bool",
+        "Bool"
       ]
     },
     "nullable": []
   },
-  "hash": "862d1036c10762e152a4ba8ebbf64ec3d047c62c2b476d151689dd233552c964"
+  "hash": "8586ba0d7aa58c1c544d626b1c256059a5fbca06467509e49c05d339b401472a"
 }

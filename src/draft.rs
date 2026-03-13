@@ -91,6 +91,20 @@ impl Kind {
                 => French,
         }
     }
+
+    pub(crate) fn rando_version(&self) -> VersionedBranch {
+        match self {
+            Self::S7 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 1, 0) },
+            Self::MultiworldS3 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(6, 2, 205) },
+            Self::MultiworldS4 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(7, 1, 199) },
+            Self::MultiworldS5 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 3, 0) },
+            Self::RslS7 => panic!("randomizer version for this draft format must be parsed from RSL script"),
+            Self::SlugOpen => panic!("multiple possible rando versions in SlugCentral Open"),
+            Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 143, 1) },
+            Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevRob, 8, 1, 45, 105) },
+            Self::TournoiFrancoS5 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevRob, 8, 2, 64, 135) },
+        }
+    }
 }
 
 #[derive(Clone)]

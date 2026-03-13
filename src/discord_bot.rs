@@ -509,11 +509,15 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
                                 team2.members_roles(&mut transaction).await?.into_iter().find(|(_, role)| *role == event::Role::from(high_seed)).expect("missing format assignment").0,
                             ]
                         };
-                        let /*mut*/ settings = collect![as HashMap<_, _>: Cow::Borrowed("sco_format") => Cow::Borrowed(format.slug())];
+                        let mut settings = collect![as HashMap<_, _>: Cow::Borrowed("sco_format") => Cow::Borrowed(format.slug())];
                         match format.draft_kind() {
                             None => {}
                             Some(draft::Kind::TournoiFrancoS5) => {
-                                unimplemented!() //TODO configure hard_settings_ok and mq_ok based on individual team members' options (adopt HTH's options change?)
+                                let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM team_members WHERE (team = $1 AND member = $2) OR (team = $3 AND member = $4)", team1.id as _, p1.id as _, team2.id as _, p2.id as _).fetch_all(&mut *transaction).await?;
+                                let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
+                                let mq_ok = team_rows.iter().all(|row| row.mq_ok);
+                                settings.insert(Cow::Borrowed("hard_settings_ok"), Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }));
+                                settings.insert(Cow::Borrowed("mq_ok"), Cow::Borrowed(if mq_ok { "ok" } else { "no" }));
                             }
                             Some(_) => unimplemented!(),
                         }

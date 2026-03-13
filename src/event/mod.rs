@@ -351,6 +351,25 @@ impl<'a> Data<'a> {
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, "6") => from_file!("../../assets/event/scrubs/chests-6-8.1.73.json"),
             (Series::Scrubs, "7") => from_file!("../../assets/event/scrubs/chests-7-8.3.30.json"),
+            (Series::SlugOpen, "2026") => {
+                let format = all::<sco::Format>().choose(&mut rng()).expect("no formats defined for SlugCentral Open");
+                match format {
+                    sco::Format::League => from_file!("../../assets/event/sco/chests-2026-league-9.0.14-fenhl.7.riir.6.json"),
+                    sco::Format::Sgl => from_file!("../../assets/event/sco/chests-2026-sgl-9.0.14-fenhl.7.riir.6.json"),
+                    sco::Format::Saws => ChestAppearances::VANILLA,
+                    sco::Format::Bingo => from_file!("../../assets/event/sco/chests-2026-bingo-9.0.14-fenhl.7.riir.6.json"),
+                    sco::Format::Ice => from_file!("../../assets/event/sco/chests-2026-ice-9.0.14-fenhl.7.riir.6.json"),
+                    sco::Format::Mixed => from_file!("../../assets/event/sco/chests-2026-mixed-9.0.14-fenhl.7.riir.6.json"),
+                    sco::Format::Franco => from_file!("../../assets/event/fr/chests-5-8.2.64-rob.135.json"),
+                    sco::Format::Triforce => {
+                        //TODO add this preset once settings are decided
+                        if let Environment::Production = Environment::default() {
+                            wheel::night_report(&format!("{}/chests/sco/2026/error", night_path()), Some("no chest appearances specified for SlugCentral Open Triforce Hunt format, using random chests")).await?;
+                        }
+                        ChestAppearances::random()
+                    }
+                }
+            }
             (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, "2024onl" | "2024live") => from_file!("../../assets/event/sgl/chests-2024-ee4d35b.json"),
