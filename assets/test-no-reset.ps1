@@ -1,10 +1,10 @@
-ssh midos.house sudo -u mido env -C /opt/git/github.com/midoshouse/midos.house/build git pull
+ssh midos.house sudo -u mido env -C /opt/git/github.com/midoshouse/midos.house/build-dev git pull
 if (-not $?)
 {
     throw 'Native Failure'
 }
 
-ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/build cargo build --release --features=dev
+ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/build-dev cargo build --release --features=dev
 if (-not $?)
 {
     throw 'Native Failure'
@@ -12,13 +12,13 @@ if (-not $?)
 
 ssh midos.house sudo -u mido killall -9 midos-house-dev
 
-ssh midos.house sudo -u mido cp /opt/git/github.com/midoshouse/midos.house/build/target/release/midos-house /usr/local/share/midos-house/bin/midos-house-dev
+ssh midos.house sudo -u mido cp /opt/git/github.com/midoshouse/midos.house/build-dev/target/release/midos-house /usr/local/share/midos-house/bin/midos-house-dev
 if (-not $?)
 {
     throw 'Native Failure'
 }
 
-ssh midos.house sudo -u mido env -C /opt/git/github.com/midoshouse/midos.house/build /usr/local/share/midos-house/bin/midos-house-dev @args
+ssh midos.house sudo -u mido env -C /opt/git/github.com/midoshouse/midos.house/build-dev /usr/local/share/midos-house/bin/midos-house-dev @args
 if (-not $?)
 {
     throw 'Native Failure'

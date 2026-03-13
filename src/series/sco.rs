@@ -71,11 +71,14 @@ impl Format {
             Self::Ice => "Ice%",
             Self::Mixed => "4th Mixed Pools Tournament",
             Self::Franco => return Ok(None), // settings draft
-            Self::Triforce => "SlugCentral Open Triforce Hunt", //TODO add this preset once settings are decided
+            Self::Triforce => return Ok(Some((VersionedBranch::Latest { branch: ootr_utils::Branch::DevFenhl }, collect![
+                format!("password_lock") => json!(true),
+                format!("triforce_hunt") => json!(true),
+            ]))), //TODO add this preset once settings are decided
         };
         ootr_utils::Branch::DevFenhl.clone_repo(true).await?;
         let mut presets = fs::read_json::<HashMap<String, seed::Settings>>(ootr_utils::Branch::DevFenhl.dir(true)?.join("data").join("presets_default.json")).await?;
-        let mut settings = presets.remove(preset).ok_or(SingleSettingsError::MissingPreset)?;
+        let mut settings = presets.remove(preset).ok_or(SingleSettingsError::MissingPreset(*self, preset))?;
         settings.insert(format!("password_lock"), json!(true));
         Ok(Some((VersionedBranch::Latest { branch: ootr_utils::Branch::DevFenhl }, settings)))
     }
@@ -94,8 +97,8 @@ pub(crate) enum SingleSettingsError {
     #[error(transparent)] Clone(#[from] ootr_utils::CloneError),
     #[error(transparent)] Dir(#[from] ootr_utils::DirError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("the settings preset for this SlugCentral Open format is not available on the dev-fenhl branch of the randomizer")]
-    MissingPreset,
+    #[error("the settings preset {1:?} for SlugCentral Open format {0:?} is not available on the dev-fenhl branch of the randomizer")]
+    MissingPreset(Format, &'static str),
 }
 
 impl IsNetworkError for SingleSettingsError {
@@ -104,7 +107,7 @@ impl IsNetworkError for SingleSettingsError {
             Self::Clone(_) => false, //TODO implement IsNetworkError for ootr_utils::CloneError
             Self::Dir(_) => false,
             Self::Wheel(e) => e.is_network_error(),
-            Self::MissingPreset => false,
+            Self::MissingPreset(_, _) => false,
         }
     }
 }
