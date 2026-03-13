@@ -152,3 +152,18 @@ ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, e
 if (-not $?) {
     throw 'Native Failure'
 }
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, racetime_discriminator, discord_username) VALUES (6193685995567200830, ''z9VAe5EgYjRvB42w'', ''Kirby'', 289538227071877120, ''TeaGrenadier'', ''discord'', 3830, ''teagrenadier'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, racetime_discriminator, discord_username) VALUES (137149793105548454, ''VXakOPonPdvDrB8n'', ''Ganondorf'', 212413638860996609, ''BearKofca'', ''discord'', 7849, ''bearkofca'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO organizers (series, event, organizer) VALUES (''sco'', ''2026'', -3874943390487736167);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
