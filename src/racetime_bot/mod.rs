@@ -931,7 +931,9 @@ impl Goal {
                         hash4 AS "hash4: HashIcon",
                         hash5 AS "hash5: HashIcon",
                         seed_password,
-                        progression_spoiler
+                        progression_spoiler,
+                        bingosync_url,
+                        bingo_passphrase
                     "#, self.as_str(), no_password).fetch_optional(&mut **transaction).await.to_racetime()? {
                         let _ = global.seed_cache_tx.send(());
                         SeedCommandParseResult::QueueExisting {
@@ -953,6 +955,8 @@ impl Goal {
                                 row.hash5,
                                 row.seed_password.as_deref(),
                                 row.progression_spoiler,
+                                row.bingosync_url,
+                                row.bingo_passphrase,
                             ),
                             language: self.language(),
                             article, description,
@@ -1423,6 +1427,7 @@ impl Goal {
                         SeedCommandParseResult::QueueExisting { data: seed::Data {
                             file_hash: Some(entry.seed.hash_icons),
                             password: None,
+                            bingo: None,
                             files: Some(seed::Files::TriforceBlitz {
                                 is_dev: false,
                                 uuid: entry.seed.id,
@@ -1579,6 +1584,7 @@ impl GlobalState {
                     Ok(ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password }) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
+                            bingo: None,
                             files: Some(seed::Files::OotrWeb {
                                 file_stem: Cow::Owned(file_stem),
                                 id, gen_time,
@@ -1602,6 +1608,7 @@ impl GlobalState {
                             Some((_, file_stem)) => SeedRollUpdate::Done {
                                 seed: seed::Data {
                                     file_hash: None, password: None, // will be read from spoiler log
+                                    bingo: None,
                                     files: Some(seed::Files::MidosHouse {
                                         file_stem: Cow::Owned(file_stem.to_owned()),
                                         locked_spoiler_log_path,
@@ -1735,6 +1742,7 @@ impl GlobalState {
                     update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
+                            bingo: None,
                             files: Some(seed::Files::OotrWeb {
                                 file_stem: Cow::Owned(file_stem),
                                 id, gen_time,
@@ -1764,6 +1772,7 @@ impl GlobalState {
                         Some((_, file_stem)) => SeedRollUpdate::Done {
                             seed: seed::Data {
                                 file_hash: None, password: None, // will be read from spoiler log
+                                bingo: None,
                                 files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: Some(spoiler_log_path.into_os_string().into_string()?),
@@ -1839,6 +1848,7 @@ impl GlobalState {
                 seed: seed::Data {
                     file_hash: Some(response.hash_icons),
                     password: response.seed_password,
+                    bingo: None,
                     files: Some(seed::Files::TriforceBlitz {
                         is_dev: false,
                         uuid: response.id,
@@ -3127,6 +3137,7 @@ impl RaceHandler<GlobalState> for Handler {
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 password: None,
+                                bingo: seed::BingoData::read(file_stem).await.to_racetime()?,
                                 files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: None,
@@ -3136,12 +3147,14 @@ impl RaceHandler<GlobalState> for Handler {
                             break
                         } else if let Some((_, seed_id)) = regex_captures!(r"^Seed: https://ootrandomizer\.com/seed/get?id=([0-9]+)$", section) {
                             let id = seed_id.parse().to_racetime()?;
+                            let file_stem = ctx.global_state.ootr_api_client.patch_file_stem(id).await.to_racetime()?;
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 password: None, //TODO get from API
+                                bingo: seed::BingoData::read(&file_stem).await.to_racetime()?,
                                 files: Some(seed::Files::OotrWeb {
                                     gen_time: Utc::now(),
-                                    file_stem: Cow::Owned(ctx.global_state.ootr_api_client.patch_file_stem(id).await.to_racetime()?),
+                                    file_stem: Cow::Owned(file_stem),
                                     id,
                                 }),
                                 progression_spoiler: false, //TODO
@@ -5149,6 +5162,7 @@ pub(crate) enum PrepareSeedsError {
     #[error(transparent)] Roll(#[from] RollError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Url(#[from] url::ParseError),
 }
 
 async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), PrepareSeedsError> {
@@ -5159,7 +5173,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
             let event = race.event(&mut transaction).await?;
             if let Some(goal) = Goal::for_event(event.series, &*event.event) {
                 if let PrerollMode::Long = goal.preroll_seeds(Some((event.series, &*event.event))) {
-                    if let Some((version, settings)) = race.single_settings(&mut transaction).await? {
+                    if let Some((version, mut settings, bingo_passphrase)) = race.single_settings(&global, &event, true).await? {
                         transaction.commit().await?;
                         if race.seed.files.is_none()
                         && let Some(start) = race
@@ -5189,6 +5203,11 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                                 let extra = seed.extra(Utc::now()).await?;
                                                 seed.file_hash = extra.file_hash;
                                                 seed.password = extra.password;
+                                                seed.bingo = if let (Some(url), Some(passphrase)) = (settings.remove("bingosync_url"), bingo_passphrase) {
+                                                    Some(seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase })
+                                                } else {
+                                                    extra.bingo
+                                                };
                                                 // reload race data in case anything changed during seed rolling
                                                 let mut transaction = global.db_pool.begin().await?;
                                                 let mut race = Race::from_id(&mut transaction, &global.http_client, race.id).await?;

@@ -90,8 +90,26 @@ impl OcarinaNoteExt for OcarinaNote {
 pub(crate) struct Data {
     pub(crate) file_hash: Option<[HashIcon; 5]>,
     pub(crate) password: Option<[OcarinaNote; 6]>,
+    pub(crate) bingo: Option<BingoData>,
     pub(crate) files: Option<Files>,
     pub(crate) progression_spoiler: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[cfg_attr(unix, derive(Protocol))]
+pub(crate) struct BingoData {
+    pub(crate) url: Url,
+    pub(crate) passphrase: String,
+}
+
+impl BingoData {
+    pub(crate) async fn read(file_stem: &str) -> wheel::Result<Option<Self>> {
+        match fs::read_json(Path::new(DIR).join(format!("{file_stem}_bingo.json"))).await {
+            Ok(bingo) => Ok(Some(bingo)),
+            Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +150,8 @@ impl Data {
         hash5: Option<HashIcon>,
         password: Option<&str>,
         progression_spoiler: bool,
+        bingosync_url: Option<String>,
+        bingo_passphrase: Option<String>,
     ) -> Self {
         Self {
             file_hash: match (hash1, hash2, hash3, hash4, hash5) {
@@ -140,6 +160,11 @@ impl Data {
                 _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
             },
             password: password.map(|pw| pw.chars().map(|note| note.try_into().expect("invalid ocarina note in password, should be prevented by SQL constraint")).collect_vec().try_into().expect("invalid password length, should be prevented by SQL constraint")),
+            bingo: if let (Some(url), Some(passphrase)) = (bingosync_url, bingo_passphrase) {
+                Some(BingoData { url: url.parse().expect("invalid Bingosync URL in database"), passphrase })
+            } else {
+                None
+            },
             files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
                 (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { is_dev: is_tfb_dev, uuid, scheduled_spoiler_unlock: None }),
                 (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
@@ -196,6 +221,13 @@ impl Data {
                 (self.file_hash, self.password, None, ChestAppearances::random())
             };
             //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
+            let bingo = if let Some(bingo) = &self.bingo {
+                Some(bingo.clone())
+            } else if let Some(Files::MidosHouse { ref file_stem, .. } | Files::OotrWeb { ref file_stem, .. }) = self.files {
+                BingoData::read(file_stem).await?
+            } else {
+                None
+            };
             return Ok(ExtraData {
                 spoiler_status: if spoiler_path_exists {
                     if let Some(spoiler_file_name) = spoiler_file_name {
@@ -208,7 +240,7 @@ impl Data {
                 } else {
                     SpoilerStatus::NotFound
                 },
-                file_hash, password, world_count, chests,
+                file_hash, password, bingo, world_count, chests,
             })
         }
         //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
@@ -216,6 +248,7 @@ impl Data {
             spoiler_status: SpoilerStatus::NotFound,
             file_hash: self.file_hash,
             password: self.password,
+            bingo: self.bingo.clone(),
             world_count: None,
             chests: ChestAppearances::random(),
         })
@@ -241,6 +274,7 @@ pub(crate) struct ExtraData {
     spoiler_status: SpoilerStatus,
     pub(crate) file_hash: Option<[HashIcon; 5]>,
     pub(crate) password: Option<[OcarinaNote; 6]>,
+    pub(crate) bingo: Option<BingoData>,
     pub(crate) world_count: Option<NonZero<u8>>,
     chests: ChestAppearances,
 }
@@ -299,6 +333,17 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
                 a(class = "button", href = add_hash_url.to_string()) : "Add Hash";
             });
         }
+    }
+    if let Some(BingoData { url, passphrase }) = extra.bingo {
+        seed_links = Some(html! {
+            @if let Some(seed_links) = seed_links {
+                : seed_links;
+                br;
+            }
+            a(href = url) : "Bingo Board";
+            : " — password: ";
+            code : passphrase;
+        });
     }
     Ok(match (extra.file_hash, show_password, extra.password, seed_links) {
         (None, false, _, None) | (None, _, None, None) => html! {},
@@ -424,6 +469,7 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
             };
             let seed = Data {
                 password: None, // not displayed
+                bingo: BingoData::read(file_stem).await?,
                 files: Some(Files::MidosHouse {
                     file_stem: Cow::Owned(file_stem.to_owned()),
                     locked_spoiler_log_path,
@@ -487,6 +533,7 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
             };
             let seed = Data {
                 password: None, // not displayed
+                bingo: BingoData::read(file_stem).await?,
                 files: Some(Files::MidosHouse {
                     file_stem: Cow::Owned(file_stem.to_owned()),
                     locked_spoiler_log_path,
@@ -511,6 +558,16 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                     }
                 } else {
                     h1 : "Seed";
+                }
+                @if let Some(BingoData { url, passphrase }) = extra.bingo {
+                    p {
+                        a(class = "button", href = &url) {
+                            : favicon(&url);
+                            : "Bingo Board";
+                        }
+                        : " — password: ";
+                        code : passphrase;
+                    }
                 }
                 @match extra.spoiler_status {
                     SpoilerStatus::Unlocked(spoiler_filename) => div(class = "button-row") {

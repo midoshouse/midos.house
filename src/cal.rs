@@ -514,6 +514,8 @@ impl Race {
             hash4 AS "hash4: HashIcon",
             hash5 AS "hash5: HashIcon",
             seed_password,
+            bingosync_url,
+            bingo_passphrase,
             video_url,
             restreamer,
             video_url_fr,
@@ -706,6 +708,8 @@ impl Race {
                 row.hash5,
                 row.seed_password.as_deref(),
                 false, // no official races with progression spoilers so far
+                row.bingosync_url,
+                row.bingo_passphrase,
             ),
             video_urls: all().filter_map(|language| match language {
                 English => row.video_url.clone(),
@@ -1265,19 +1269,18 @@ impl Race {
         }
     }
 
-    pub(crate) async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<(VersionedBranch, seed::Settings)>, Error> {
-        let event = self.event(transaction).await?;
+    pub(crate) async fn single_settings(&self, global: &GlobalState, event: &event::Data<'_>, generate_bingo_board: bool) -> Result<Option<(VersionedBranch, seed::Settings, Option<String>)>, Error> {
         Ok(if let Some((version, settings)) = event.single_settings().await? {
-            Some((version, settings.into_owned()))
+            Some((version, settings.into_owned(), None))
         } else if let Some(draft_kind) = self.draft_kind(&event) {
             let Some(draft) = &self.draft else { return Ok(None) };
             match draft.next_step(draft_kind, None, &mut draft::MessageContext::None).await?.kind {
-                draft::StepKind::Done(settings) => Some((draft_kind.rando_version(), settings)),
+                draft::StepKind::Done(settings) => Some((draft_kind.rando_version(), settings, None)),
                 draft::StepKind::DoneRsl { .. } => None, //TODO
                 draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim | draft::StepKind::DoneSlugOpen(_) => None,
             }
         } else if let Some(format) = sco::Format::for_race(self) {
-            format.single_settings().await?
+            format.single_settings(global, generate_bingo_board.then(|| format!("{} Practice: {}", event.display_name, format.display_name())).as_deref()).await?
         } else {
             None
         })
@@ -1305,11 +1308,16 @@ impl Race {
             Some(seed::Files::TriforceBlitz { is_dev, uuid, scheduled_spoiler_unlock: _ }) => (None, None, None, None, is_dev, Some(uuid)),
             None => (None, None, None, None, false, None),
         };
+        let (bingosync_url, bingo_passphrase) = if let Some(seed::BingoData { url, passphrase }) = &self.seed.bingo {
+            (Some(url.to_string()), Some(passphrase.clone()))
+        } else {
+            (None, None)
+        };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, breaks_used, video_url_es, restreamer_es, speedgaming_onsite_id)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,         $69,          $70,           $71)
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, breaks_used, video_url_es, restreamer_es, speedgaming_onsite_id)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,         $69,          $70,           $71)
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, breaks_used, video_url_es, restreamer_es, speedgaming_onsite_id, bingosync_url, bingo_passphrase)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,         $69,          $70,           $71,                   $72,           $73)
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, breaks_used, video_url_es, restreamer_es, speedgaming_onsite_id, bingosync_url, bingo_passphrase)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,         $69,          $70,           $71,                   $72,           $73)
         ",
             startgg_set as _,
             start,
@@ -1382,6 +1390,8 @@ impl Race {
             self.video_urls.get(&Spanish).map(|url| url.to_string()),
             self.restreamers.get(&Spanish).and_then(as_variant!(Restreamer::RaceTime)),
             speedgaming_onsite_id,
+            bingosync_url,
+            bingo_passphrase,
         ).execute(&mut **transaction).await?;
         for language in all() {
             if let Some(restreamer) = self.restreamers.get(&language).and_then(as_variant!(Restreamer::MidosHouse)) {
@@ -2594,7 +2604,7 @@ pub(crate) async fn race_table(
                     hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     hash_map::Entry::Vacant(entry) => entry.insert(race.event(&mut *transaction).await?),
                 };
-                if !event.has_single_settings() && race.single_settings(&mut *transaction).await?.is_some() {
+                if !event.has_single_settings() && race.single_settings(global, event, false).await?.is_some() {
                     break 'has_seeds true
                 }
             }
@@ -2811,7 +2821,7 @@ pub(crate) async fn race_table(
                                 } else {
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
-                                    @if !event.has_single_settings() && race.single_settings(&mut *transaction).await?.is_some() {
+                                    @if !event.has_single_settings() && race.single_settings(global, event, false).await?.is_some() {
                                         @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, global, race.id).await? {
                                             external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), &favicon_url, "Practice")
                                         } else {
@@ -4042,7 +4052,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
 
 async fn practice_seed_favicon_url(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, id: Id<Races>) -> Result<Option<Url>, Error> {
     let race = Race::from_id(&mut *transaction, &global.http_client, id).await?;
-    let Some((rando_version, settings)) = race.single_settings(transaction).await? else { return Ok(None) };
+    let Some((rando_version, settings, _)) = race.single_settings(global, &race.event(&mut *transaction).await?, false).await? else { return Ok(None) };
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     if global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.is_some() {
         Ok(Some(Url::parse("https://ootrandomizer.com/")?))
@@ -4057,7 +4067,7 @@ async fn practice_seed_form(mut transaction: Transaction<'_, Postgres>, global: 
         : event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
         //TODO link back to race page
         h2 : "Practice";
-        @if race.single_settings(&mut transaction).await?.is_some() {
+        @if race.single_settings(global, &event, false).await?.is_some() {
             @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut transaction, global, race.id).await? {
                 external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, errors, &favicon_url, "Roll Seed")
             } else {
@@ -4094,10 +4104,10 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), event, race, form.context).await?)
         } else {
-            let (rando_version, mut settings) = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+            let (rando_version, mut settings, bingo_passphrase) = race.single_settings(global, &event, true).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
             transaction.commit().await?;
             let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-            if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+            if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
                 let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings).await?;
                 RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
             } else {
@@ -4106,10 +4116,13 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     return Err(StatusOrError::Status(Status::InsufficientStorage))
                 }
                 settings.remove("password_lock");
-                let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await?;
+                let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings.clone(), serde_json::Map::default()).await?;
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                }
+                if let (Some(url), Some(passphrase)) = (settings.remove("bingosync_url"), bingo_passphrase) {
+                    fs::write_json(Path::new(seed::DIR).join("{file_stem}_bingo.json"), seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase }).await?;
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             }

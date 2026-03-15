@@ -1,4 +1,11 @@
-use crate::prelude::*;
+use {
+    kuchiki::traits::TendrilSink as _,
+    rand::distr::{
+        Alphanumeric,
+        SampleString as _,
+    },
+    crate::prelude::*,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromFormField, UriDisplayQuery, Sequence)]
 pub(crate) enum Format {
@@ -62,7 +69,7 @@ impl Format {
         }
     }
 
-    pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, seed::Settings)>, SingleSettingsError> {
+    pub(crate) async fn single_settings(&self, global: &GlobalState, bingo_room_name: Option<&str>) -> Result<Option<(VersionedBranch, seed::Settings, Option<String>)>, SingleSettingsError> {
         let preset = match self {
             Self::League => "League S9",
             Self::Sgl => "SGL 2025 Tournament",
@@ -74,13 +81,57 @@ impl Format {
             Self::Triforce => return Ok(Some((VersionedBranch::Latest { branch: ootr_utils::Branch::DevFenhl }, collect![
                 format!("password_lock") => json!(true),
                 format!("triforce_hunt") => json!(true),
-            ]))), //TODO add this preset once settings are decided
+            ], None))), //TODO add this preset once settings are decided
         };
         ootr_utils::Branch::DevFenhl.clone_repo(true).await?;
         let mut presets = fs::read_json::<HashMap<String, seed::Settings>>(ootr_utils::Branch::DevFenhl.dir(true)?.join("data").join("presets_default.json")).await?;
         let mut settings = presets.remove(preset).ok_or(SingleSettingsError::MissingPreset(*self, preset))?;
         settings.insert(format!("password_lock"), json!(true));
-        Ok(Some((VersionedBranch::Latest { branch: ootr_utils::Branch::DevFenhl }, settings)))
+        let bingo_passphrase = if let Some(room_name) = bingo_room_name && let Self::Bingo = self {
+            #[derive(Serialize)]
+            struct BingoForm<'a> {
+                csrfmiddlewaretoken: String,
+                room_name: &'a str,
+                passphrase: String,
+                nickname: &'static str,
+                game_type: u8,
+                variant_type: u8,
+                lockout_mode: u8,
+                is_spectator: bool,
+                hide_card: bool,
+            }
+
+            let index = global.http_client.get("https://bingosync.com/")
+                .send().await?
+                .detailed_error_for_status().await?
+                .text().await?;
+            let csrfmiddlewaretoken = kuchiki::parse_html().one(index)
+                .select_first("input[name=csrfmiddlewaretoken]").map_err(|()| SingleSettingsError::BingoIndex)?
+                .attributes
+                .borrow_mut()
+                .remove("value")
+                .ok_or(SingleSettingsError::BingoIndex)?
+                .value;
+            let passphrase = Alphanumeric.sample_string(&mut rng(), 8);
+            let response = global.http_client.post("https://bingosync.com/")
+                .form(&BingoForm {
+                    passphrase: passphrase.clone(),
+                    nickname: "Mido",
+                    game_type: 1, // OoT
+                    variant_type: 90, // Item Randomizer Blackout
+                    lockout_mode: 1, // Non-Lockout
+                    is_spectator: true,
+                    hide_card: true,
+                    csrfmiddlewaretoken, room_name,
+                })
+                .send().await?
+                .detailed_error_for_status().await?;
+            settings.insert(format!("bingosync_url"), json!(response.url()));
+            Some(passphrase)
+        } else {
+            None
+        };
+        Ok(Some((VersionedBranch::Latest { branch: ootr_utils::Branch::DevFenhl }, settings, bingo_passphrase)))
     }
 }
 
@@ -96,7 +147,10 @@ impl FromStr for Format {
 pub(crate) enum SingleSettingsError {
     #[error(transparent)] Clone(#[from] ootr_utils::CloneError),
     #[error(transparent)] Dir(#[from] ootr_utils::DirError),
+    #[error(transparent)] Http(#[from] reqwest::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("failed to parse Bingosync index page")]
+    BingoIndex,
     #[error("the settings preset {1:?} for SlugCentral Open format {0:?} is not available on the dev-fenhl branch of the randomizer")]
     MissingPreset(Format, &'static str),
 }
@@ -106,7 +160,9 @@ impl IsNetworkError for SingleSettingsError {
         match self {
             Self::Clone(_) => false, //TODO implement IsNetworkError for ootr_utils::CloneError
             Self::Dir(_) => false,
+            Self::Http(e) => e.is_network_error(),
             Self::Wheel(e) => e.is_network_error(),
+            Self::BingoIndex => false,
             Self::MissingPreset(_, _) => false,
         }
     }

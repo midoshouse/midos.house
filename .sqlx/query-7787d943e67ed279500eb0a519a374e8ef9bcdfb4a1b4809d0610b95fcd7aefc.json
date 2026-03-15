@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 AND (seed_password IS NULL OR NOT $2) ORDER BY timestamp ASC NULLS FIRST LIMIT 1) RETURNING\n                        goal_name,\n                        file_stem,\n                        locked_spoiler_log_path,\n                        hash1 AS \"hash1: HashIcon\",\n                        hash2 AS \"hash2: HashIcon\",\n                        hash3 AS \"hash3: HashIcon\",\n                        hash4 AS \"hash4: HashIcon\",\n                        hash5 AS \"hash5: HashIcon\",\n                        seed_password,\n                        progression_spoiler\n                    ",
+  "query": "DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 AND (seed_password IS NULL OR NOT $2) ORDER BY timestamp ASC NULLS FIRST LIMIT 1) RETURNING\n                        goal_name,\n                        file_stem,\n                        locked_spoiler_log_path,\n                        hash1 AS \"hash1: HashIcon\",\n                        hash2 AS \"hash2: HashIcon\",\n                        hash3 AS \"hash3: HashIcon\",\n                        hash4 AS \"hash4: HashIcon\",\n                        hash5 AS \"hash5: HashIcon\",\n                        seed_password,\n                        progression_spoiler,\n                        bingosync_url,\n                        bingo_passphrase\n                    ",
   "describe": {
     "columns": [
       {
@@ -252,6 +252,16 @@
         "ordinal": 9,
         "name": "progression_spoiler",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "bingosync_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "bingo_passphrase",
+        "type_info": "Bpchar"
       }
     ],
     "parameters": {
@@ -270,8 +280,10 @@
       true,
       true,
       true,
-      false
+      false,
+      true,
+      true
     ]
   },
-  "hash": "74c42ca0a11ce6fdd6361a062bf5c5317dd1fa6e083cffc70bbfee5603ac1815"
+  "hash": "7787d943e67ed279500eb0a519a374e8ef9bcdfb4a1b4809d0610b95fcd7aefc"
 }

@@ -60,6 +60,7 @@ hyper = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
 itertools = "0.14"
+kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock" }
@@ -70,7 +71,7 @@ nonempty-collections = "1"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", features = ["sqlx"] }
 racetime = "0.32"
 rand = "0.10"
-reqwest = { version = "0.13", default-features = false, features = ["charset", "form", "gzip", "hickory-dns", "http2", "json", "query", "rustls-no-provider", "stream", "system-proxy", "zstd"] }
+reqwest = { version = "0.13", default-features = false, features = ["charset", "cookies", "form", "gzip", "hickory-dns", "http2", "json", "query", "rustls-no-provider", "stream", "system-proxy", "zstd"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
 rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "forms", features = ["ics", "image", "rocket_csrf"] }
 rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "forms" }
@@ -101,7 +102,7 @@ wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", featu
 yup-oauth2 = "12"
 
 [target.'cfg(unix)'.dependencies]
-async-proto = { version = "0.26", features = ["chrono", "serde_json", "serenity", "uuid"] }
+async-proto = { version = "0.26", features = ["chrono", "serde_json", "serenity", "url", "uuid"] }
 xdg = "3"
 
 [target.'cfg(windows)'.dependencies]

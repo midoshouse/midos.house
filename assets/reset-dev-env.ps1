@@ -148,7 +148,7 @@ if (-not $?) {
     throw 'Native Failure'
 }
 
-ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, listed, short_name, team_config) VALUES (''sco'', ''2026'', ''SlugCentral Open 2026'', TRUE, ''Slug Open'', ''slugopen'');"'
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, listed, short_name, team_config, discord_guild) VALUES (''sco'', ''2026'', ''SlugCentral Open 2026'', TRUE, ''Slug Open'', ''slugopen'', 987565688820469781);"'
 if (-not $?) {
     throw 'Native Failure'
 }
@@ -159,6 +159,21 @@ if (-not $?) {
 }
 
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, racetime_discriminator, discord_username) VALUES (137149793105548454, ''VXakOPonPdvDrB8n'', ''Ganondorf'', 212413638860996609, ''BearKofca'', ''discord'', 7849, ''bearkofca'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, racetime_discriminator, discord_username) VALUES (8175787319745695527, ''Pl87GRox6Qd625zg'', ''Samus'', 691236965630083072, ''ksinjah'', ''discord'', 10, ''ksinjah'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, racetime_discriminator, discord_username) VALUES (-2871260142009583217, ''gAzO07dQ5zdlG6Rv'', ''Yoshi'', 700863710981259265, ''melqwii'', ''discord'', 9537, ''melqwii'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, racetime_discriminator, discord_username) VALUES (2728112804012319386, ''a9mKQGd8P4dAqJRg'', ''Shulk'', 228203986707021825, ''Tjongejonge'', ''discord'', 4199, ''tjongejonge'');"'
 if (-not $?) {
     throw 'Native Failure'
 }
