@@ -145,7 +145,14 @@ pub(crate) async fn platforms(global: &GlobalState, me: Option<User>, uri: Origi
                     a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
                     : ")";
                 }
-                td(colspan = "2") : "Not supported by Project64 itself";
+                td : "Not supported by Project64 itself";
+                td {
+                    : "Not supported by Project64 itself (but running the Windows versions of both Project64 and Mido's House Multiworld via ";
+                    a(href = "https://www.winehq.org/"): "Wine";
+                    : " or ";
+                    a(href = "https://github.com/ValveSoftware/Proton") : "Proton";
+                    : " may work)";
+                }
             }
             tr {
                 th : "Project64-EM";
@@ -161,6 +168,12 @@ pub(crate) async fn platforms(global: &GlobalState, me: Option<User>, uri: Origi
                 th : "RetroArch";
                 td(colspan = "3") {
                     a(href = "https://github.com/midoshouse/ootr-multiworld/issues/25") : "Planned";
+                }
+            }
+            tr {
+                th : "Dolphin";
+                td(colspan = "3") {
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/60") : "Planned";
                 }
             }
         }
