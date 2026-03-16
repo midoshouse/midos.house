@@ -2799,8 +2799,11 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     if let Some(spoiler_log_path) = spoiler_log_path {
                         fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                     }
-                    if let (Some(url), Some(passphrase)) = (settings.to_mut().remove("bingosync_url"), bingo_passphrase) {
-                        fs::write_json(Path::new(seed::DIR).join("{file_stem}_bingo.json"), seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase }).await?;
+                    match (settings.to_mut().remove("bingosync_url"), bingo_passphrase) {
+                        (None, None) => {}
+                        (None, Some(passphrase)) => eprintln!("rolled seed {file_stem:?} with no Bingosync URL but with Bingo passphrase {passphrase:?}"),
+                        (Some(url), None) => eprintln!("rolled seed {file_stem:?} with Bingosync URL {url} but with no Bingo passphrase"),
+                        (Some(url), Some(passphrase)) => fs::write_json(Path::new(seed::DIR).join("{file_stem}_bingo.json"), seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase }).await?,
                     }
                     RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
                 }
