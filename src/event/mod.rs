@@ -2490,13 +2490,13 @@ async fn practice_seed_favicon_url(global: &GlobalState, data: &Data<'_>, sco_fo
     } else if data.series == Series::TriforceBlitz {
         Ok(Some(Url::parse("https://triforceblitz.com/")?))
     } else {
-        let Some((rando_version, settings)) = (if let Some(sco_format) = sco_format {
-            sco_format.single_settings(global, None).await?.map(|(rando_version, settings, _)| (rando_version, Cow::Owned(settings)))
+        let Some((rando_version, settings, is_bingo)) = (if let Some(sco_format) = sco_format {
+            sco_format.single_settings(global, None).await?.map(|(rando_version, settings, bingo_passphrase)| (rando_version, Cow::Owned(settings), bingo_passphrase.is_some()))
         } else {
-            data.single_settings().await?
+            data.single_settings().await?.map(|(rando_version, settings)| (rando_version, settings, false))
         }) else { return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        if global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.is_some() {
+        if !is_bingo && global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.is_some() {
             Ok(Some(Url::parse("https://ootrandomizer.com/")?))
         } else {
             Ok(None)

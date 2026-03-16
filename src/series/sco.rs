@@ -87,47 +87,51 @@ impl Format {
         let mut presets = fs::read_json::<HashMap<String, seed::Settings>>(ootr_utils::Branch::DevFenhl.dir(true)?.join("data").join("presets_default.json")).await?;
         let mut settings = presets.remove(preset).ok_or(SingleSettingsError::MissingPreset(*self, preset))?;
         settings.insert(format!("password_lock"), json!(true));
-        let bingo_passphrase = if let Some(room_name) = bingo_room_name && let Self::Bingo = self {
-            #[derive(Serialize)]
-            struct BingoForm<'a> {
-                csrfmiddlewaretoken: String,
-                room_name: &'a str,
-                passphrase: String,
-                nickname: &'static str,
-                game_type: u8,
-                variant_type: u8,
-                lockout_mode: u8,
-                is_spectator: bool,
-                hide_card: bool,
-            }
+        let bingo_passphrase = if let Self::Bingo = self {
+            if let Some(room_name) = bingo_room_name {
+                #[derive(Serialize)]
+                struct BingoForm<'a> {
+                    csrfmiddlewaretoken: String,
+                    room_name: &'a str,
+                    passphrase: String,
+                    nickname: &'static str,
+                    game_type: u8,
+                    variant_type: u8,
+                    lockout_mode: u8,
+                    is_spectator: bool,
+                    hide_card: bool,
+                }
 
-            let index = global.http_client.get("https://bingosync.com/")
-                .send().await?
-                .detailed_error_for_status().await?
-                .text().await?;
-            let csrfmiddlewaretoken = kuchiki::parse_html().one(index)
-                .select_first("input[name=csrfmiddlewaretoken]").map_err(|()| SingleSettingsError::BingoIndex)?
-                .attributes
-                .borrow_mut()
-                .remove("value")
-                .ok_or(SingleSettingsError::BingoIndex)?
-                .value;
-            let passphrase = Alphanumeric.sample_string(&mut rng(), 8);
-            let response = global.http_client.post("https://bingosync.com/")
-                .form(&BingoForm {
-                    passphrase: passphrase.clone(),
-                    nickname: "Mido",
-                    game_type: 1, // OoT
-                    variant_type: 90, // Item Randomizer Blackout
-                    lockout_mode: 1, // Non-Lockout
-                    is_spectator: true,
-                    hide_card: true,
-                    csrfmiddlewaretoken, room_name,
-                })
-                .send().await?
-                .detailed_error_for_status().await?;
-            settings.insert(format!("bingosync_url"), json!(response.url()));
-            Some(passphrase)
+                let index = global.http_client.get("https://bingosync.com/")
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .text().await?;
+                let csrfmiddlewaretoken = kuchiki::parse_html().one(index)
+                    .select_first("input[name=csrfmiddlewaretoken]").map_err(|()| SingleSettingsError::BingoIndex)?
+                    .attributes
+                    .borrow_mut()
+                    .remove("value")
+                    .ok_or(SingleSettingsError::BingoIndex)?
+                    .value;
+                let passphrase = Alphanumeric.sample_string(&mut rng(), 8);
+                let response = global.http_client.post("https://bingosync.com/")
+                    .form(&BingoForm {
+                        passphrase: passphrase.clone(),
+                        nickname: "Mido",
+                        game_type: 1, // OoT
+                        variant_type: 90, // Item Randomizer Blackout
+                        lockout_mode: 1, // Non-Lockout
+                        is_spectator: true,
+                        hide_card: true,
+                        csrfmiddlewaretoken, room_name,
+                    })
+                    .send().await?
+                    .detailed_error_for_status().await?;
+                settings.insert(format!("bingosync_url"), json!(response.url()));
+                Some(passphrase)
+            } else {
+                Some(String::default())
+            }
         } else {
             None
         };
