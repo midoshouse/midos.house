@@ -2478,7 +2478,7 @@ impl IsNetworkError for PracticeFaviconError {
 async fn practice_seed_favicon_url(global: &GlobalState, data: &Data<'_>, sco_format: Option<sco::Format>) -> Result<Option<Url>, PracticeFaviconError> {
     let draft_kind = if let Some(sco_format) = sco_format { sco_format.draft_kind() } else { data.draft_kind() };
     if let Some(draft_kind) = draft_kind {
-        if global.ootr_api_client.can_roll_on_web(true, None, &draft_kind.rando_version(), 1, false, UnlockSpoilerLog::Now).await.is_some() {
+        if let Some(rando_version) = draft_kind.rando_version() && global.ootr_api_client.can_roll_on_web(true, None, &rando_version, 1, false, UnlockSpoilerLog::Now).await.is_some() {
             Ok(Some(Url::parse("https://ootrandomizer.com/")?))
         } else {
             Ok(None)
@@ -2648,7 +2648,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     skipped_bans: u8::MAX,
                     settings: picks,
                 }.next_step(draft_kind, None, &mut draft::MessageContext::None).await?).kind {
-                    draft::StepKind::Done(settings) => (draft_kind.rando_version(), settings),
+                    draft::StepKind::Done(settings) => (draft_kind.rando_version().expect("completed draft has no rando version"), settings),
                     draft::StepKind::DoneRsl { preset, world_count } => {
                         #[derive(Deserialize)]
                         struct Plando {

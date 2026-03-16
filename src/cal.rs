@@ -1275,7 +1275,7 @@ impl Race {
         } else if let Some(draft_kind) = self.draft_kind(&event) {
             let Some(draft) = &self.draft else { return Ok(None) };
             match draft.next_step(draft_kind, None, &mut draft::MessageContext::None).await?.kind {
-                draft::StepKind::Done(settings) => Some((draft_kind.rando_version(), settings, None)),
+                draft::StepKind::Done(settings) => Some((draft_kind.rando_version().expect("completed draft has no rando version"), settings, None)),
                 draft::StepKind::DoneRsl { .. } => None, //TODO
                 draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim | draft::StepKind::DoneSlugOpen(_) => None,
             }
