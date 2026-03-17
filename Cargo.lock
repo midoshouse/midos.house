@@ -4346,7 +4346,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "ootr-utils"
 version = "0.6.4"
-source = "git+https://github.com/midoshouse/rust-ootr-utils#7ba9eef9be35d16752191c61847252a39422151e"
+source = "git+https://github.com/midoshouse/rust-ootr-utils#e7bdd2e77401206eb8bbe8dab3ea6afe9546b5b2"
 dependencies = [
  "async-proto",
  "cargo_metadata 0.23.1",
