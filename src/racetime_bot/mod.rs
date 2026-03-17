@@ -2445,6 +2445,14 @@ impl FromStr for Breaks {
     }
 }
 
+fn adjust_for_breaks(finish_time: Option<Duration>, breaks: Option<Breaks>, restreamed: bool) -> Option<Duration> {
+    if let (Some(finish_time), Some(breaks), false) = (finish_time, breaks, restreamed) {
+        Some(finish_time - breaks.duration.mul_f64(finish_time.div_duration_f64(breaks.interval).floor()))
+    } else {
+        finish_time
+    }
+}
+
 #[derive(Default)]
 enum RaceState {
     #[default]
@@ -2566,7 +2574,6 @@ struct OfficialRaceData {
     restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
     fpa_invoked: bool,
-    breaks_used: bool,
     /// Keys are racetime.gg team slugs if is_racetime_team_format, racetime.gg user IDs otherwise
     scores: HashMap<String, Option<tfb::Score>>,
 }
@@ -3120,7 +3127,6 @@ impl RaceHandler<GlobalState> for Handler {
                     cal_event.race.seed.clone(),
                     Some(OfficialRaceData {
                         fpa_invoked: cal_event.race.fpa_invoked,
-                        breaks_used: cal_event.race.breaks_used,
                         scores: HashMap::default(),
                         cal_event, event, goal, restreams, entrants,
                     }),
@@ -4437,7 +4443,7 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.send_message(
                                 &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
                                 false,
-                                vec![tfb::report_score_button(event.team_config, None)],
+                                vec![tfb::report_score_button(event.team_config, None, self.breaks.is_some())],
                             ).await?;
                         }
                     } else {
@@ -4553,7 +4559,7 @@ impl RaceHandler<GlobalState> for Handler {
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
         let goal = self.goal(ctx).await.to_racetime()?;
-        if let Some(OfficialRaceData { ref event, ref entrants, ref mut scores, .. }) = self.official_data {
+        if let Some(OfficialRaceData { ref event, ref restreams, ref entrants, ref mut scores, .. }) = self.official_data {
             for entrant in &data.entrants {
                 if let Some(user) = &entrant.user {
                     match entrant.status.value {
@@ -4570,7 +4576,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 ctx.send_message(
                                     &format!("{reply_to}, please report your score:"),
                                     false,
-                                    vec![tfb::report_score_button(event.team_config, entrant.finish_time)],
+                                    vec![tfb::report_score_button(event.team_config, adjust_for_breaks(entrant.finish_time, self.breaks, !restreams.is_empty()), self.breaks.is_some())],
                                 ).await?;
                                 entry.insert(None);
                             }
@@ -4825,8 +4831,8 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 } else {
                     self.cleaned_up.store(true, atomic::Ordering::SeqCst);
-                    if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, breaks_used, .. }) = self.official_data {
-                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, breaks_used || self.breaks.is_some(), None).await?;
+                    if let Some(OfficialRaceData { ref cal_event, ref event, ref restreams, fpa_invoked, .. }) = self.official_data {
+                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, self.breaks, !restreams.is_empty(), None).await?;
                     }
                 }
             },

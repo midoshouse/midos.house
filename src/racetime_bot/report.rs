@@ -78,7 +78,7 @@ impl Score for tfb::Score {
     }
 }
 
-async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, mut entrants: [(Entrant, S, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
+async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, breaks_used: bool, restreamed: bool, mut entrants: [(Entrant, S, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
     entrants.sort_unstable_by_key(|(_, time, _)| time.sort_key());
     let [(winner, winning_time, winning_room), (loser, losing_time, losing_room)] = entrants;
     if winning_time.is_dnf() && losing_time.is_dnf() {
@@ -210,6 +210,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     (None, None) => Some(None), // no phase/round
                 }
                 && cal_event.race.game.is_none()
+                && !breaks_used
             {
                 let mut builder = MessageBuilder::default();
                 if let Some(phase_round) = phase_round {
@@ -262,6 +263,9 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(winning_time.format(English));
+                if breaks_used {
+                    builder.push(if restreamed { " including breaks" } else { " adjusted for breaks" });
+                }
                 builder.push(')');
                 if winning_room != losing_room {
                     builder.push(" [<");
@@ -272,6 +276,9 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(losing_time.format(English));
+                if breaks_used {
+                    builder.push(if restreamed { " including breaks" } else { " adjusted for breaks" });
+                }
                 builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
                 builder.push(losing_room.to_string());
                 builder.push(if winning_room == losing_room { ">" } else { ">]" });
@@ -457,7 +464,7 @@ impl Handler {
     #[must_use = "should set cleaned_up if this returns true"]
     pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         let data = ctx.data().await;
-        let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, breaks_used, ref scores, .. }) = self.official_data else { return Ok(true) };
+        let Some(OfficialRaceData { ref cal_event, ref event, ref restreams, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(true) };
         Ok(if let Some(scores) = data.entrants.iter().map(|entrant| {
             let key = if let Some(ref team) = entrant.team { Some(&team.slug) } else { entrant.user.as_ref().map(|user| &user.id) };
             if let Some(key) = key {
@@ -471,14 +478,14 @@ impl Handler {
             }
         }).collect() {
             ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
-            self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, breaks_used || self.breaks.is_some(), Some(scores)).await?;
+            self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, self.breaks, !restreams.is_empty(), Some(scores)).await?;
             true
         } else {
             false
         })
     }
 
-    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks_used: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
+    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks: Option<Breaks>, restreamed: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
         let stream_delay = match cal_event.race.entrants {
             Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
             Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
@@ -490,13 +497,10 @@ impl Handler {
             if fpa_invoked {
                 sqlx::query!("UPDATE races SET fpa_invoked = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?;
             }
-            if breaks_used {
-                sqlx::query!("UPDATE races SET breaks_used = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?;
-            }
             if let Some(organizer_channel) = event.discord_organizer_channel {
                 organizer_channel.say(discord_ctx!(ctx.global_state), MessageBuilder::default()
                     .push("first half of async finished")
-                    .push(if fpa_invoked { " with FPA call" } else if event.manual_reporting_with_breaks && breaks_used { " with breaks" } else { "" })
+                    .push(if fpa_invoked { " with FPA call" } else if event.manual_reporting_with_breaks && breaks.is_some() { " with breaks" } else { "" })
                     .push(": <https://")
                     .push(racetime_host())
                     .push(&ctx.data().await.url)
@@ -528,7 +532,7 @@ impl Handler {
                 //TODO note to manually initialize high seed for next game's draft (if any) and use `/post-status`
                 organizer_channel.say(discord_ctx!(ctx.global_state), msg.build()).await.to_racetime()?;
             }
-        } else if event.manual_reporting_with_breaks && breaks_used {
+        } else if event.manual_reporting_with_breaks && breaks.is_some() {
             if let Some(organizer_channel) = event.discord_organizer_channel {
                 let mut msg = MessageBuilder::default();
                 msg.push("race finished with breaks: <https://");
@@ -580,7 +584,7 @@ impl Handler {
                                 }
                             }
                             if let Ok(teams) = teams.try_into() {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 report_ffa(ctx, cal_event, event, room).await?;
                             }
@@ -598,11 +602,11 @@ impl Handler {
                                             racetime_id: Some(rt_user.id.clone()),
                                             twitch_username: rt_user.twitch_name.clone(),
                                         }
-                                    }, entrant.finish_time, room.clone()));
+                                    }, adjust_for_breaks(entrant.finish_time, breaks, restreamed), room.clone()));
                                 }
                             }
                             if let Ok(teams) = teams.try_into() {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 report_ffa(ctx, cal_event, event, room).await?;
                             }
@@ -633,14 +637,14 @@ impl Handler {
                                         .json_with_text_in_error::<RaceData>().await.to_racetime()?;
                                     team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::clone(room));
                                     for entrant in &data.entrants {
-                                        team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
+                                        team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                                     }
                                 }
                             }
                             let active_team = cal_event.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
                             team_rooms.insert(active_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?);
                             for entrant in &data.entrants {
-                                team_times.entry(active_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
+                                team_times.entry(active_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                             }
                         } else {
                             for entrant in &data.entrants {
@@ -648,7 +652,7 @@ impl Handler {
                                     if let hash_map::Entry::Vacant(entry) = team_rooms.entry(team.slug.clone()) {
                                         entry.insert(Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?);
                                     }
-                                    team_times.entry(team.slug.clone()).or_default().push(entrant.finish_time);
+                                    team_times.entry(team.slug.clone()).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                                 } else {
                                     unimplemented!("solo runner in team race") //TODO report error in organizer channel
                                 }
@@ -669,7 +673,7 @@ impl Handler {
                                 }
                             }
                             if all_teams_found && let Ok(teams) = teams.try_into() {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                                 report_ffa(ctx, cal_event, event, room).await?;
@@ -689,7 +693,7 @@ impl Handler {
                                 }
                             }
                             if all_teams_found && let Ok(teams) = teams.try_into() {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                                 report_ffa(ctx, cal_event, event, room).await?;

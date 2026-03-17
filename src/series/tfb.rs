@@ -87,7 +87,7 @@ impl fmt::Display for Score {
     }
 }
 
-pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<Duration>) -> (&'static str, ActionButton) {
+pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<Duration>, breaks_used: bool) -> (&'static str, ActionButton) {
     ("Report score", ActionButton::Message {
         message: format!("!score ${{pieces}} ${{last_collection_time}}"),
         help_text: Some(format!("Report your Triforce Blitz score for this race.")),
@@ -113,7 +113,7 @@ pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<D
                 name: format!("last_collection_time"),
                 label: format!("Most recent collection time"),
                 default: finish_time.map(|finish_time| json!(unparse_duration(finish_time))),
-                help_text: Some(format!("Leave blank if you didn't collect any pieces.")),
+                help_text: Some(format!("{}Leave blank if you didn't collect any pieces.", if breaks_used { "Should not include breaks. " } else { "" })),
                 kind: SurveyQuestionKind::Input,
                 placeholder: Some(format!("e.g. 1h23m45s")),
                 options: Vec::default(),

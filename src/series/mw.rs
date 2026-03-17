@@ -1660,7 +1660,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
                         : " (also known as Multiworld 1.0) is not allowed.";
                     }
-                    p : "In the event that more ways to play multiworld become available during this tournament, such as a release of “Multiworld 2.0” or support for more platforms, the tournament organizers will decide whether to allow them on a case-by-case basis. Until an announcement is made, these are not allowed.";
+                    p : "Currently supported platforms are BizHawk and Project64. In the event that more ways to play multiworld become available during this tournament, such as a release of “Multiworld 2.0” or support for more platforms, the tournament organizers will decide whether to allow them on a case-by-case basis. Until an announcement is made, these are not allowed.";
                     h3(id = "conduct") : "Tournament Conduct Rules";
                     p : "All players are expected to adhere to standards of good conduct and sportsmanship. Players or teams that are found violating this standard may be removed from the tournament. If a player is removed from a team for misconduct, that team may find a replacement player for the remainder of the tournament, although this is subject to approval by administrators.";
                     p : "Prohibited actions include, but are not limited to:";

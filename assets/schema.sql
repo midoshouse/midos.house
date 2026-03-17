@@ -744,7 +744,6 @@ CREATE TABLE public.races (
     notified boolean DEFAULT false NOT NULL,
     is_tfb_dev boolean DEFAULT false NOT NULL,
     fpa_invoked boolean DEFAULT false NOT NULL,
-    breaks_used boolean DEFAULT false NOT NULL,
     video_url_es text,
     restreamer_es text,
     speedgaming_onsite_id bigint,

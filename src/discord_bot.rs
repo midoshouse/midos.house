@@ -1403,7 +1403,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
                                             schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
                                             fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
-                                            breaks_used: if reset_schedule { false } else { race.breaks_used },
                                             seed: if reset_schedule { seed::Data::default() } else { race.seed },
                                             video_urls: if reset_schedule { HashMap::default() } else { race.video_urls },
                                             restreamers: if reset_schedule { HashMap::default() } else { race.restreamers },
