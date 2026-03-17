@@ -4061,68 +4061,72 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, {msg}")
                 }).await?,
             },
-            "breaks" | "break" => match args[..] {
-                [] => if let Some(breaks) = self.breaks {
-                    ctx.say(if let French = goal.language() {
-                        format!("Vous aurez une pause de {}. Vous pouvez les désactiver avec !breaks off.", breaks.format(French))
-                    } else {
-                        format!("Breaks are currently set to {}. Disable with !breaks off", breaks.format(English))
-                    }).await?;
-                } else {
-                    ctx.say(if let French = goal.language() {
-                        "Les pauses sont actuellement désactivées. Exemple pour les activer : !breaks 5m every 2h30."
-                    } else {
-                        "Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30"
-                    }).await?;
-                },
-                [ref arg] if arg == "off" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                    self.breaks = None;
-                    ctx.say(if let French = goal.language() {
-                        "Les pauses sont désormais désactivées."
-                    } else {
-                        "Breaks are now disabled."
-                    }).await?;
-                } else {
-                    ctx.say(if let French = goal.language() {
-                        format!("Désolé {reply_to}, mais la race a débuté.")
-                    } else {
-                        format!("Sorry {reply_to}, but the race has already started.")
-                    }).await?;
-                },
-                _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
-                    if breaks.duration < Duration::from_secs(60) {
+            "breaks" | "break" => if let Some(OfficialRaceData { ref cal_event, .. }) = self.official_data && !matches!(cal_event.kind, cal::EventKind::Normal) {
+                ctx.say(format!("Sorry {reply_to}, breaks are not allowed in asynced races.")).await?;
+            } else {
+                match args[..] {
+                    [] => if let Some(breaks) = self.breaks {
                         ctx.say(if let French = goal.language() {
-                            format!("Désolé {reply_to}, le temps minimum pour une pause (si active) est de 1 minute. Vous pouvez désactiver les pauses avec !breaks off")
+                            format!("Vous aurez une pause de {}. Vous pouvez les désactiver avec !breaks off.", breaks.format(French))
                         } else {
-                            format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")
-                        }).await?;
-                    } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
-                        ctx.say(if let French = goal.language() {
-                            format!("Désolé {reply_to}, il doit y avoir un minimum de 5 minutes entre les pauses.")
-                        } else {
-                            format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")
-                        }).await?;
-                    } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
-                        ctx.say(if let French = goal.language() {
-                            format!("Désolé {reply_to}, vous ne pouvez pas faire de pauses si tard dans la race, vu que les race rooms se ferment au bout de 24 heures.")
-                        } else {
-                            format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn't work.")
+                            format!("Breaks are currently set to {}. Disable with !breaks off", breaks.format(English))
                         }).await?;
                     } else {
-                        self.breaks = Some(breaks);
                         ctx.say(if let French = goal.language() {
-                            format!("Vous aurez une pause de {}.", breaks.format(French))
+                            "Les pauses sont actuellement désactivées. Exemple pour les activer : !breaks 5m every 2h30."
                         } else {
-                            format!("Breaks set to {}.", breaks.format(English))
+                            "Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30"
                         }).await?;
-                    }
-                } else {
-                    ctx.say(if let French = goal.language() {
-                        format!("Désolé {reply_to}, je ne reconnais pas ce format pour les pauses. Exemple pour les activer : !breaks 5m every 2h30.")
+                    },
+                    [ref arg] if arg == "off" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+                        self.breaks = None;
+                        ctx.say(if let French = goal.language() {
+                            "Les pauses sont désormais désactivées."
+                        } else {
+                            "Breaks are now disabled."
+                        }).await?;
                     } else {
-                        format!("Sorry {reply_to}, I don't recognize that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")
-                    }).await?;
-                },
+                        ctx.say(if let French = goal.language() {
+                            format!("Désolé {reply_to}, mais la race a débuté.")
+                        } else {
+                            format!("Sorry {reply_to}, but the race has already started.")
+                        }).await?;
+                    },
+                    _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
+                        if breaks.duration < Duration::from_secs(60) {
+                            ctx.say(if let French = goal.language() {
+                                format!("Désolé {reply_to}, le temps minimum pour une pause (si active) est de 1 minute. Vous pouvez désactiver les pauses avec !breaks off")
+                            } else {
+                                format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")
+                            }).await?;
+                        } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
+                            ctx.say(if let French = goal.language() {
+                                format!("Désolé {reply_to}, il doit y avoir un minimum de 5 minutes entre les pauses.")
+                            } else {
+                                format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")
+                            }).await?;
+                        } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
+                            ctx.say(if let French = goal.language() {
+                                format!("Désolé {reply_to}, vous ne pouvez pas faire de pauses si tard dans la race, vu que les race rooms se ferment au bout de 24 heures.")
+                            } else {
+                                format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn't work.")
+                            }).await?;
+                        } else {
+                            self.breaks = Some(breaks);
+                            ctx.say(if let French = goal.language() {
+                                format!("Vous aurez une pause de {}.", breaks.format(French))
+                            } else {
+                                format!("Breaks set to {}.", breaks.format(English))
+                            }).await?;
+                        }
+                    } else {
+                        ctx.say(if let French = goal.language() {
+                            format!("Désolé {reply_to}, je ne reconnais pas ce format pour les pauses. Exemple pour les activer : !breaks 5m every 2h30.")
+                        } else {
+                            format!("Sorry {reply_to}, I don't recognize that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")
+                        }).await?;
+                    },
+                }
             },
             "fpa" => match args[..] {
                 [] => if self.fpa_enabled {
