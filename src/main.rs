@@ -53,6 +53,7 @@ mod user;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
+//TODO replace with cfg_select when available in MSRV
 #[allow(unused)] // variants only constructed under conditional compilation
 #[derive(Default, Clone, Copy)]
 enum Environment {

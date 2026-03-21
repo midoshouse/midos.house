@@ -98,7 +98,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 typemap_rev = "0.3" # transitive dependency of serenity
 url = { version = "2", features = ["serde"] }
 uuid = "1"
-wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "racetime", "reqwest", "rocket", "serde_json"] }
+wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "night", "racetime", "reqwest", "rocket", "serde_json"] }
 yup-oauth2 = "12"
 
 [target.'cfg(unix)'.dependencies]
