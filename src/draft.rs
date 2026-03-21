@@ -378,7 +378,7 @@ impl Draft {
                         .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
                 ),
                 Kind::RslS7 => {
-                    let team_rows = sqlx::query!("SELECT lite_ok FROM teams WHERE id = $1 OR id = $2", loser as _, winner as _).fetch_all(&mut **transaction).await?;
+                    let team_rows = sqlx::query!(r#"SELECT custom_choices ? 'lite' AS "lite_ok!" FROM teams WHERE id = $1 OR id = $2"#, loser as _, winner as _).fetch_all(&mut **transaction).await?;
                     let lite_ok = team_rows.iter().all(|row| row.lite_ok);
                     collect![as HashMap<_, _>:
                         Cow::Borrowed("lite_ok") => Cow::Borrowed(if lite_ok { "ok" } else { "no" }),
@@ -386,7 +386,7 @@ impl Draft {
                 }
                 Kind::SlugOpen => panic!("SlugOpen draft must be initialized manually"),
                 Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
-                    let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", loser as _, winner as _).fetch_all(&mut **transaction).await?;
+                    let team_rows = sqlx::query!(r#"SELECT custom_choices ? 'hard_settings' AS "hard_settings_ok!", custom_choices ? 'mq' AS "mq_ok!" FROM teams WHERE id = $1 OR id = $2"#, loser as _, winner as _).fetch_all(&mut **transaction).await?;
                     let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                     let mq_ok = team_rows.iter().all(|row| row.mq_ok);
                     collect![as HashMap<_, _>:
