@@ -3655,29 +3655,50 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                                             });
                                         }
                                         TeamConfig::Pictionary => @unimplemented
-                                        TeamConfig::CoOp => {
-                                            : form_field("time1", &mut errors, html! {
-                                                label(for = "time1") : "Player 1 Finishing Time:";
-                                                input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
-                                                label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
-                                            });
-                                            : form_field("vod1", &mut errors, html! {
-                                                label(for = "vod1") : "Player 1 VoD:";
-                                                input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
-                                                label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
-                                            });
-                                            : form_field("time2", &mut errors, html! {
-                                                label(for = "time2") : "Player 2 Finishing Time:";
-                                                input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
-                                                label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
-                                            });
-                                            : form_field("vod2", &mut errors, html! {
-                                                label(for = "vod2") : "Player 2 VoD:";
-                                                input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
-                                                label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
-                                            });
+                                        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::NightAndDay => {
+                                            @if let Series::TriforceBlitz = event.series {
+                                                : form_field("pieces", &mut errors, html! {
+                                                    label(for = "pieces") : "Number of Triforce Pieces found:";
+                                                    input(type = "number", min = "0", max = tfb::piece_count(event.team_config), name = "pieces", value? = ctx.field_value("pieces"));
+                                                });
+                                                : form_field("time1", &mut errors, html! {
+                                                    label(for = "time1") : "Time at which you found the most recent piece:";
+                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                    label(class = "help") : "(If you did not find any, leave this field blank.)";
+                                                });
+                                                : form_field("vod1", &mut errors, html! {
+                                                    label(for = "vod1") : "Player 1 VoD:";
+                                                    input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                });
+                                                : form_field("vod2", &mut errors, html! {
+                                                    label(for = "vod2") : "Player 2 VoD:";
+                                                    input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                });
+                                            } else {
+                                                : form_field("time1", &mut errors, html! {
+                                                    label(for = "time1") : "Player 1 Finishing Time:";
+                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                    label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                                });
+                                                : form_field("vod1", &mut errors, html! {
+                                                    label(for = "vod1") : "Player 1 VoD:";
+                                                    input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                });
+                                                : form_field("time2", &mut errors, html! {
+                                                    label(for = "time2") : "Player 2 Finishing Time:";
+                                                    input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                                    label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                                });
+                                                : form_field("vod2", &mut errors, html! {
+                                                    label(for = "vod2") : "Player 2 VoD:";
+                                                    input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                });
+                                            }
                                         }
-                                        TeamConfig::TfbCoOp => @unimplemented
                                         TeamConfig::Multiworld => {
                                             : form_field("time1", &mut errors, html! {
                                                 label(for = "time1", class = "power") : "Player 1 Finishing Time:";
@@ -3866,32 +3887,44 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
             }
         }
-        let times = vec![
-            if value.time1.is_empty() {
+        let times = if let Series::TriforceBlitz = series {
+            let time = if value.time1.is_empty() {
                 None
             } else if let Some(time) = parse_duration(&value.time1, None) {
                 Some(time)
             } else {
                 form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
                 None
-            },
-            if value.time2.is_empty() {
-                None
-            } else if let Some(time) = parse_duration(&value.time2, None) {
-                Some(time)
-            } else {
-                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time2"));
-                None
-            },
-            if value.time3.is_empty() {
-                None
-            } else if let Some(time) = parse_duration(&value.time3, None) {
-                Some(time)
-            } else {
-                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time3"));
-                None
-            },
-        ];
+            };
+            vec![time; event.team_config.roles().len()]
+        } else {
+            vec![
+                if value.time1.is_empty() {
+                    None
+                } else if let Some(time) = parse_duration(&value.time1, None) {
+                    Some(time)
+                } else {
+                    form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
+                    None
+                },
+                if value.time2.is_empty() {
+                    None
+                } else if let Some(time) = parse_duration(&value.time2, None) {
+                    Some(time)
+                } else {
+                    form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time2"));
+                    None
+                },
+                if value.time3.is_empty() {
+                    None
+                } else if let Some(time) = parse_duration(&value.time3, None) {
+                    Some(time)
+                } else {
+                    form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time3"));
+                    None
+                },
+            ]
+        };
         let vods = vec![
             value.vod1.clone(),
             value.vod2.clone(),

@@ -244,6 +244,57 @@ impl From<CoOpRole> for event::Role {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, FromFormField, Sequence)]
+pub(crate) enum NightAndDayRole {
+    #[field(value = "sheikah")]
+    Sheikah,
+    #[field(value = "gerudo")]
+    Gerudo,
+}
+
+impl fmt::Display for NightAndDayRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sheikah => write!(f, "night"),
+            Self::Gerudo => write!(f, "day"),
+        }
+    }
+}
+
+impl ToHtml for NightAndDayRole {
+    fn to_html(&self) -> RawHtml<String> {
+        match self {
+            Self::Sheikah => html! {
+                span(class = "sheikah") : "night";
+            },
+            Self::Gerudo => html! {
+                span(class = "gerudo") : "day";
+            },
+        }
+    }
+}
+
+impl TryFrom<event::Role> for NightAndDayRole {
+    type Error = ();
+
+    fn try_from(role: event::Role) -> Result<Self, ()> {
+        match role {
+            event::Role::Sheikah => Ok(Self::Sheikah),
+            event::Role::Gerudo => Ok(Self::Gerudo),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<NightAndDayRole> for event::Role {
+    fn from(role: NightAndDayRole) -> Self {
+        match role {
+            NightAndDayRole::Sheikah => Self::Sheikah,
+            NightAndDayRole::Gerudo => Self::Gerudo,
+        }
+    }
+}
+
 pub(crate) fn progression_spoiler_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("Triforce Blitz Progression Spoiler"),

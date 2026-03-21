@@ -224,7 +224,8 @@ CREATE TYPE public.team_config AS ENUM (
     'pictionary',
     'multiworld',
     'tfbcoop',
-    'slugopen'
+    'slugopen',
+    'night_and_day'
 );
 
 

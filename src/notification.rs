@@ -226,6 +226,10 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                         : tfb::CoOpRole::try_from(member.role).expect("non-coop role in coop team");
                         : ", ";
                     }
+                    TeamConfig::NightAndDay => {
+                        : tfb::NightAndDayRole::try_from(member.role).expect("non-coop role in coop team");
+                        : ", ";
+                    }
                     TeamConfig::Pictionary => {
                         : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
                         : ", ";
@@ -287,6 +291,29 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : event;
                 : " as ";
                 : tfb::CoOpRole::try_from(my_role).expect("non-coop role in coop team");
+                @if let Some(teammates) = English.join_html_opt(teammates) {
+                    : " together with ";
+                    : teammates;
+                }
+                : ".";
+            }
+            TeamConfig::NightAndDay => {
+                @let (creator, creator_role) = creator.ok_or(IntoHtmlError::UnknownUser)?;
+                : creator;
+                : " (";
+                : tfb::NightAndDayRole::try_from(creator_role).expect("non-coop role in coop team");
+                : ") invited you to join ";
+                : creator.possessive_determiner();
+                : " team";
+                @if let Some(team_name) = team_row.name {
+                    : " “";
+                    : team_name;
+                    : "”";
+                }
+                : " for ";
+                : event;
+                : " as ";
+                : tfb::NightAndDayRole::try_from(my_role).expect("non-coop role in coop team");
                 @if let Some(teammates) = English.join_html_opt(teammates) {
                     : " together with ";
                     : teammates;
