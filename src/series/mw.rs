@@ -1785,9 +1785,15 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : " allows a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled, though teams are encouraged to complete it as soon as possible to allow practicing the selected settings.";
                     }
                     p {
-                        : "The settings that can be modified and their respective options (";
+                    }
+                    p {
+                        : "The following settings can be modified. The ";
                         strong : "first";
-                        : " being the default) are:";
+                        : " option is the default, and options marked as ";
+                        em : "opt-in";
+                        : " are only available if ";
+                        em : "both";
+                        : " teams have opted into allowing them when entering the tournament.";
                     }
                     ul {
                         li {
@@ -1858,6 +1864,17 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                         }
                         li {
+                            : "Master Quest Dungeon Count";
+                            ul {
+                                li {
+                                    strong : "0";
+                                }
+                                li {
+                                    em : "12 (opt-in)";
+                                }
+                            }
+                        }
+                        li {
                             : "Starting Age/Randomize Overworld Spawns:";
                             ul {
                                 li {
@@ -1885,6 +1902,17 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                         }
                         li {
+                            : "Shuffle Overworld Entrances:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li {
+                                    em : "On (opt-in)";
+                                }
+                            }
+                        }
+                        li {
                             : "Warp Song Destinations:";
                             ul {
                                 li {
@@ -1894,12 +1922,34 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                         }
                         li {
+                            : "Owl drops and Gerudo Valley river exit:";
+                            ul {
+                                li {
+                                    strong : "Vanilla";
+                                }
+                                li {
+                                    em : "Shuffled (opt-in)";
+                                }
+                            }
+                        }
+                        li {
                             : "Chu bag and drops:";
                             ul {
                                 li {
                                     strong : "Off";
                                 }
                                 li : "On";
+                            }
+                        }
+                        li {
+                            : "Shuffle songs:";
+                            ul {
+                                li {
+                                    strong : "Song locations";
+                                }
+                                li {
+                                    em : "Anywhere (opt-in)";
+                                }
                             }
                         }
                         li {
@@ -1918,6 +1968,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                     strong : "Dungeons only";
                                 }
                                 li : "Off";
+                                li {
+                                    em : "All (opt-in)";
+                                }
                             }
                         }
                         li {
@@ -1927,6 +1980,51 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                     strong : "On (Affordable)";
                                 }
                                 li : "Off";
+                            }
+                        }
+                        li {
+                            : "Shuffle freestanding rupees & hearts";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li {
+                                    em : "Overworld (opt-in)";
+                                }
+                                li {
+                                    em : "Dungeons (opt-in)";
+                                }
+                                li {
+                                    em : "All (opt-in)";
+                                }
+                            }
+                        }
+                        li {
+                            : "Shuffle pots";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li {
+                                    em : "Overworld (opt-in)";
+                                }
+                                li {
+                                    em : "Dungeons (opt-in)";
+                                }
+                                li {
+                                    em : "All (opt-in)";
+                                }
+                            }
+                        }
+                        li {
+                            : "Shuffle crates";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li {
+                                    em : "All (opt-in)";
+                                }
                             }
                         }
                         li {
@@ -1957,6 +2055,20 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             }
                         }
                         li {
+                            : "Shuffle silver rupees";
+                            ul {
+                                li {
+                                    strong : "Vanilla";
+                                }
+                                li {
+                                    em : "Pouches, regional (opt-in)";
+                                }
+                                li {
+                                    em : "Pouches, anywhere (opt-in)";
+                                }
+                            }
+                        }
+                        li {
                             : "Chest Appearance Matches Contents:";
                             ul {
                                 li {
@@ -1974,10 +2086,23 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 li : "WOTH";
                             }
                         }
-                    }
-                    p {
-                        strong : "Note:";
-                        : " these settings are not final. We are considering adding more draft options that will only be available if both teams have opted in when entering the tournament."; //TODO
+                        li {
+                            : "Item pool:";
+                            ul {
+                                li {
+                                    strong : "Balanced";
+                                }
+                                li {
+                                    em : "Plentiful (opt-in)";
+                                }
+                                li {
+                                    em : "Scarce (opt-in)";
+                                }
+                                li {
+                                    em : "Minimal (opt-in)";
+                                }
+                            }
+                        }
                     }
                     h3(id = "hints") : "Hint Distribution";
                     p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
