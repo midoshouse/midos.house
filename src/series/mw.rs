@@ -2023,6 +2023,12 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                     strong : "Off";
                                 }
                                 li {
+                                    em : "Overworld (opt-in)";
+                                }
+                                li {
+                                    em : "Dungeons (opt-in)";
+                                }
+                                li {
                                     em : "All (opt-in)";
                                 }
                             }

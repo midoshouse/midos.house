@@ -339,7 +339,7 @@ impl<'a> Data<'a> {
                 settings: HashMap::default(),
             }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()),
             (Series::Multiworld, "4") => from_file!("../../assets/event/mw/chests-4-7.1.198.json"),
-            (Series::Multiworld, "5") => from_file!("../../assets/event/mw/chests-5-8.2.63.json"),
+            (Series::Multiworld, "5" | "6") => from_file!("../../assets/event/mw/chests-5-8.2.63.json"), //TODO generate new stats for S6
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
             (Series::PotsOfTime, "1") => from_file!("../../assets/event/pot/chests-1-50813f8.json"),
