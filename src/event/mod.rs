@@ -90,6 +90,7 @@ pub(crate) enum TeamConfig {
     Solo,
     CoOp,
     TfbCoOp,
+    #[sqlx(rename = "night_and_day")]
     NightAndDay,
     Pictionary,
     Multiworld,
