@@ -1916,7 +1916,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
                 #[cfg(windows)] { UserDirs::new().ok_or(RollError::UserDirs)?.home_dir().join("git").join("github.com").join(&**github_username).join("OoT-Randomizer").join("branch") }
             };
             let dir = parent.join(&**branch);
-            if dir.exists() {
+            if fs::exists(&dir).await? {
                 //TODO hard reset to remote instead?
                 //TODO use gix instead?
                 Command::new("git").arg("pull").current_dir(&dir).check("git").await?;

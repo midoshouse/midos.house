@@ -203,7 +203,7 @@ impl Data {
                 _ => None,
             }
         {
-            let spoiler_path_exists = spoiler_path.exists();
+            let spoiler_path_exists = fs::exists(&spoiler_path).await?;
             let (file_hash, password, world_count, chests) = if spoiler_path_exists {
                 let log = fs::read_to_string(&spoiler_path).await?;
                 if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
@@ -295,7 +295,7 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
         Some(Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. }) => Some(html! {
             a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
                 if world_count.get() > 1 { "zpfz" } else { "zpf" }
-            } else if Path::new(DIR).join(format!("{file_stem}.zpfz")).exists() {
+            } else if fs::exists(Path::new(DIR).join(format!("{file_stem}.zpfz"))).await? {
                 "zpfz"
             } else {
                 "zpf"
@@ -544,7 +544,7 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
             let extra = seed.extra(Utc::now()).await?;
             let patch_suffix = if let Some(world_count) = extra.world_count {
                 if world_count.get() > 1 { "zpfz" } else { "zpf" }
-            } else if Path::new(DIR).join(format!("{file_stem}.zpfz")).exists() {
+            } else if fs::exists(Path::new(DIR).join(format!("{file_stem}.zpfz"))).await? {
                 "zpfz"
             } else {
                 "zpf"
