@@ -1922,6 +1922,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li : "Threatening to pick specific settings unless the other team adheres to specific demands, including specific race dates/times or settings: major infraction";
                         li : "Threatening to drop from the race or tournament in an attempt to coerce players, organizers, or volunteers: major infraction";
                     }
+                    p : "The minor infractions do not carry over to non-multiworld events. The major infractions will be reported to the race mods who may take further action at their discretion.";
                     p : "We reserve the option to issue infractions for anything unforeseen.";
                     h2(id = "format") : "Tournament Format";
                     p {
