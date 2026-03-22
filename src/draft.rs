@@ -384,8 +384,8 @@ impl Draft {
                 ),
                 Kind::MultiworldS6 => {
                     let team_rows = sqlx::query_scalar!(r#"SELECT custom_choices AS "custom_choices: Json<BTreeSet<String>>" FROM teams WHERE id = $1 OR id = $2"#, loser as _, winner as _).fetch_all(&mut **transaction).await?;
-                    mw::get_custom_choices(mw::S6_SETTINGS).into_iter()
-                        .map(|(choice, _)| (Cow::Owned(format!("{choice}_ok")), Cow::Borrowed(if team_rows.iter().all(|Json(row)| row.contains(choice)) { "ok" } else { "no" })))
+                    mw::get_custom_choices(mw::S6_SETTINGS)
+                        .map(|(key, _)| (Cow::Owned(format!("{key}_ok")), Cow::Borrowed(if team_rows.iter().all(|Json(row)| row.contains(key)) { "ok" } else { "no" })))
                         .collect()
                 }
                 Kind::RslS7 => {
@@ -975,7 +975,7 @@ impl Draft {
                                 .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                 .filter_map(|mw::Setting { name, display, default, default_display, other, description }| {
                                     let is_opt_in = other.iter().all(|(_, choice, _)| choice.is_some());
-                                    let is_empty = other.iter().all(|(_, choice, _)| choice.is_some_and(|(choice, _)| self.settings.get(&*format!("{choice}_ok")).map(|choice_ok| &**choice_ok).unwrap_or("no") != "ok"));
+                                    let is_empty = other.iter().all(|(_, choice, _)| choice.is_some_and(|(key, _)| self.settings.get(&*format!("{key}_ok")).map(|choice_ok| &**choice_ok).unwrap_or("no") != "ok"));
                                     (!is_empty).then(|| (is_opt_in, if name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
                                         BanSetting {
                                             default: "both",
@@ -1037,7 +1037,7 @@ impl Draft {
                                 .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                 .filter_map(|mw::Setting { name, display, default, default_display, other, description }| {
                                     let is_opt_in = other.iter().all(|(_, choice, _)| choice.is_some());
-                                    let other = other.iter().filter(|(_, choice, _)| choice.is_none_or(|(choice, _)| self.settings.get(&*format!("{choice}_ok")).map(|choice_ok| &**choice_ok).unwrap_or("no") == "ok")).copied().collect_vec();
+                                    let other = other.iter().filter(|(_, choice, _)| choice.is_none_or(|(key, _)| self.settings.get(&*format!("{key}_ok")).map(|choice_ok| &**choice_ok).unwrap_or("no") == "ok")).copied().collect_vec();
                                     (!other.is_empty()).then(|| (is_opt_in, if name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
                                         DraftSetting {
                                             options: vec![

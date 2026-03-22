@@ -119,11 +119,11 @@ pub(crate) const S6_SETTINGS: &[Setting] = &[
     Setting { name: "itempool", display: "item pool", default: "balanced", default_display: "balanced item pool", other: &[("plentiful", Some(("itempool", "item pool")), "plentiful item pool"), ("scarce", Some(("itempool", "item pool")), "scarce item pool"), ("minimal", Some(("itempool", "item pool")), "minimal item pool")], description: "itempool: balanced (default), plentiful (opt-in), scarce (opt-in), or minimal (opt-in)" },
 ];
 
-pub(crate) fn get_custom_choices(settings: &[Setting]) -> HashSet<(&'static str, &'static str)> {
+pub(crate) fn get_custom_choices(settings: &[Setting]) -> impl Iterator<Item = (&'static str, &'static str)> {
     settings.iter()
         .flat_map(|setting| setting.other)
         .flat_map(|(_, choice, _)| *choice)
-        .collect()
+        .unique_by(|(key, _)| *key)
 }
 
 pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {

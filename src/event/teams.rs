@@ -1275,7 +1275,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                             @match data.draft_kind() {
                                 None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
                                 Some(draft::Kind::MultiworldS6) => td {
-                                    : English.join_html_opt(mw::get_custom_choices(mw::S6_SETTINGS).into_iter().filter(|(choice, _)| custom_choices.contains(*choice)).map(|(_, display)| display).sorted());
+                                    : English.join_html_opt(mw::get_custom_choices(mw::S6_SETTINGS).filter(|(key, _)| custom_choices.contains(*key)).map(|(_, label)| label));
                                 }
                                 Some(draft::Kind::RslS7) => td {
                                     @if custom_choices.contains("lite") {

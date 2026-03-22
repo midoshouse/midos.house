@@ -1182,14 +1182,27 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                                 });
                             }
                         }
-                        @if let TeamConfig::Multiworld = team_config {
-                            : form_field("mw_impl", &mut errors, html! {
-                                label(for = "mw_impl") : "Multiworld plugin:";
-                                input(id = "mw_impl-bizhawk_co_op", type = "radio", name = "mw_impl", value = "bizhawk_co_op", checked? = defaults.mw_impl() == Some(mw::Impl::BizHawkCoOp));
-                                label(for = "mw_impl-bizhawk_co_op") : "bizhawk-co-op";
-                                input(id = "mw_impl-midos_house", type = "radio", name = "mw_impl", value = "midos_house", checked? = defaults.mw_impl() == Some(mw::Impl::MidosHouse));
-                                label(for = "mw_impl-midos_house") : "Mido's House Multiworld";
-                            });
+                        @if let Series::Multiworld = data.series {
+                            @match &*data.event {
+                                "3" | "4" | "5" => : form_field("mw_impl", &mut errors, html! {
+                                    label(for = "mw_impl") : "Multiworld plugin:";
+                                    input(id = "mw_impl-bizhawk_co_op", type = "radio", name = "mw_impl", value = "bizhawk_co_op", checked? = defaults.mw_impl() == Some(mw::Impl::BizHawkCoOp));
+                                    label(for = "mw_impl-bizhawk_co_op") : "bizhawk-co-op";
+                                    input(id = "mw_impl-midos_house", type = "radio", name = "mw_impl", value = "midos_house", checked? = defaults.mw_impl() == Some(mw::Impl::MidosHouse));
+                                    label(for = "mw_impl-midos_house") : "Mido's House Multiworld";
+                                });
+                                "6" => @for (key, label) in mw::get_custom_choices(mw::S6_SETTINGS) {
+                                    : form_field(&format!("custom_choices[{key}]"), &mut errors, html! {
+                                        label(for = &format!("custom_choices[{key}]")) : label;
+                                        br;
+                                        input(id = &format!("custom_choices[{key}]-yes"), type = "radio", name = &format!("custom_choices[{key}]"), value = "yes", checked? = defaults.field_value(&format!("custom_choices[{key}]")).is_some_and(|value| value == "yes"));
+                                        label(for = &format!("custom_choices[{key}]-yes")) : "Yes";
+                                        input(id = &format!("custom_choices[{key}]-no"), type = "radio", name = &format!("custom_choices[{key}]"), value = "no", checked? = defaults.field_value(&format!("custom_choices[{key}]")).is_some_and(|value| value == "no"));
+                                        label(for = &format!("custom_choices[{key}]-no")) : "No";
+                                    });
+                                }
+                                _ => @unimplemented
+                            }
                         }
                     }
                     : form_field("restream_consent_radio", &mut errors, html! {
