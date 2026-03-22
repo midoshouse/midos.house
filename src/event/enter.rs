@@ -108,7 +108,6 @@ pub(crate) enum Requirement {
         document: Option<Url>,
     },
     /// Must answer a custom yes/no question, stored in `custom_choices`
-    #[serde(rename_all = "camelCase")]
     BooleanChoice {
         key: String,
         #[serde_as(as = "DeserializeRawHtml")]

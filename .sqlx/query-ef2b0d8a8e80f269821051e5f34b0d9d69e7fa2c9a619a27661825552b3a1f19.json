@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT custom_choices AS \"custom_choices: Json<BTreeSet<String>>\" FROM teams WHERE id = $1 OR id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "custom_choices: Json<BTreeSet<String>>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ef2b0d8a8e80f269821051e5f34b0d9d69e7fa2c9a619a27661825552b3a1f19"
+}

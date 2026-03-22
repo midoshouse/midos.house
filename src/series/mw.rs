@@ -26,71 +26,110 @@ pub(crate) struct Setting {
     pub(crate) display: &'static str,
     pub(crate) default: &'static str,
     pub(crate) default_display: &'static str,
-    pub(crate) other: &'static [(&'static str, &'static str)],
+    pub(crate) other: &'static [(&'static str, Option<(&'static str, &'static str)>, &'static str)],
     pub(crate) description: &'static str,
 }
 
 pub(crate) const S3_SETTINGS: &[Setting] = &[
-    Setting { name: "wincon", display: "win conditions", default: "meds", default_display: "default wincons", other: &[("scrubs", "Scrubs wincons"), ("th", "Triforce Hunt")], description: "wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)" },
-    Setting { name: "dungeons", display: "dungeons", default: "tournament", default_display: "tournament dungeons", other: &[("skulls", "dungeon tokens"), ("keyrings", "keyrings")], description: "dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)" },
-    Setting { name: "er", display: "entrance rando", default: "off", default_display: "no ER", other: &[("dungeon", "dungeon ER")], description: "er: off (default) or dungeon" },
-    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
-    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
-    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
-    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
-    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "wincon", display: "win conditions", default: "meds", default_display: "default wincons", other: &[("scrubs", None, "Scrubs wincons"), ("th", None, "Triforce Hunt")], description: "wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)" },
+    Setting { name: "dungeons", display: "dungeons", default: "tournament", default_display: "tournament dungeons", other: &[("skulls", None, "dungeon tokens"), ("keyrings", None, "keyrings")], description: "dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)" },
+    Setting { name: "er", display: "entrance rando", default: "off", default_display: "no ER", other: &[("dungeon", None, "dungeon ER")], description: "er: off (default) or dungeon" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", None, "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", None, "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", None, "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", None, "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", None, "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
 ];
 
 pub(crate) const S4_SETTINGS: &[Setting] = &[
-    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", "Ganon bk on 3 stones"), ("th", "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 25/30)" },
-    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", "7 dungeon rewards bridge"), ("vanilla", "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
-    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
-    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", "regional boss keys"), ("vanilla", "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
-    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", "regional keyrings"), ("vanilla", "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
-    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", "closed Deku")], description: "deku: open (Default) or closed" },
-    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
-    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
-    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", "dungeon ER")], description: "dungeon-er: off (default) or on" },
-    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", "shuffled warp songs")], description: "warps: off (default) or on" },
-    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", "bombchu drops")], description: "chubags: off (default) or on" },
-    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
-    Setting { name: "skulls", display: "tokens", default: "off", default_display: "no tokens", other: &[("dungeons", "dungeon tokens")], description: "skulls: off (default) or dungeons" },
-    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
-    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", "cows")], description: "cows: off (default) or on" },
-    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
-    Setting { name: "merchants", display: "merchants", default: "off", default_display: "no merchants", other: &[("shuffle", "shuffled merchants")], description: "merchants: off (defaut) or shuffle" },
-    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
-    Setting { name: "camc", display: "CAMC", default: "texture", default_display: "chest texture matches contents", other: &[("off", "vanilla chest appearances"), ("both", "chest size & texture match contents")], description: "camc (Chest Appearance Matches Contents): texture (default), off, or both (size & texture)" },
-    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", "Way of the Hero hints")], description: "hints: path (default) or woth" },
+    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", None, "Ganon bk on 3 stones"), ("th", None, "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 25/30)" },
+    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", None, "7 dungeon rewards bridge"), ("vanilla", None, "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", None, "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", None, "regional boss keys"), ("vanilla", None, "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
+    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", None, "regional keyrings"), ("vanilla", None, "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
+    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", None, "closed Deku")], description: "deku: open (Default) or closed" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", None, "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", None, "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", None, "dungeon ER")], description: "dungeon-er: off (default) or on" },
+    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", None, "shuffled warp songs")], description: "warps: off (default) or on" },
+    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", None, "bombchu drops")], description: "chubags: off (default) or on" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", None, "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "skulls", display: "tokens", default: "off", default_display: "no tokens", other: &[("dungeons", None, "dungeon tokens")], description: "skulls: off (default) or dungeons" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", None, "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", None, "cows")], description: "cows: off (default) or on" },
+    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", None, "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
+    Setting { name: "merchants", display: "merchants", default: "off", default_display: "no merchants", other: &[("shuffle", None, "shuffled merchants")], description: "merchants: off (defaut) or shuffle" },
+    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", None, "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
+    Setting { name: "camc", display: "CAMC", default: "texture", default_display: "chest texture matches contents", other: &[("off", None, "vanilla chest appearances"), ("both", None, "chest size & texture match contents")], description: "camc (Chest Appearance Matches Contents): texture (default), off, or both (size & texture)" },
+    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", None, "Way of the Hero hints")], description: "hints: path (default) or woth" },
 ];
 
 pub(crate) const S5_SETTINGS: &[Setting] = &[
-    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", "Ganon bk on 3 stones"), ("th", "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 24/28)" },
-    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", "7 dungeon rewards bridge"), ("vanilla", "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
-    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
-    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", "regional boss keys"), ("vanilla", "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
-    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", "regional keyrings"), ("vanilla", "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
-    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", "closed Deku")], description: "deku: open (Default) or closed" },
-    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
-    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
-    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", "dungeon ER")], description: "dungeon-er: off (default) or on" },
-    Setting { name: "boss-er", display: "boss entrance rando", default: "off", default_display: "no boss ER", other: &[("full", "full boss ER")], description: "boss-er: off (default) or full" },
-    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", "shuffled warp songs")], description: "warps: off (default) or on" },
-    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", "bombchu drops")], description: "chubags: off (default) or on" },
-    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
-    Setting { name: "skulls", display: "tokens", default: "dungeons", default_display: "dungeon tokens", other: &[("off", "no tokens")], description: "skulls: dungeons (default) or off" },
-    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
-    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", "cows")], description: "cows: off (default) or on" },
-    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
-    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
-    Setting { name: "camc", display: "CAMC", default: "both", default_display: "chest size & texture match contents", other: &[("off", "vanilla chest appearances")], description: "camc (Chest Appearance Matches Contents): both (default: size & texture) or off" },
-    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", "Way of the Hero hints")], description: "hints: path (default) or woth" },
+    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", None, "Ganon bk on 3 stones"), ("th", None, "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 24/28)" },
+    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", None, "7 dungeon rewards bridge"), ("vanilla", None, "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", None, "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", None, "regional boss keys"), ("vanilla", None, "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
+    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", None, "regional keyrings"), ("vanilla", None, "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
+    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", None, "closed Deku")], description: "deku: open (Default) or closed" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", None, "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", None, "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", None, "dungeon ER")], description: "dungeon-er: off (default) or on" },
+    Setting { name: "boss-er", display: "boss entrance rando", default: "off", default_display: "no boss ER", other: &[("full", None, "full boss ER")], description: "boss-er: off (default) or full" },
+    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", None, "shuffled warp songs")], description: "warps: off (default) or on" },
+    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", None, "bombchu drops")], description: "chubags: off (default) or on" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", None, "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "skulls", display: "tokens", default: "dungeons", default_display: "dungeon tokens", other: &[("off", None, "no tokens")], description: "skulls: dungeons (default) or off" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", None, "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", None, "cows")], description: "cows: off (default) or on" },
+    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", None, "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
+    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", None, "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
+    Setting { name: "camc", display: "CAMC", default: "both", default_display: "chest size & texture match contents", other: &[("off", None, "vanilla chest appearances")], description: "camc (Chest Appearance Matches Contents): both (default: size & texture) or off" },
+    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", None, "Way of the Hero hints")], description: "hints: path (default) or woth" },
 ];
+
+pub(crate) const S6_SETTINGS: &[Setting] = &[
+    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", None, "Ganon bk on 3 stones"), ("th", None, "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 24/28)" },
+    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", None, "7 dungeon rewards bridge"), ("vanilla", None, "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", None, "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", None, "regional boss keys"), ("vanilla", None, "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
+    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", None, "regional keyrings"), ("vanilla", None, "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
+    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", None, "closed Deku")], description: "deku: open (Default) or closed" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", None, "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "mq", display: "Master Quest", default: "0", default_display: "0 MQ dungeons", other: &[("12", Some(("mq", "Master Quest")), "12 MQ dungeons")], description: "mq: 0 (default) or 12 (opt-in)" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", None, "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", None, "dungeon ER")], description: "dungeon-er: off (default) or on" },
+    Setting { name: "boss-er", display: "boss entrance rando", default: "off", default_display: "no boss ER", other: &[("full", None, "full boss ER")], description: "boss-er: off (default) or full" },
+    Setting { name: "ow-er", display: "overworld entrance rando", default: "off", default_display: "no overworld ER", other: &[("on", Some(("ow_er", "overworld ER")), "overworld ER")], description: "ow-er: off (default) or on (opt-in)" },
+    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", None, "shuffled warp songs")], description: "warps: off (default) or on" },
+    Setting { name: "owls-gv", display: "owl drops and Gerudo Valley river exit", default: "off", default_display: "vanilla owl drops and Gerudo Valley river exit", other: &[("on", Some(("owls_gv", "owls & GV")), "shuffled owl drops and Gerudo Valley river exit")], description: "owls-gv (owl drops and Gerudo Valley river exit): off (default) or on (opt-in)" },
+    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", None, "bombchu drops")], description: "chubags: off (default) or on" },
+    Setting { name: "songs", display: "songs", default: "songs", default_display: "songs on songs", other: &[("anywhere", Some(("songs", "songs")), "songs anywhere")], description: "songs: songs (default) or anywhere (opt-in)" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", None, "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "skulls", display: "tokens", default: "dungeons", default_display: "dungeon tokens", other: &[("off", None, "no tokens"), ("all", Some(("all_skulls", "all tokens")), "all tokens")], description: "skulls: dungeons (default), off, or all (opt-in)" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", None, "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "freestandings", display: "freestanding rupees & hearts", default: "off", default_display: "no freestanding rupee/heart shuffle", other: &[("overworld", Some(("freestandings", "freestandings")), "overworld freestanding rupees & hearts shuffled"), ("dungeons", Some(("freestandings", "freestandings")), "dungeon freestanding rupees & hearts shuffled"), ("all", Some(("freestandings", "freestandings")), "all freestanding rupees & hearts shuffled")], description: "freestandings: off (default), overworld (opt-in), dungeons (opt-in), or all (opt-in)" },
+    Setting { name: "pots", display: "pots", default: "off", default_display: "no pots shuffled", other: &[("overworld", Some(("pots", "pots")), "overworld pots shuffled"), ("dungeons", Some(("pots", "pots")), "dungeon pots shuffled"), ("all", Some(("pots", "pots")), "all pots shuffled")], description: "pots: off (default), overworld (opt-in), dungeons (opt-in), or all (opt-in)" },
+    Setting { name: "crates", display: "crates", default: "off", default_display: "no crates shuffled", other: &[("overworld", Some(("crates", "crates")), "overworld crates shuffled"), ("dungeons", Some(("crates", "crates")), "dungeon crates shuffled"), ("all", Some(("crates", "crates")), "all crates shuffled")], description: "crates: off (default), overworld (opt-in), dungeons (opt-in), or all (opt-in)" },
+    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", None, "cows")], description: "cows: off (default) or on" },
+    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", None, "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
+    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", None, "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
+    Setting { name: "silver-rupees", display: "silver rupees", default: "vanilla", default_display: "vanilla silver rupees", other: &[("regional", Some(("silver_rupees", "silver rupees")), "regional silver rupee pouches"), ("anywhere", Some(("silver_rupees", "silver rupees")), "silver rupee pouches anywhere")], description: "silver-rupees: vanilla (default), regional (pouches, opt-in), or anywhere (pouches, opt-in)" },
+    Setting { name: "camc", display: "CAMC", default: "both", default_display: "chest size & texture match contents", other: &[("off", None, "vanilla chest appearances")], description: "camc (Chest Appearance Matches Contents): both (default: size & texture) or off" },
+    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", None, "Way of the Hero hints")], description: "hints: path (default) or woth" },
+    Setting { name: "itempool", display: "item pool", default: "balanced", default_display: "balanced item pool", other: &[("plentiful", Some(("itempool", "item pool")), "plentiful item pool"), ("scarce", Some(("itempool", "item pool")), "scarce item pool"), ("minimal", Some(("itempool", "item pool")), "minimal item pool")], description: "itempool: balanced (default), plentiful (opt-in), scarce (opt-in), or minimal (opt-in)" },
+];
+
+pub(crate) fn get_custom_choices(settings: &[Setting]) -> HashSet<(&'static str, &'static str)> {
+    settings.iter()
+        .flat_map(|setting| setting.other)
+        .flat_map(|(_, choice, _)| *choice)
+        .collect()
+}
 
 pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
     English.join_str_opt(
         S3_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
+            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
 }
 
@@ -101,8 +140,8 @@ pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
                 picks.get(name)
                     .cloned()
                     .or_else(|| (name == "camc" && picks.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes").then_some(Cow::Borrowed("both")))
-                    .and_then(|pick| other.iter().find(|&(other, _)| pick == *other))
-                    .map(|(_, display)| display)
+                    .and_then(|pick| other.iter().find(|&(other, _, _)| pick == *other))
+                    .map(|(_, _, display)| display)
             ),
     ).unwrap_or_else(|| format!("base settings"))
 }
@@ -110,7 +149,14 @@ pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
 pub(crate) fn display_s5_draft_picks(picks: &draft::Picks) -> String {
     English.join_str_opt(
         S5_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
+            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
+    ).unwrap_or_else(|| format!("base settings"))
+}
+
+pub(crate) fn display_s6_draft_picks(picks: &draft::Picks) -> String {
+    English.join_str_opt(
+        S6_SETTINGS.iter().copied()
+            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
 }
 
@@ -562,6 +608,198 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
         format!("key_appearance_match_dungeon") => json!(true),
         format!("blue_fire_arrows") => json!(true),
         format!("tcg_requires_lens") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+    ]
+}
+
+pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings {
+    let gbk = picks.get("gbk").map(|gbk| &**gbk).unwrap_or("meds");
+    let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("meds");
+    let trials = picks.get("trials").map(|trials| &**trials).unwrap_or("0");
+    let bosskeys = picks.get("bosskeys").map(|bosskeys| &**bosskeys).unwrap_or("dungeon");
+    let smallkeys = picks.get("smallkeys").map(|smallkeys| &**smallkeys).unwrap_or("dungeon");
+    let deku = picks.get("deku").map(|deku| &**deku).unwrap_or("open");
+    let fountain = picks.get("fountain").map(|fountain| &**fountain).unwrap_or("closed");
+    let mq = picks.get("mq").map(|mq| &**mq).unwrap_or("0");
+    let spawn = picks.get("spawn").map(|spawn| &**spawn).unwrap_or("tot");
+    let dungeon_er = picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off");
+    let boss_er = picks.get("boss-er").map(|boss_er| &**boss_er).unwrap_or("off");
+    let ow_er = picks.get("ow-er").map(|ow_er| &**ow_er).unwrap_or("off");
+    let warps = picks.get("warps").map(|warps| &**warps).unwrap_or("off");
+    let owls_gv = picks.get("owls-gv").map(|owls_gv| &**owls_gv).unwrap_or("off");
+    let chubags = picks.get("chubags").map(|chubags| &**chubags).unwrap_or("off");
+    let songs = picks.get("songs").map(|songs| &**songs).unwrap_or("songs");
+    let shops = picks.get("shops").map(|shops| &**shops).unwrap_or("4");
+    let skulls = picks.get("skulls").map(|skulls| &**skulls).unwrap_or("dungeons");
+    let scrubs = picks.get("scrubs").map(|scrubs| &**scrubs).unwrap_or("affordable");
+    let freestandings = picks.get("freestandings").map(|freestandings| &**freestandings).unwrap_or("off");
+    let pots = picks.get("pots").map(|pots| &**pots).unwrap_or("off");
+    let crates = picks.get("crates").map(|crates| &**crates).unwrap_or("off");
+    let cows = picks.get("cows").map(|cows| &**cows).unwrap_or("off");
+    let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
+    let frogs = picks.get("frogs").map(|frogs| &**frogs).unwrap_or("off");
+    let silver_rupees = picks.get("silver-rupees").map(|silver_rupees| &**silver_rupees).unwrap_or("vanilla");
+    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("both");
+    let hints = picks.get("hints").map(|hints| &**hints).unwrap_or("path");
+    let itempool = picks.get("itempool").map(|itempool| &**itempool).unwrap_or("balanced");
+    collect![
+        format!("user_message") => json!("6th Multiworld Tournament"),
+        format!("world_count") => json!(3),
+        format!("password_lock") => json!(true),
+        format!("triforce_hunt") => json!(gbk == "th"),
+        format!("triforce_count_per_world") => json!(28),
+        format!("triforce_goal_per_world") => json!(24),
+        format!("bridge") => match bridge {
+            "meds" => json!("medallions"),
+            "dungeons" => json!("dungeons"),
+            "vanilla" => json!("vanilla"),
+            _ => unreachable!(),
+        },
+        format!("bridge_rewards") => json!(7),
+        format!("trials") => match trials {
+            "0" => json!(0),
+            "2" => json!(2),
+            _ => unreachable!(),
+        },
+        format!("shuffle_ganon_bosskey") => if let "stones" = gbk {
+            json!("stones")
+        } else {
+            json!("medallions")
+        },
+        format!("open_forest") => match deku {
+            "open" => json!("open"),
+            "closed" => json!("closed_deku"),
+            _ => unreachable!(),
+        },
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!("open"),
+        format!("zora_fountain") => json!(fountain),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => match spawn {
+            "tot" => json!("adult"),
+            "random" => json!("random"),
+            _ => unreachable!(),
+        },
+        format!("mq_dungeons_mode") => match mq {
+            "0" => json!("vanilla"),
+            "12" => json!("mq"),
+            _ => unreachable!(),
+        },
+        format!("shuffle_dungeon_entrances") => if dungeon_er == "on" {
+            json!("simple")
+        } else {
+            json!("off")
+        },
+        format!("shuffle_bosses") => json!(boss_er),
+        format!("shuffle_overworld_entrances") => json!(ow_er == "on"),
+        format!("shuffle_gerudo_valley_river_exit") => json!(owls_gv == "on"),
+        format!("owl_drops") => json!(owls_gv == "on"),
+        format!("warp_songs") => json!(warps == "on"),
+        format!("spawn_positions") => if spawn == "random" {
+            json!(["child", "adult"])
+        } else {
+            json!([])
+        },
+        format!("free_bombchu_drops") => json!(chubags == "on"),
+        format!("shuffle_song_items") => match songs {
+            "songs" => json!("song"),
+            "anywhere" => json!("any"),
+            _ => unreachable!(),
+        },
+        format!("shopsanity") => json!(shops),
+        format!("tokensanity") => json!(skulls),
+        format!("shuffle_scrubs") => match scrubs {
+            "affordable" => json!("low"),
+            "off" => json!("off"),
+            _ => unreachable!(),
+        },
+        format!("adult_trade_start") => json!([
+            "Claim Check",
+        ]),
+        format!("shuffle_freestanding_items") => json!(freestandings),
+        format!("shuffle_pots") => json!(pots),
+        format!("shuffle_crates") => json!(crates),
+        format!("shuffle_cows") => json!(cows == "on"),
+        format!("shuffle_gerudo_card") => json!(card == "shuffle"),
+        format!("shuffle_frog_song_rupees") => json!(frogs == "shuffle"),
+        format!("shuffle_map") => json!("startwith"),
+        format!("shuffle_compass") => json!("startwith"),
+        format!("shuffle_smallkeys") => json!(smallkeys),
+        format!("key_rings_choice") => if smallkeys == "regional" {
+            json!("all")
+        } else {
+            json!("off")
+        },
+        format!("shuffle_bosskeys") => json!(bosskeys),
+        format!("shuffle_silver_rupees") => json!(silver_rupees),
+        format!("silver_rupee_pouches_choice") => json!("all"),
+        format!("enhance_map_compass") => json!(["compass_reward"]),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_visible_collisions",
+            "logic_dc_scarecrow_gs",
+            "logic_deku_b1_webs_with_bow",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "farores_wind",
+            "lens",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("skip_reward_from_rauru") => json!("free"),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("scarecrow_behavior") => json!("free"),
+        format!("fast_bunny_hood") => json!(true),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("fast_shadow_boat") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("hint_dist") => match hints {
+            "path" => json!("mw_path"),
+            "woth" => json!("mw_woth"),
+            _ => unreachable!(),
+        },
+        format!("misc_hints") => json!([
+            "altar",
+            "dampe_diary",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "20_skulltulas",
+            "30_skulltulas",
+            "frogs2",
+        ]),
+        format!("correct_chest_appearances") => json!(camc),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("key_appearance_match_dungeon") => json!(true),
+        format!("blue_fire_arrows") => json!(true),
+        format!("tcg_requires_lens") => json!(true),
+        format!("item_pool_value") => json!(itempool),
         format!("junk_ice_traps") => json!("off"),
         format!("ice_trap_appearance") => json!("junk_only"),
     ]
@@ -1714,7 +1952,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     h2(id = "settings") : "Seed Settings";
                     p {
                         : "All tournament matches will be played on ";
-                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_9.0.24") : "version 9.0.24";
+                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_9.0.25") : "version 9.0.25";
                         : " of the randomizer. Organizers may change this version between rounds at their discretion.";
                     }
                     p {

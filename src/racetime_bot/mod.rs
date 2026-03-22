@@ -204,6 +204,7 @@ pub(crate) enum Goal {
     MultiworldS3,
     MultiworldS4,
     MultiworldS5,
+    MultiworldS6,
     NineDaysOfSaws,
     Pic7,
     PicRs2,
@@ -267,6 +268,7 @@ impl Goal {
             Self::MultiworldS3 => Ok((Series::Multiworld, "3")),
             Self::MultiworldS4 => Ok((Series::Multiworld, "4")),
             Self::MultiworldS5 => Ok((Series::Multiworld, "5")),
+            Self::MultiworldS6 => Ok((Series::Multiworld, "6")),
             Self::NineDaysOfSaws => Err(|series, _| series == Series::NineDaysOfSaws),
             Self::Pic7 => Ok((Series::Pictionary, "7")),
             Self::PicRs2 => Ok((Series::Pictionary, "rs2")),
@@ -325,6 +327,7 @@ impl Goal {
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
+            | Self::MultiworldS6
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
@@ -373,6 +376,7 @@ impl Goal {
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::MultiworldS4 => "4th Multiworld Tournament",
             Self::MultiworldS5 => "5th Multiworld Tournament",
+            Self::MultiworldS6 => "6th Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::Pic7 => "7th Pictionary Spoiler Log Race",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
@@ -421,6 +425,7 @@ impl Goal {
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
+            | Self::MultiworldS6
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
@@ -458,6 +463,7 @@ impl Goal {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::MultiworldS5 => Some(draft::Kind::MultiworldS5),
+            Self::MultiworldS6 => Some(draft::Kind::MultiworldS6),
             Self::Rsl => Some(draft::Kind::RslS7),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
@@ -527,6 +533,7 @@ impl Goal {
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
+            | Self::MultiworldS6
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
@@ -582,6 +589,7 @@ impl Goal {
                 | Self::MultiworldS3
                 | Self::MultiworldS4
                 | Self::MultiworldS5
+                | Self::MultiworldS6
                 | Self::NineDaysOfSaws
                 | Self::PotsOfTime
                 | Self::Rsl
@@ -633,6 +641,7 @@ impl Goal {
             Self::MultiworldS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 2, 205) },
             Self::MultiworldS4 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 199) },
             Self::MultiworldS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
+            Self::MultiworldS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 25) },
             Self::NineDaysOfSaws => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2) },
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
             Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
@@ -684,6 +693,7 @@ impl Goal {
             Self::MultiworldS3 => None, // settings draft
             Self::MultiworldS4 => None, // settings draft
             Self::MultiworldS5 => None, // settings draft
+            Self::MultiworldS6 => None, // settings draft
             Self::NineDaysOfSaws => None, // per-event settings
             Self::Pic7 => Some(pic::race7_settings()),
             Self::PotsOfTime => None, // random settings
@@ -766,6 +776,13 @@ impl Goal {
                 ctx.say("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
                 ctx.say("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 gbk stones): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+            }
+            Self::MultiworldS6 => {
+                ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
+                ctx.say("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
+                ctx.say("!seed draft: Pick the settings here in the chat.").await?;
+                ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 gbk stones): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+                //TODO support opt-ins
             }
             Self::NineDaysOfSaws => {
                 ctx.say("!seed day1: S6").await?;
@@ -1042,11 +1059,12 @@ impl Goal {
                     settings, plando, unlock_spoiler_log,
                 }
             }
-            Self::MultiworldS3 | Self::MultiworldS4 | Self::MultiworldS5 => {
+            Self::MultiworldS3 | Self::MultiworldS4 | Self::MultiworldS5 | Self::MultiworldS6 => {
                 let available_settings = match self {
                     Self::MultiworldS3 => mw::S3_SETTINGS,
                     Self::MultiworldS4 => mw::S4_SETTINGS,
                     Self::MultiworldS5 => mw::S5_SETTINGS,
+                    Self::MultiworldS6 => mw::S6_SETTINGS,
                     _ => unreachable!("checked in outer match"),
                 };
                 let settings = match args {
@@ -1077,10 +1095,10 @@ impl Goal {
                         let mut tuples = args.into_iter().tuples();
                         for (setting, value) in &mut tuples {
                             if let Some(mw::Setting { default, other, .. }) = available_settings.iter().copied().find(|mw::Setting { name, .. }| **name == setting) {
-                                if value == default || other.iter().any(|(other, _)| value == **other) {
+                                if value == default || other.iter().any(|(other, _, _)| value == **other) {
                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                 } else {
-                                    return Ok(SeedCommandParseResult::Error { language: English, msg: format!("I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or ")).into() })
+                                    return Ok(SeedCommandParseResult::Error { language: English, msg: format!("I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or ")).into() })
                                 }
                             } else {
                                 return Ok(SeedCommandParseResult::Error { language: English, msg: format!(
@@ -1100,6 +1118,7 @@ impl Goal {
                     Self::MultiworldS3 => (mw::resolve_s3_draft_settings(&settings), mw::display_s3_draft_picks(&settings)),
                     Self::MultiworldS4 => (mw::resolve_s4_draft_settings(&settings), mw::display_s4_draft_picks(&settings)),
                     Self::MultiworldS5 => (mw::resolve_s5_draft_settings(&settings), mw::display_s5_draft_picks(&settings)),
+                    Self::MultiworldS6 => (mw::resolve_s6_draft_settings(&settings), mw::display_s6_draft_picks(&settings)),
                     _ => unreachable!("checked in outer match"),
                 };
                 SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {display}") }
@@ -2514,6 +2533,7 @@ trait SeedHandler {
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
                     | Goal::MultiworldS5
+                    | Goal::MultiworldS6
                     | Goal::Rsl
                     | Goal::S7
                     | Goal::TournoiFrancoS3
@@ -2685,6 +2705,7 @@ impl Handler {
                 draft::Kind::MultiworldS3 => mw::S3_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::MultiworldS4 => mw::S4_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::MultiworldS5 => mw::S5_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
+                draft::Kind::MultiworldS6 => mw::S6_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::RslS7 => rsl::FORCE_OFF_SETTINGS.into_iter().map(|rsl::ForceOffSetting { name, .. }| Cow::Owned(format!("{name}: blocked or banned")))
                     .chain(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).map(|rsl::MultiOptionSetting { name, options, .. }| Cow::Owned(format!("{name}: {}", English.join_str_with("or", nonempty_collections::iter::once("blocked").chain(options.iter().map(|(name, _, _, _)| *name)))))))
                     .collect(),
@@ -2718,7 +2739,7 @@ impl Handler {
             lock!(@write state = self.race_state; if let Some(draft_kind) = self.draft_kind(goal) {
                 match *state {
                     RaceState::Init => match draft_kind {
-                        draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::SlugOpen => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed franco draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
@@ -2758,7 +2779,7 @@ impl Handler {
                             }
                         } else {
                             match draft_kind {
-                                draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
+                                draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
                                 draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the weights draft.")).await?,
                                 draft::Kind::SlugOpen => unimplemented!("SlugCentral Open format draft in race room"),
                                 draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
@@ -3283,11 +3304,12 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
-                            Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::MultiworldS5 => {
+                            Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::MultiworldS5 | Goal::MultiworldS6 => {
                                 let (ordinal, event, available_settings) = match goal {
                                     Goal::MultiworldS3 => ("3rd", "3", mw::S3_SETTINGS),
                                     Goal::MultiworldS4 => ("4th", "4", mw::S4_SETTINGS),
                                     Goal::MultiworldS5 => ("5th", "5", mw::S5_SETTINGS),
+                                    Goal::MultiworldS6 => ("6th", "6", mw::S6_SETTINGS),
                                     _ => unreachable!("checked in outer match"),
                                 };
                                 ctx.send_message(
@@ -3317,7 +3339,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 kind: SurveyQuestionKind::Radio,
                                                 placeholder: None,
                                                 options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
-                                                    .chain(setting.other.iter().map(|(name, display)| (name.to_string(), display.to_string())))
+                                                    .chain(setting.other.iter().map(|(name, _, display)| (name.to_string(), display.to_string())))
                                                     .collect(),
                                             }).collect()),
                                             submit: Some(format!("Roll")),
@@ -4758,6 +4780,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
                     | Goal::MultiworldS5
+                    | Goal::MultiworldS6
                     | Goal::NineDaysOfSaws
                     | Goal::PotsOfTime
                     | Goal::Rsl
