@@ -394,6 +394,7 @@ impl<'a> Data<'a> {
             (Series::TriforceBlitz, "3") => from_file!("../../assets/event/tfb/chests-3-8.1.32-blitz.57.json"),
             (Series::TriforceBlitz, "4coop") => from_file!("../../assets/event/tfb/chests-4coop-8.2.64-blitz.87.json"),
             (Series::TriforceBlitz, "4") => from_file!("../../assets/event/tfb/chests-4-8.3.23-blitz.93.json"),
+            (Series::TriforceBlitz, "5coop") => from_file!("../../assets/event/tfb/chests-5coop-9.0.1-blitz.110.json"),
             (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::WeTryToBeBetter, "2") => from_file!("../../assets/event/wttbb/chests-2-8.2.json"),
             (series, event) => {

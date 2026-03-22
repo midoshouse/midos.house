@@ -865,15 +865,12 @@ CREATE TABLE public.teams (
     restream_consent boolean DEFAULT false NOT NULL,
     startgg_id text,
     plural_name boolean,
-    hard_settings_ok boolean DEFAULT false NOT NULL,
-    mq_ok boolean DEFAULT false NOT NULL,
     text_field text DEFAULT ''::text NOT NULL,
     mw_impl public.mw_impl,
     text_field2 text DEFAULT ''::text NOT NULL,
     qualifier_rank smallint,
     yes_no boolean,
     challonge_id text,
-    lite_ok boolean DEFAULT false NOT NULL,
     custom_choices jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 
