@@ -4517,6 +4517,7 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
         let mut web_id = None;
         let mut web_gen_time = None;
         let mut file_stem = None;
+        let mut password = None;
         for (field_name, room) in valid_room_urls {
             if let Some(row) = sqlx::query!(r#"SELECT
                 file_stem,
@@ -4541,22 +4542,24 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
                     Ok(response) => match response.detailed_error_for_status().await {
                         Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
                             Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
-                                if let Some((_, hash1, hash2, hash3, hash4, hash5, info_file_stem)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?[^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+)?\nhttps://midos\\.house/seed/([0-9A-Za-z_-]+)(?:\\.zpfz?)?$", &info_bot) {
+                                if let Some((_, hash1, hash2, hash3, hash4, hash5, pw1, pw2, pw3, pw4, pw5, pw6, info_file_stem)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+))?\nhttps://midos\\.house/seed/([0-9A-Za-z_-]+)(?:\\.zpfz?)?$", &info_bot) {
                                     let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
                                     let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
                                     let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
                                     let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
                                     let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
                                     file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
+                                    password = [pw1, pw2, pw3, pw4, pw5, pw6].into_iter().filter_map(|emoji| OcarinaNote::from_racetime_emoji(emoji)).collect_vec().try_into().ok();
                                     file_stem = Some(info_file_stem.to_owned());
                                     break
-                                } else if let Some((_, hash1, hash2, hash3, hash4, hash5, web_id_str)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?[^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+)?\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
+                                } else if let Some((_, hash1, hash2, hash3, hash4, hash5, pw1, pw2, pw3, pw4, pw5, pw6, web_id_str)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+))?\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
                                     let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
                                     let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
                                     let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
                                     let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
                                     let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
                                     file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
+                                    password = [pw1, pw2, pw3, pw4, pw5, pw6].into_iter().filter_map(|emoji| OcarinaNote::from_racetime_emoji(emoji)).collect_vec().try_into().ok();
                                     web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
                                     match global.http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
                                         Ok(patch_response) => match patch_response.detailed_error_for_status().await {
@@ -4683,6 +4686,9 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
             }
             if let Some(file_hash) = file_hash {
                 race.seed.file_hash = Some(file_hash);
+            }
+            if let Some(password) = password {
+                race.seed.password = Some(password);
             }
             if let (Some(id), Some(gen_time), Some(file_stem)) = (web_id, web_gen_time, file_stem) {
                 race.seed.files = Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) });
