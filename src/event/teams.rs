@@ -449,6 +449,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 } else if qual_event.series == Series::Standard && qual_event.event == "9" && racetime_id == "ZbpNAaBvn5BJkg04" {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(828.60), r64(972.82), r64(979.43), r64(829.50), r64(912.99), r64(947.95), r64(1011.65), r64(938.46)]);
+                } else if qual_event.series == Series::Standard && qual_event.event == "9" && racetime_id == "b8GPMWwL4OB1nEk0" {
+                    user_teams.insert(user.id, team.clone());
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(936.79), r64(920.78), r64(791.54), r64(925.41), r64(894.59), r64(827.72), r64(0.00), r64(930.91)]);
                 } else {
                     //TODO cache scores in database to guard against racetime.gg user deletion
                     return Err(cal::Error::UnqualifiedEntrant {

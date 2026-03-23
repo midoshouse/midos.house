@@ -12,7 +12,7 @@ pub(crate) struct EmptyForm {
 
 pub(crate) fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {
     html! {
-        p(class = "error") : error;
+        p(class = "error", data_error_field? = error.name.as_ref().map(|n| n.to_string())) : error;
     }
 }
 
