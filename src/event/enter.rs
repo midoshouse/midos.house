@@ -1611,6 +1611,17 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                             },
                             _ => {}
                         }
+                        if let Series::Multiworld = data.series {
+                            match &*data.event {
+                                "3" | "4" | "5" => {}
+                                "6" => for (key, _) in mw::get_custom_choices(mw::S6_SETTINGS) {
+                                    if !value.custom_choices.contains_key(key) {
+                                        form.context.push_error(form::Error::validation("This field is required.").with_name(format!("custom_choices[{key}]")));
+                                    }
+                                },
+                                _ => unimplemented!(),
+                            }
+                        }
                         (racetime_team.slug.clone(), racetime_team.name.clone(), users, roles, startgg_ids, member_hard_settings_ok, member_mq_ok)
                     } else {
                         Default::default()
