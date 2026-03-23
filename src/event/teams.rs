@@ -1021,11 +1021,6 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         column_headers.push(html! {
             th : "Restream Consent";
         });
-        if let TeamConfig::Multiworld = data.team_config {
-            column_headers.push(html! {
-                th : "Multiworld Plugin";
-            });
-        }
     }
     let content = html! {
         : header;
@@ -1311,17 +1306,6 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                 td {
                                     @if team.as_ref().is_some_and(|team| team.restream_consent) {
                                         : "✓";
-                                    }
-                                }
-                                @if let TeamConfig::Multiworld = data.team_config {
-                                    td {
-                                        @if let Some(team) = team {
-                                            @match team.mw_impl {
-                                                None => : "?";
-                                                Some(mw::Impl::BizHawkCoOp) => : "bizhawk-co-op";
-                                                Some(mw::Impl::MidosHouse) => : "MH MW";
-                                            }
-                                        }
                                     }
                                 }
                             }

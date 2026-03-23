@@ -507,6 +507,7 @@ impl<'a> Data<'a> {
             (Series::Multiworld, "3") => Some(draft::Kind::MultiworldS3),
             (Series::Multiworld, "4") => Some(draft::Kind::MultiworldS4),
             (Series::Multiworld, "5") => Some(draft::Kind::MultiworldS5),
+            (Series::Multiworld, "6") => Some(draft::Kind::MultiworldS6),
             (Series::Rsl, "7") => Some(draft::Kind::RslS7),
             (Series::SlugOpen, _) => Some(draft::Kind::SlugOpen),
             (Series::Standard, "7" | "7cc") => Some(draft::Kind::S7),
