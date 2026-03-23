@@ -156,10 +156,21 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "4" => Some(html! {
             article {
                 p {
-                    : "This is the 4th season of the Triforce Blitz tournament, organized by ";
+                    : "This is the 1v1 portion of the 4th season of the Triforce Blitz tournament, organized by ";
                     : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1iZ8yNpJMEK27tovLkYRpGv8GxyQcvpBhyW-8TyYqwwg/edit") : "the official document";
+                    : " for details.";
+                }
+            }
+        }),
+        "5coop" => Some(html! {
+            article {
+                p {
+                    : "This is the co-op portion of the 5th season of the Triforce Blitz tournament, organized by ";
+                    : English.join_html_opt(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1Z0IDqkL48v-wvgMJcOyDiwjtQn5jUfyYilPpZpSbcmg/edit") : "the official document";
                     : " for details.";
                 }
             }
