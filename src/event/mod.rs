@@ -2228,6 +2228,19 @@ pub(crate) enum AsyncKind {
     Tiebreaker2,
 }
 
+impl AsyncKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Qualifier1 => "qualifier async 1",
+            Self::Qualifier2 => "qualifier async 2",
+            Self::Qualifier3 => "qualifier async 3",
+            Self::Seeding => "seeding async",
+            Self::Tiebreaker1 => "tiebreaker async 1",
+            Self::Tiebreaker2 => "tiebreaker async 2",
+        }
+    }
+}
+
 #[derive(FromForm, CsrfForm)]
 pub(crate) struct RequestAsyncForm {
     #[field(default = String::new())]
@@ -2266,6 +2279,29 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
             None
         };
+        let async_row = sqlx::query!(r#"SELECT is_tfb_dev, tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon", seed_password, bingosync_url, bingo_passphrase FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+        let seed = seed::Data::from_db(
+            None,
+            None,
+            None,
+            None,
+            async_row.file_stem,
+            None,
+            async_row.web_id,
+            async_row.web_gen_time,
+            async_row.is_tfb_dev,
+            async_row.tfb_uuid,
+            async_row.hash1,
+            async_row.hash2,
+            async_row.hash3,
+            async_row.hash4,
+            async_row.hash5,
+            async_row.seed_password.as_deref(),
+            false, // no official races with progression spoilers so far
+            async_row.bingosync_url,
+            async_row.bingo_passphrase,
+        );
+        let extra = seed.extra(Utc::now()).await?;
         if !value.confirm {
             form.context.push_error(form::Error::validation("This field is required.").with_name("confirm"));
         }
@@ -2276,6 +2312,10 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
             sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, $2, NOW()) ON CONFLICT (team, kind) DO UPDATE SET requested = EXCLUDED.requested", team.id as _, async_kind as _).execute(&mut *transaction).await?;
+            if let Some(mw::Impl::MidosHouse) = team.mw_impl && let Some(hash) = extra.file_hash {
+                let members = team.members_roles(&mut transaction).await?;
+                crate::mw::create_room(async_kind.as_str(), hash, members.into_iter().filter(|(_, role)| data.team_config.role_is_racing(*role)).map(|(member, _)| member.id), None).await?;
+            }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
         }
@@ -2424,14 +2464,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 if let Some((discord_channel, private)) = result_channel {
                     let mut message = MessageBuilder::default();
                     if private {
-                        message.push(match async_kind {
-                            AsyncKind::Qualifier1 => "qualifier async 1",
-                            AsyncKind::Qualifier2 => "qualifier async 2",
-                            AsyncKind::Qualifier3 => "qualifier async 3",
-                            AsyncKind::Seeding => "seeding async",
-                            AsyncKind::Tiebreaker1 => "tiebreaker async 1",
-                            AsyncKind::Tiebreaker2 => "tiebreaker async 2",
-                        });
+                        message.push(async_kind.as_str());
                         message.push(": ");
                     } else {
                         message.push("Please welcome ");

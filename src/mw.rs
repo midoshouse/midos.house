@@ -252,3 +252,23 @@ pub(crate) async fn install_macos(global: &GlobalState, me: Option<User>, uri: O
         }
     }).await
 }
+
+pub(crate) async fn create_room(mw_room_name: &str, [hash1, hash2, hash3, hash4, hash5]: [HashIcon; 5], member_ids: impl IntoIterator<Item = Id<Users>>, tracker_room_name: Option<&str>) -> wheel::Result {
+    let mut cmd = Command::new("/usr/local/share/midos-house/bin/ootrmwd");
+    cmd.arg("create-tournament-room");
+    cmd.arg(mw_room_name);
+    cmd.arg(hash1.to_string());
+    cmd.arg(hash2.to_string());
+    cmd.arg(hash3.to_string());
+    cmd.arg(hash4.to_string());
+    cmd.arg(hash5.to_string());
+    for member_id in member_ids {
+        cmd.arg(member_id.to_string());
+    }
+    if let Some(tracker_room_name) = tracker_room_name {
+        cmd.arg("--tracker-room-name");
+        cmd.arg(tracker_room_name);
+    }
+    cmd.check("ootrmwd create-tournament-room").await?;
+    Ok(())
+}

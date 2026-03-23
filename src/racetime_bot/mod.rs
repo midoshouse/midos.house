@@ -2283,26 +2283,9 @@ impl SeedRollUpdate {
                                 mw_room_name.truncate(split_at);
                                 mw_room_name.push_str(ellipsis);
                             }
-                            if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
+                            if let Some(hash) = extra.file_hash {
                                 let tracker_room_name = restreams.values().any(|restream| restream.restreamer_racetime_id.is_some()).then(|| Alphanumeric.sample_string(&mut rng(), 32));
-                                let mut cmd = Command::new("/usr/local/share/midos-house/bin/ootrmwd");
-                                cmd.arg("create-tournament-room");
-                                cmd.arg(&mw_room_name);
-                                cmd.arg(hash1.to_string());
-                                cmd.arg(hash2.to_string());
-                                cmd.arg(hash3.to_string());
-                                cmd.arg(hash4.to_string());
-                                cmd.arg(hash5.to_string());
-                                for (member, role) in members {
-                                    if event.team_config.role_is_racing(role) {
-                                        cmd.arg(member.id.to_string());
-                                    }
-                                }
-                                if let Some(tracker_room_name) = &tracker_room_name {
-                                    cmd.arg("--tracker-room-name");
-                                    cmd.arg(tracker_room_name);
-                                }
-                                cmd.check("ootrmwd create-tournament-room").await.to_racetime()?;
+                                crate::mw::create_room(&mw_room_name, hash, members.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).map(|(member, _)| member.id), tracker_room_name.as_deref()).await.to_racetime()?;
                                 ctx.say(format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;
                                 if let Some(tracker_room_name) = tracker_room_name {
                                     let mut all_notified = true;
