@@ -1260,7 +1260,7 @@ impl<'v> StatusContext<'v> {
 async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
-        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
+        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -1338,6 +1338,15 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                             : ".";
                                         };
                                         : seed_table;
+                                        @if let Some(mw::Impl::MidosHouse) = row.mw_impl {
+                                            p {
+                                                : "Your Mido's House Multiworld room named “";
+                                                : async_kind.as_str();
+                                                : "” is now open. You can find it at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen. Please note that you are ";
+                                                strong : "required";
+                                                : " to use this room.";
+                                            }
+                                        }
                                         p : "After playing the async, fill out the form below.";
                                         : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
                                             @match data.team_config {

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, role AS \"role: Role\", resigned, restream_consent FROM teams, team_members WHERE\n            id = team\n            AND series = $1\n            AND event = $2\n            AND member = $3\n            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n        ",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, role AS \"role: Role\", resigned, restream_consent, mw_impl AS \"mw_impl: mw::Impl\" FROM teams, team_members WHERE\n            id = team\n            AND series = $1\n            AND event = $2\n            AND member = $3\n            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n        ",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,21 @@
         "ordinal": 5,
         "name": "restream_consent",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "mw_impl: mw::Impl",
+        "type_info": {
+          "Custom": {
+            "name": "mw_impl",
+            "kind": {
+              "Enum": [
+                "bizhawk_co_op",
+                "midos_house"
+              ]
+            }
+          }
+        }
       }
     ],
     "parameters": {
@@ -61,8 +76,9 @@
       true,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "69c7a56d0597616a785a9dafae754032bd40a2f01f02b334f0e65cdb821e16ee"
+  "hash": "2047990e9bac26fe40fd1a8f6a1819fe98dcb5c49d04562ca386afe179f3a736"
 }
