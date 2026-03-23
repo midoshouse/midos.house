@@ -446,6 +446,15 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 if let Some(score) = scores.remove(&MemberUser::RaceTime { id: racetime_id.clone(), url: String::default(), name: String::default() }) {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), score);
+                } else if qual_event.series == Series::SpeedGaming && qual_event.event == "2023onl" && racetime_id == "ZbpNAaBvn5BJkg04" {
+                    user_teams.insert(user.id, team.clone());
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(99.60), r64(96.39), r64(91.95)]);
+                } else if qual_event.series == Series::SpeedGaming && qual_event.event == "2024onl" && racetime_id == "ZbpNAaBvn5BJkg04" {
+                    user_teams.insert(user.id, team.clone());
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(67.10), r64(88.15), r64(98.43), r64(98.38), r64(92.95), r64(91.23)]);
+                } else if qual_event.series == Series::SpeedGaming && qual_event.event == "2025onl" && racetime_id == "ZbpNAaBvn5BJkg04" {
+                    user_teams.insert(user.id, team.clone());
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(96.20), r64(98.45), r64(0.00), r64(89.54)]);
                 } else if qual_event.series == Series::Standard && qual_event.event == "9" && racetime_id == "ZbpNAaBvn5BJkg04" {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(828.60), r64(972.82), r64(979.43), r64(829.50), r64(912.99), r64(947.95), r64(1011.65), r64(938.46)]);

@@ -167,6 +167,7 @@ pub(crate) struct CommandIds {
     delete_after: CommandId,
     draft: Option<CommandId>,
     pub(crate) first: Option<CommandId>,
+    next: Option<CommandId>,
     pub(crate) no: Option<CommandId>,
     pub(crate) pick: Option<CommandId>,
     post_status: CommandId,
@@ -733,6 +734,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                 });
                 idx
             });
+            let next = if guild_events.iter().any(|event| event.series == Series::EscapeFromKakariko) {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("next")
+                    .kind(CommandType::ChatInput)
+                    .add_context(InteractionContext::Guild)
+                    .description(description!("Shorthand to immediately open the room and roll the seed for the next race in the match."))
+                );
+                Some(idx)
+            } else {
+                None
+            };
             let no = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
@@ -1044,6 +1056,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                 delete_after: commands[delete_after].id,
                 draft: draft.map(|idx| commands[idx].id),
                 first: first.map(|idx| commands[idx].id),
+                next: next.map(|idx| commands[idx].id),
                 no: no.map(|idx| commands[idx].id),
                 pick: pick.map(|idx| commands[idx].id),
                 post_status: commands[post_status].id,
@@ -1213,6 +1226,102 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?;
+                            }
+                        } else if Some(interaction.data.id) == command_ids.next {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None, false, None).await? {
+                                let event = race.event(&mut transaction).await?;
+                                if event.series == Series::EscapeFromKakariko {
+                                    let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
+                                    let was_scheduled = match race.schedule {
+                                        RaceSchedule::Unscheduled => None,
+                                        RaceSchedule::Live { start, .. } => Some(Some(start)),
+                                        RaceSchedule::Async { .. } => Some(None),
+                                    };
+                                    match event.scheduling_backend(&mut transaction).await? {
+                                        SchedulingBackend::MidosHouse => if team.is_some() || is_organizer {
+                                            let start = Utc::now() + TimeDelta::minutes(15);
+                                            race.schedule.set_live_start(start);
+                                            race.schedule_updated_at = Some(Utc::now());
+                                            let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                            let (global, racetime_host) = {
+                                                let data = ctx.data.read().await;
+                                                (
+                                                    data.get::<GlobalState>().expect("global state missing from Discord context").clone(),
+                                                    data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
+                                                )
+                                            };
+                                            lock!(new_room_lock = global.new_room_lock; {
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
+                                                    if let Some(channel) = event.discord_race_room_channel {
+                                                        channel.say(ctx, &msg).await?;
+                                                    }
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(msg)
+                                                    )).await?;
+                                                } else {
+                                                    let mut response_content = MessageBuilder::default();
+                                                    response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                                    response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
+                                                    response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    let response_content = response_content
+                                                        .push(". The race room will be opened momentarily.")
+                                                        .build();
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(response_content)
+                                                    )).await?;
+                                                }
+                                                cal_event.race.save(&mut transaction).await?;
+                                                transaction.commit().await?;
+                                            })
+                                        } else {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(if let French = event.language {
+                                                    "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                                } else {
+                                                    "Sorry, only participants in this race and organizers can use this command."
+                                                })
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                        },
+                                        SchedulingBackend::SpeedGamingOnline(speedgaming_slug) => {
+                                            let response_content = if was_scheduled.is_some() {
+                                                format!("Please contact a tournament organizer to reschedule this race.")
+                                            } else {
+                                                MessageBuilder::default()
+                                                    .push("Please use <https://speedgaming.org/")
+                                                    .push(speedgaming_slug)
+                                                    .push("/submit> to schedule races for this event.")
+                                                    .build()
+                                            };
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(response_content)
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                        }
+                                        SchedulingBackend::SpeedGamingInPerson => {
+                                            let response_content = if was_scheduled.is_some() {
+                                                format!("Please contact a tournament organizer to reschedule this race.")
+                                            } else {
+                                                format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
+                                            };
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(response_content)
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                        }
+                                    }
+                                } else {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content("Sorry, this command is only available for Escape from Kakariko events.")
+                                    )).await?;
+                                    transaction.rollback().await?;
+                                }
                             }
                         } else if Some(interaction.data.id) == command_ids.no {
                             draft_action(ctx, interaction, draft::Action::BooleanChoice(false)).await?;
