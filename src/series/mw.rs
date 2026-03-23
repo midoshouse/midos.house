@@ -1958,41 +1958,37 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                     p {
                         : "The default settings for each race will be the same as last season. For players familiar with the ";
-                        a(href = uri!(event::info(Series::Standard, "8"))) : "Standard Tournament Season 8";
-                        : " settings, the differences are:"; //TODO update for S9
+                        a(href = uri!(event::info(Series::Standard, "9"))) : "Standard Tournament Season 9";
+                        : " settings, the differences are:";
                     }
                     ul {
+                        li : "Player Count: 3";
                         li : "Rainbow Bridge: 6 Medallions";
                         li : "Forest: Open";
                         li : "Starting Age: Adult";
+                        li : "Shuffle Dungeon Entrances: Off";
                         li : "Spawn Positions: Vanilla";
                         li : "Shopsanity: 4 Items per Shop";
                         li : "Tokensanity: Dungeons Only";
                         li : "Scrub Shuffle: On (Affordable)";
                         li : "Adult Trade Quest: Claim Check Only";
-                        li : "Maps and Compasses Give Information: On";
-                        li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
-                        li {
-                            : "Logic Tricks:";
-                            ul {
-                                li : "Enabled Pass Through Visible One-Way Collisions";
-                                li : "Enabled Dodongo's Cavern Scarecrow GS with Armos Statue";
-                                li : "Enabled Deku Tree Basement Web to Gohma with Bow";
-                            }
-                        }
+                        li : "Maps and Compasses Give Information: Compass gives reward info";
+                        li : "Excluded Locations: Added Kak 40/50 Gold Skulltula Reward";
+                        li : "Logic Tricks: Enabled Pass Through Visible One-Way Collisions";
                         li {
                             : "Starting Inventory:";
                             ul {
                                 li : "Removed Deku Shield";
+                                li : "Removed randomized major item";
                                 li : "Added Farores Wind";
                                 li : "Added Lens of Truth";
-                                li : "Added Rupees";
+                                li : "Added rupees";
                             }
                         }
-                        li : "Free Scarecrow's Song: On";
+                        li : "Scarecrow Behavior: Free";
                         li : "Ruto Already at F1: On";
                         li : "Fast Shadow Boat: On";
-                        li : "Key Appearance Matches Dungeon: On";
+                        li : "Hint Distribution: MW Season 5";
                         li {
                             : "Misc. Hints:";
                             ul {
@@ -2001,7 +1997,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 li : "Added Dampé Diary (Hookshot)";
                             }
                         }
-                        li : "Require Lens of Truth for Treasure Chest Game: On";
+                        li : "Pot, Crate, & Beehive Appearance Matches Contents: Texture (Match Content)";
+                        li : "Key Appearance Matches Dungeon: On";
                     }
                     p : "You can use the “Practice” menu at the top of this page to load these settings.";
                     p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
