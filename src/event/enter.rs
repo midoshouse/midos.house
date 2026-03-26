@@ -1597,22 +1597,21 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                 }
                             }
                         }
-                        match team_config {
-                            TeamConfig::CoOp => {
+                        if let TeamConfig::Multiworld = team_config {
+                            if value.mw_impl.is_none() {
+                                form.context.push_error(form::Error::validation("This field is required.").with_name("mw_impl"));
+                            }
+                        }
+                        match data.series {
+                            Series::CoOp => {
                                 if value.text_field.is_empty() {
                                     form.context.push_error(form::Error::validation("This field is required.").with_name("text_field"));
                                 }
                                 if value.text_field2.is_empty() {
                                     form.context.push_error(form::Error::validation("This field is required.").with_name("text_field2"));
                                 }
-                            }
-                            TeamConfig::Multiworld => if value.mw_impl.is_none() {
-                                form.context.push_error(form::Error::validation("This field is required.").with_name("mw_impl"));
                             },
-                            _ => {}
-                        }
-                        if let Series::Multiworld = data.series {
-                            match &*data.event {
+                            Series::Multiworld => match &*data.event {
                                 "3" | "4" | "5" => {}
                                 "6" => for (key, _) in mw::get_custom_choices(mw::S6_SETTINGS) {
                                     if !value.custom_choices.contains_key(key) {
@@ -1620,7 +1619,8 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                     }
                                 },
                                 _ => unimplemented!(),
-                            }
+                            },
+                            _ => {}
                         }
                         (racetime_team.slug.clone(), racetime_team.name.clone(), users, roles, startgg_ids, member_hard_settings_ok, member_mq_ok)
                     } else {
