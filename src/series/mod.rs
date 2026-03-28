@@ -21,6 +21,7 @@ use {
 
 pub(crate) mod br;
 pub(crate) mod coop;
+pub(crate) mod efk;
 pub(crate) mod fr;
 pub(crate) mod latam;
 pub(crate) mod league;

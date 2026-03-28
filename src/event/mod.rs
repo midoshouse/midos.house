@@ -320,6 +320,7 @@ impl<'a> Data<'a> {
             (Series::CoOp, "3") => ChestAppearances::VANILLA,
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaLatinoamerica, "2025") => from_file!("../../assets/event/latam/chests-2025-8.3.17-rob.1.json"),
+            (Series::EscapeFromKakariko, "2026") => from_file!("../../assets/event/efk/chests-2026-9.0.1-blitz.110.json"),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, "5") => from_file!("../../assets/event/league/chests-4-7.1.94.json"), //TODO S5 was generated on Dev versions between 7.1.184 and 7.1.200
             (Series::League, "6") => from_file!("../../assets/event/league/chests-6-8.0.22.json"),

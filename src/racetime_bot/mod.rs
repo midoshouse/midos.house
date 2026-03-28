@@ -192,6 +192,7 @@ pub(crate) enum Goal {
     CoOpS3,
     CopaDoBrasil,
     CopaLatinoamerica2025,
+    Efk2026,
     LeagueS5,
     LeagueS6,
     LeagueS7,
@@ -256,6 +257,7 @@ impl Goal {
             Self::CoOpS3 => Ok((Series::CoOp, "3")),
             Self::CopaDoBrasil => Ok((Series::CopaDoBrasil, "1")),
             Self::CopaLatinoamerica2025 => Ok((Series::CopaLatinoamerica, "2025")),
+            Self::Efk2026 => Ok((Series::EscapeFromKakariko, "2026")),
             Self::LeagueS5 => Ok((Series::League, "5")),
             Self::LeagueS6 => Ok((Series::League, "6")),
             Self::LeagueS7 => Ok((Series::League, "7")),
@@ -315,6 +317,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::Efk2026
             | Self::LeagueS5
             | Self::LeagueS6
             | Self::LeagueS7
@@ -364,6 +367,7 @@ impl Goal {
             Self::CoOpS3 => "Co-op Tournament Season 3",
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::CopaLatinoamerica2025 => "Copa Latinoamerica 2025",
+            Self::Efk2026 => "Escape from Kakariko 2026",
             Self::LeagueS5 => "League Season 5",
             Self::LeagueS6 => "League Season 6",
             Self::LeagueS7 => "League Season 7",
@@ -413,6 +417,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::Efk2026
             | Self::LeagueS5
             | Self::LeagueS6
             | Self::LeagueS7
@@ -473,6 +478,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::Efk2026
             | Self::LeagueS5
             | Self::LeagueS6
             | Self::LeagueS7
@@ -529,6 +535,7 @@ impl Goal {
             | Self::BattleRoyaleS2
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::Efk2026
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -578,6 +585,7 @@ impl Goal {
                 | Self::BattleRoyaleS2
                 | Self::CopaDoBrasil
                 | Self::CopaLatinoamerica2025
+                | Self::Efk2026
                 | Self::LeagueS5
                 | Self::LeagueS6
                 | Self::LeagueS7
@@ -629,6 +637,7 @@ impl Goal {
             Self::CoOpS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::CopaDoBrasil => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 143) },
             Self::CopaLatinoamerica2025 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 3, 17, 1) },
+            Self::Efk2026 => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::LeagueS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 200) },
             Self::LeagueS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::LeagueS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
@@ -681,6 +690,7 @@ impl Goal {
             Self::CoOpS3 => Some(coop::s3_settings()),
             Self::CopaDoBrasil => Some(br::s1_settings()),
             Self::CopaLatinoamerica2025 => None, // plando
+            Self::Efk2026 => Some(efk::settings_2026()),
             Self::LeagueS5 => Some(league::s5_settings()),
             Self::LeagueS6 => Some(league::s6_settings()),
             Self::LeagueS7 => Some(league::s7_settings()),
@@ -739,6 +749,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
+            | Self::Efk2026
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -910,6 +921,7 @@ impl Goal {
         Ok(match self {
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::Efk2026
             | Self::LeagueS5
             | Self::LeagueS6
             | Self::LeagueS7
@@ -2487,6 +2499,7 @@ trait SeedHandler {
                 RaceState::Init => match goal {
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
+                    | Goal::Efk2026
                     | Goal::LeagueS5
                     | Goal::LeagueS6
                     | Goal::LeagueS7
@@ -3188,6 +3201,7 @@ impl RaceHandler<GlobalState> for Handler {
                         RaceState::Init => match goal {
                             | Goal::BattleRoyaleS1
                             | Goal::BattleRoyaleS2
+                            | Goal::Efk2026
                             | Goal::LeagueS5
                             | Goal::LeagueS6
                             | Goal::LeagueS7
@@ -4751,6 +4765,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
                     | Goal::CopaLatinoamerica2025
+                    | Goal::Efk2026
                     | Goal::LeagueS5
                     | Goal::LeagueS6
                     | Goal::LeagueS7
