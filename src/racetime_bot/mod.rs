@@ -2270,32 +2270,8 @@ impl SeedRollUpdate {
                                     }
                                 }
                             }
-                            let mut mw_room_name = if let Ok(other_team) = cal_event.race.teams().filter(|iter_team| iter_team.id != team.id).exactly_one() {
-                                format!(
-                                    "{}vs. {}",
-                                    if let Some(game) = cal_event.race.game { format!("game {game} ") } else { String::default() },
-                                    other_team.name.as_deref().unwrap_or("unnamed team"),
-                                )
-                            } else {
-                                let mut mw_room_name = match (&cal_event.race.phase, &cal_event.race.round) {
-                                    (Some(phase), Some(round)) => format!("{phase} {round}"),
-                                    (Some(phase), None) => phase.clone(),
-                                    (None, Some(round)) => round.clone(),
-                                    (None, None) => event.display_name.clone(),
-                                };
-                                if let Some(game) = cal_event.race.game {
-                                    mw_room_name.push_str(&format!(", game {game}"));
-                                }
-                                mw_room_name
-                            };
-                            if mw_room_name.len() > 64 {
-                                // maximum room name length in database is 64
-                                let ellipsis = "[…]";
-                                let split_at = (0..=64 - ellipsis.len()).rev().find(|&idx| mw_room_name.is_char_boundary(idx)).unwrap_or(0);
-                                mw_room_name.truncate(split_at);
-                                mw_room_name.push_str(ellipsis);
-                            }
                             if let Some(hash) = extra.file_hash {
+                                let mw_room_name = cal_event.race.mw_room_name(event, team.id);
                                 let tracker_room_name = restreams.values().any(|restream| restream.restreamer_racetime_id.is_some()).then(|| Alphanumeric.sample_string(&mut rng(), 32));
                                 crate::mw::create_room(&mw_room_name, hash, members.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).map(|(member, _)| member.id), tracker_room_name.as_deref()).await.to_racetime()?;
                                 ctx.say(format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;

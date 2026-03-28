@@ -1223,6 +1223,35 @@ impl Race {
         })
     }
 
+    pub(crate) fn mw_room_name(&self, event: &event::Data<'_>, team_id: Id<Teams>) -> String {
+        let mut mw_room_name = if let Ok(other_team) = self.teams().filter(|iter_team| iter_team.id != team_id).exactly_one() {
+            format!(
+                "{}vs. {}",
+                if let Some(game) = self.game { format!("game {game} ") } else { String::default() },
+                other_team.name.as_deref().unwrap_or("unnamed team"),
+            )
+        } else {
+            let mut mw_room_name = match (&self.phase, &self.round) {
+                (Some(phase), Some(round)) => format!("{phase} {round}"),
+                (Some(phase), None) => phase.clone(),
+                (None, Some(round)) => round.clone(),
+                (None, None) => event.display_name.clone(),
+            };
+            if let Some(game) = self.game {
+                mw_room_name.push_str(&format!(", game {game}"));
+            }
+            mw_room_name
+        };
+        if mw_room_name.len() > 64 {
+            // maximum room name length in database is 64
+            let ellipsis = "[…]";
+            let split_at = (0..=64 - ellipsis.len()).rev().find(|&idx| mw_room_name.is_char_boundary(idx)).unwrap_or(0);
+            mw_room_name.truncate(split_at);
+            mw_room_name.push_str(ellipsis);
+        }
+        mw_room_name
+    }
+
     pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
         let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id, speedgaming_onsite_id) = match self.source {
             Source::Manual => (None, None, None, None, None, None, None),
@@ -3627,6 +3656,15 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                                     : ".";
                                 };
                                 : seed_table;
+                                @if let Some(mw::Impl::MidosHouse) = team.mw_impl {
+                                    p {
+                                        : "Your Mido's House Multiworld room named “";
+                                        : cal_event.race.mw_room_name(&event, team.id);
+                                        : "” is now open. You can find it at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen. Please note that you are ";
+                                        strong : "required";
+                                        : " to use this room.";
+                                    }
+                                }
                                 p : "After playing the async, fill out the form below.";
                                 : full_form(uri!(submit_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
                                     @match event.team_config {
@@ -3799,6 +3837,7 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
         if race.seed.files.is_none() {
             form.context.push_error(form::Error::validation("The seed for this race has not been rolled yet."));
         }
+        let extra = race.seed.extra(Utc::now()).await?;
         let cal_event = race.into_async_part_for(&mut transaction, &me).await?;
         if cal_event.is_err() {
             form.context.push_error(form::Error::validation("You don't have an async available for this race."));
@@ -3824,6 +3863,10 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
             let cal_event = cal_event.expect("validated");
             let team = team.expect("validated");
             sqlx::query!("INSERT INTO race_async_teams (race, team, requested) VALUES ($1, $2, NOW())", id as _, team.id as _).execute(&mut *transaction).await?;
+            if let Some(mw::Impl::MidosHouse) = team.mw_impl && let Some(hash) = extra.file_hash {
+                let members = team.members_roles(&mut transaction).await?;
+                crate::mw::create_room(&cal_event.race.mw_room_name(&event, team.id), hash, members.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).map(|(member, _)| member.id), None).await?;
+            }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(race_details(event.series, &*event.event, cal_event.race.id))))
         }
