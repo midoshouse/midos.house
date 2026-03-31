@@ -102,3 +102,13 @@ ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO organizers (serie
 if (-not $?) {
     throw 'Native Failure'
 }
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO discord_roles (guild, racetime_team, id) VALUES (987565688820469781, ''slugcentral-open-test-team-1'', 1487421659597111539);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"insert INTO discord_roles (guild, racetime_team, id) VALUES (987565688820469781, ''slugcentral-open-test-team-2'', 1487448439099756737);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
