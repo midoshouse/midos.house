@@ -1286,7 +1286,7 @@ impl Draft {
                     },
                 },
                 3 => Step {
-                   kind: StepKind::Ban {
+                    kind: StepKind::Ban {
                         team: Team::LowSeed,
                         available_settings: BanSettings(vec![
                             ("All Formats", all::<sco::Format>()

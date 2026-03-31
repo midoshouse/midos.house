@@ -2406,57 +2406,61 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         send_draft_settings_page(ctx, interaction, "draft", page.parse().unwrap()).await?;
                     } else if let Some(setting) = custom_id.strip_prefix("draft_setting_") {
                         let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
-                        match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
-                            draft::StepKind::Ban { available_settings, .. } if available_settings.get(setting).is_some() => {
-                                let setting = available_settings.get(setting).unwrap(); // `if let` guards are experimental
-                                msg_ctx.into_transaction().commit().await?;
-                                let response_content = if let French = event.language {
-                                    format!("Sélectionnez la configuration du setting {} :", setting.display)
-                                } else {
-                                    format!("Select the value for the {} setting:", setting.display)
-                                };
-                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                    .ephemeral(true)
-                                    .content(response_content)
-                                    .button(CreateButton::new(format!("draft_option_{}__{}", setting.name, setting.default)).label(setting.default_display))
-                                    .button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)) //TODO remember page?
-                                )).await?;
-                            }
-                            draft::StepKind::Pick { available_choices, .. } if available_choices.get(setting).is_some() => {
-                                let setting = available_choices.get(setting).unwrap(); // `if let` guards are experimental
-                                msg_ctx.into_transaction().commit().await?;
-                                let response_content = if let French = event.language {
-                                    format!("Sélectionnez la configuration du setting {} :", setting.display)
-                                } else {
-                                    format!("Select the value for the {} setting:", setting.display)
-                                };
-                                let mut response_msg = CreateInteractionResponseMessage::new()
-                                    .ephemeral(true)
-                                    .content(response_content);
-                                for option in setting.options {
-                                    response_msg = response_msg.button(CreateButton::new(format!("draft_option_{}__{}", setting.name, option.name)).label(option.display));
+                        if let draft::Kind::SlugOpen = draft_kind {
+                            draft_action(ctx, interaction, draft::Action::Ban { setting: setting.to_owned() }).await?;
+                        } else {
+                            match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
+                                draft::StepKind::Ban { available_settings, .. } if available_settings.get(setting).is_some() => {
+                                    let setting = available_settings.get(setting).unwrap(); // `if let` guards are experimental
+                                    msg_ctx.into_transaction().commit().await?;
+                                    let response_content = if let French = event.language {
+                                        format!("Sélectionnez la configuration du setting {} :", setting.display)
+                                    } else {
+                                        format!("Select the value for the {} setting:", setting.display)
+                                    };
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content(response_content)
+                                        .button(CreateButton::new(format!("draft_option_{}__{}", setting.name, setting.default)).label(setting.default_display))
+                                        .button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)) //TODO remember page?
+                                    )).await?;
                                 }
-                                response_msg = response_msg.button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)); //TODO remember page?
-                                interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
-                            }
-                            | draft::StepKind::GoFirst
-                            | draft::StepKind::Ban { .. }
-                            | draft::StepKind::Pick { .. }
-                            | draft::StepKind::BooleanChoice { .. }
-                            | draft::StepKind::Claim
-                            | draft::StepKind::Done(_)
-                            | draft::StepKind::DoneRsl { .. }
-                            | draft::StepKind::DoneSlugOpen(_)
-                                => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
-                                    Ok(_) => unreachable!(),
-                                    Err(error_msg) => {
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content(error_msg)
-                                        )).await?;
-                                        msg_ctx.into_transaction().rollback().await?;
+                                draft::StepKind::Pick { available_choices, .. } if available_choices.get(setting).is_some() => {
+                                    let setting = available_choices.get(setting).unwrap(); // `if let` guards are experimental
+                                    msg_ctx.into_transaction().commit().await?;
+                                    let response_content = if let French = event.language {
+                                        format!("Sélectionnez la configuration du setting {} :", setting.display)
+                                    } else {
+                                        format!("Select the value for the {} setting:", setting.display)
+                                    };
+                                    let mut response_msg = CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content(response_content);
+                                    for option in setting.options {
+                                        response_msg = response_msg.button(CreateButton::new(format!("draft_option_{}__{}", setting.name, option.name)).label(option.display));
                                     }
-                                },
+                                    response_msg = response_msg.button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)); //TODO remember page?
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
+                                }
+                                | draft::StepKind::GoFirst
+                                | draft::StepKind::Ban { .. }
+                                | draft::StepKind::Pick { .. }
+                                | draft::StepKind::BooleanChoice { .. }
+                                | draft::StepKind::Claim
+                                | draft::StepKind::Done(_)
+                                | draft::StepKind::DoneRsl { .. }
+                                | draft::StepKind::DoneSlugOpen(_)
+                                    => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+                                        Ok(_) => unreachable!(),
+                                        Err(error_msg) => {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(error_msg)
+                                            )).await?;
+                                            msg_ctx.into_transaction().rollback().await?;
+                                        }
+                                    },
+                            }
                         }
                     } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once("__")) {
                         draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
