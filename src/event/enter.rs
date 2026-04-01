@@ -169,6 +169,8 @@ pub(crate) enum Requirement {
 
 struct RequirementStatus {
     blocks_submit: bool,
+    /// Whether the checkmark on the form should dynamically update based on the presence of any selected radio buttons _or checkboxes_ in the HTML content.
+    is_radio: bool,
     html_content: Box<dyn FnOnce(&mut Vec<&form::Error<'_>>) -> RawHtml<String> + Send>,
 }
 
@@ -269,6 +271,7 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html_content),
                 }
             }
@@ -276,6 +279,7 @@ impl Requirement {
                 let text = text.clone();
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html! {
                         @if let Some(text) = text {
                             : text;
@@ -296,6 +300,7 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html_content),
                 }
             }
@@ -311,6 +316,7 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html_content),
                 }
             }
@@ -319,6 +325,7 @@ impl Requirement {
                 let invite_url = data.discord_invite_url.as_ref().map(|url| url.to_string());
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html! {
                         @if let Some(invite_url) = invite_url {
                             a(href = invite_url) {
@@ -345,6 +352,7 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html_content),
                 }
             }
@@ -359,6 +367,7 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html_content),
                 }
             }
@@ -374,6 +383,7 @@ impl Requirement {
                 let no_checked = defaults.field_value("startgg_radio").is_some_and(|value| value == "no");
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field("startgg_radio", errors, html! {
                             input(id = "startgg_radio-yes", type = "radio", name = "startgg_radio", value = "yes", checked? = yes_checked);
@@ -390,6 +400,7 @@ impl Requirement {
                 let value = defaults.field_value("text_field").map(|value| value.to_owned());
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: false,
                     html_content: Box::new(move |errors| html! {
                         : label;
                         : form_field("text_field", errors, html! {
@@ -407,6 +418,7 @@ impl Requirement {
                 let value = defaults.field_value("text_field2").map(|value| value.to_owned());
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: false,
                     html_content: Box::new(move |errors| html! {
                         : label;
                         : form_field("text_field2", errors, html! {
@@ -425,6 +437,7 @@ impl Requirement {
                 let no_checked = defaults.field_value("yes_no").is_some_and(|value| value == "no");
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field("yes_no", errors, html! {
                             label(for = "yes_no") : label;
@@ -447,6 +460,7 @@ impl Requirement {
                 };
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field("confirm", errors, html! {
                             input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
@@ -470,6 +484,7 @@ impl Requirement {
                 let no_checked = defaults.field_value(&format!("custom_choices[{key}]")).is_some_and(|value| value == "no");
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field(&format!("custom_choices[{key}]"), errors, html! {
                             label(for = &format!("custom_choices[{key}]")) : label;
@@ -488,6 +503,7 @@ impl Requirement {
                 let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field("restream_consent", errors, html! {
                             input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = checked);
@@ -512,6 +528,7 @@ impl Requirement {
                 let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
+                    is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field("restream_consent_radio", errors, html! {
                             label(for = "restream_consent_radio") {
@@ -537,6 +554,7 @@ impl Requirement {
                 let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
                 RequirementStatus {
                     blocks_submit: !async_available,
+                    is_radio: false,
                     html_content: Box::new(move |errors| html! {
                         @if async_available {
                             : "Play the qualifier seed, either live on ";
@@ -573,6 +591,7 @@ impl Requirement {
                 let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap() && !async_available,
+                    is_radio: false,
                     html_content: Box::new(move |errors| html! {
                         @if is_checked.unwrap() {
                             : "Play at least one of the 3 qualifier seeds, either live or async.";
@@ -611,6 +630,7 @@ impl Requirement {
             &Self::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, exclude_players, event: _ } => {
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
+                    is_radio: false,
                     html_content: Box::new(move |_| html! {
                         @if min_races == 0 {
                             : "Place";
@@ -658,6 +678,7 @@ impl Requirement {
                 let rsl::Leaderboard { metadata: rsl::LeaderboardMetadata { required_races, .. }, .. } = rsl::Leaderboard::get(&global.http_client).await?;
                 RequirementStatus {
                     blocks_submit: is_checked.is_none_or(|is_checked| !is_checked),
+                    is_radio: false,
                     html_content: Box::new(move |_| html! {
                         : "Have ";
                         : required_races;
@@ -671,6 +692,7 @@ impl Requirement {
                 let text = text.clone();
                 RequirementStatus {
                     blocks_submit: *blocks_submit,
+                    is_radio: false,
                     html_content: Box::new(move |_| html! {
                         : html;
                         : text;
@@ -946,7 +968,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
                                 let status = requirement.check_get(global, &data, is_checked, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults).await?;
                                 if status.blocks_submit { can_submit = false }
                                 if requirement.request_qualifier(&mut transaction, global, me, &data).await?.is_some() { request_qualifier = true }
-                                requirements_display.push((is_checked, status.html_content));
+                                requirements_display.push((status.is_radio, if status.is_radio { Some(false) } else { is_checked }, status.html_content));
                             }
                             let preface = html! {
                                 @if data.show_opt_out {
@@ -963,8 +985,8 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
                                 let mut errors = defaults.errors();
                                 full_form(uri!(post(data.series, &*data.event)), csrf, html! {
                                     : preface;
-                                    @for (is_checked, html_content) in requirements_display {
-                                        div(class = "check-item") {
+                                    @for (is_radio, is_checked, html_content) in requirements_display {
+                                        div(class = if is_radio { "check-item radio-check-item" } else { "check-item" }) {
                                             div(class = "checkmark") {
                                                 @match is_checked {
                                                     Some(true) => : "✓";
@@ -980,8 +1002,8 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
                                 html! {
                                     article {
                                         : preface;
-                                        @for (is_checked, html_content) in requirements_display {
-                                            div(class = "check-item") {
+                                        @for (is_radio, is_checked, html_content) in requirements_display {
+                                            div(class = if is_radio { "check-item radio-check-item" } else { "check-item" }) {
                                                 div(class = "checkmark") {
                                                     @match is_checked {
                                                         Some(true) => : "✓";

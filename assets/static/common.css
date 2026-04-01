@@ -387,6 +387,10 @@ td.numeric {
     flex-shrink: 0;
 }
 
+.radio-check-item:has(:checked) .checkmark:before {
+    content: "✓";
+}
+
 .vs1 {
     text-align: end;
 }
