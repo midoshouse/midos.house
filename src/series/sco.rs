@@ -4,7 +4,10 @@ use {
         Alphanumeric,
         SampleString as _,
     },
-    crate::prelude::*,
+    crate::{
+        prelude::*,
+        racetime_bot::PrerollMode,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromFormField, UriDisplayQuery, Sequence)]
@@ -46,6 +49,13 @@ impl Format {
         }
     }
 
+    pub(crate) fn article(&self) -> &'static str {
+        match self {
+            Self::League | Self::Saws | Self::Bingo | Self::Mixed | Self::Franco | Self::Triforce => "a",
+            Self::Sgl | Self::Ice => "an",
+        }
+    }
+
     pub(crate) fn for_race(race: &Race) -> Option<Self> {
         if let Series::SlugOpen = race.series {
             race.draft.as_ref().and_then(|draft| draft.settings.get("sco_format")).map(|s| s.parse().expect("unexpected SlugCentral Open format"))
@@ -66,6 +76,13 @@ impl Format {
             Self::Ice => TimeDelta::minutes(30),
             Self::Sgl | Self::Bingo /*TODO verify */ | Self::Mixed => TimeDelta::hours(3),
             Self::League | Self::Saws | Self::Franco | Self::Triforce /*TODO verify */ => TimeDelta::hours(3) + TimeDelta::minutes(30),
+        }
+    }
+
+    pub(crate) fn preroll_seeds(&self) -> PrerollMode {
+        match self {
+            Self::League | Self::Sgl | Self::Saws | Self::Bingo | Self::Ice | Self::Franco | Self::Triforce => PrerollMode::Medium,
+            Self::Mixed => PrerollMode::Long,
         }
     }
 

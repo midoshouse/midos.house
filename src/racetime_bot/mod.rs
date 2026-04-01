@@ -220,6 +220,7 @@ pub(crate) enum Goal {
     Sgl2023,
     Sgl2024,
     Sgl2025,
+    SlugOpen2026,
     SongsOfHope,
     StandardRuleset,
     StandardWeeklies,
@@ -285,6 +286,7 @@ impl Goal {
             Self::Sgl2023 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2023")),
             Self::Sgl2024 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2024")),
             Self::Sgl2025 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2025")),
+            Self::SlugOpen2026 => Ok((Series::SlugOpen, "2026")),
             Self::SongsOfHope => Ok((Series::SongsOfHope, "1")),
             Self::StandardRuleset => Err(|series, event| series == Series::Standard && matches!(event, "w" | "9" | "9cc")),
             Self::StandardWeeklies => Err(|_, _| false), // practice only
@@ -344,6 +346,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::SlugOpen2026
             | Self::SongsOfHope
             | Self::StandardWeeklies
             | Self::TournamentOfTruthS2
@@ -395,6 +398,7 @@ impl Goal {
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
             Self::Sgl2025 => "SGL 2025",
+            Self::SlugOpen2026 => "SlugCentral Open 2026",
             Self::SongsOfHope => "Songs of Hope",
             Self::StandardRuleset => "Standard Ruleset",
             Self::StandardWeeklies => "Standard Weeklies",
@@ -445,6 +449,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::SlugOpen2026
             | Self::SongsOfHope
             | Self::StandardRuleset
             | Self::StandardWeeklies
@@ -500,6 +505,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::SlugOpen2026 // should be overridden by Handler::draft_kind
             | Self::SongsOfHope
             | Self::StandardRuleset
             | Self::StandardWeeklies
@@ -561,6 +567,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::SlugOpen2026 // will be overridden per format
                 => PrerollMode::Long,
             Self::StandardRuleset => if let Some((Series::Standard, "9" | "9cc")) = event {
                 PrerollMode::Short
@@ -606,6 +613,7 @@ impl Goal {
                 | Self::ScrubsS7
                 | Self::Sgl2023
                 | Self::Sgl2024
+                | Self::SlugOpen2026
                 | Self::SongsOfHope
                 | Self::TournamentOfTruthS2
                 | Self::TournoiFrancoS3
@@ -662,6 +670,7 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
+            Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, //TODO different branch for Franco format
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::StandardRuleset => if let Some(event) = event && event.series == Series::Standard && event.event == "w" {
                 event.rando_version.clone().expect("no randomizer version configured for weeklies") //TODO allow weekly organizers to configure this
@@ -718,6 +727,7 @@ impl Goal {
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::Sgl2025 => Some(sgl::settings_2025()),
+            Self::SlugOpen2026 => None, // multiple formats; settings draft
             Self::SongsOfHope => Some(soh::settings()),
             Self::StandardRuleset => None, // per-event settings
             Self::StandardWeeklies => None, // read from database
@@ -825,6 +835,20 @@ impl Goal {
                 ctx.say("!seed draft lite: Pick the weights here in the chat, but limit picks to RSL-Lite.").await?;
                 ctx.say("“!seed s6” or “!seed s5”: Previous seasons' weights").await?;
             }
+            Self::SlugOpen2026 => for format in all::<sco::Format>() {
+                match format.draft_kind() {
+                    None => ctx.say(format!("!seed {}: {}", format.slug(), format.display_name())).await?,
+                    Some(draft::Kind::TournoiFrancoS5) => {
+                        ctx.say(format!("!seed {} base: {} base settings.", format.slug(), format.display_name())).await?;
+                        ctx.say(format!("!seed {} random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.", format.slug())).await?;
+                        ctx.say(format!("!seed {} draft: Pick the settings here in the chat.", format.slug())).await?;
+                        ctx.say(format!("!seed {0} <setting> <value> <setting> <value>... (e.g. !seed {0} trials random bridge ad): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.", format.slug())).await?;
+                        ctx.say(format!("Use “!seed {0} random advanced” or “!seed {0} draft advanced” to allow advanced settings.", format.slug())).await?;
+                        ctx.say(format!("Enable Master Quest using e.g. “!seed {0} base 6mq” or “!seed {0} draft advanced 12mq”", format.slug())).await?;
+                    }
+                    _ => unimplemented!(),
+                }
+            },
             Self::StandardRuleset => unreachable!("practice races with this goal are handled by RandoBot"),
             Self::StandardWeeklies => ctx.say("!seed: The current weekly settings").await?,
             Self::TournoiFrancoS3 => {
@@ -991,12 +1015,23 @@ impl Goal {
                             article, description,
                         }
                     } else {
-                        SeedCommandParseResult::Regular { settings: self.single_settings().expect("goal has no single settings"), plando: serde_json::Map::default(), unlock_spoiler_log, language: self.language(), article, description }
+                        SeedCommandParseResult::Regular {
+                            rando_version_override: None,
+                            settings: self.single_settings().expect("goal has no single settings"),
+                            plando: serde_json::Map::default(),
+                            bingo_passphrase: None,
+                            unlock_spoiler_log,
+                            language: self.language(),
+                            article,
+                            description,
+                        }
                     }
                 }
             Self::BattleRoyaleS1 => {
                 let (settings, plando) = ohko::s1_settings();
                 SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    bingo_passphrase: None,
                     language: English,
                     article: "a",
                     description: format!("seed"),
@@ -1006,6 +1041,8 @@ impl Goal {
             Self::BattleRoyaleS2 => {
                 let (settings, plando) = ohko::s2_settings();
                 SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    bingo_passphrase: None,
                     language: English,
                     article: "a",
                     description: format!("seed"),
@@ -1060,11 +1097,22 @@ impl Goal {
                         }
                     }
                 };
-                SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
+                SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    settings: s::resolve_s7_draft_settings(&settings),
+                    plando: serde_json::Map::default(),
+                    bingo_passphrase: None,
+                    unlock_spoiler_log,
+                    language: English,
+                    article: "a",
+                    description: format!("seed with {}", s::display_s7_draft_picks(&settings)),
+                }
             }
             Self::CopaLatinoamerica2025 => {
                 let (settings, plando) = latam::settings_2025();
                 SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    bingo_passphrase: None,
                     language: English,
                     article: "a",
                     description: format!("seed"),
@@ -1133,7 +1181,16 @@ impl Goal {
                     Self::MultiworldS6 => (mw::resolve_s6_draft_settings(&settings), mw::display_s6_draft_picks(&settings)),
                     _ => unreachable!("checked in outer match"),
                 };
-                SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {display}") }
+                SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    settings,
+                    plando: serde_json::Map::default(),
+                    bingo_passphrase: None,
+                    unlock_spoiler_log,
+                    language: English,
+                    article: "a",
+                    description: format!("seed with {display}"),
+                }
             }
             Self::NineDaysOfSaws => match args {
                 [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
@@ -1225,7 +1282,16 @@ impl Goal {
                     _ => None,
                 } {
                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                    SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("{description} seed") }
+                    SeedCommandParseResult::Regular {
+                        rando_version_override: None,
+                        settings,
+                        plando: serde_json::Map::default(),
+                        bingo_passphrase: None,
+                        unlock_spoiler_log,
+                        language: English,
+                        article: "a",
+                        description: format!("{description} seed"),
+                    }
                 } else {
                     SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }
                 },
@@ -1320,9 +1386,128 @@ impl Goal {
                 };
                 SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
+            Self::SlugOpen2026 => {
+                let [format, args @ ..] = &*args else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the format is required" }) };
+                let Ok(format) = format.parse::<sco::Format>() else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that SlugCentral Open format" }) };
+                match format.draft_kind() {
+                    None => {
+                        #[derive(Debug, thiserror::Error)]
+                        #[error("failed to determine settings for SlugCentral Open format")]
+                        struct NoSingleSettings;
+
+                        let (rando_version, settings, bingo_passphrase) = format.single_settings(global, Some(&format!("{} Practice: {}", self.as_str(), format.display_name()))).await.to_racetime()?.ok_or(NoSingleSettings).to_racetime()?;
+                        SeedCommandParseResult::Regular {
+                            rando_version_override: Some(rando_version),
+                            settings,
+                            plando: serde_json::Map::default(),
+                            bingo_passphrase,
+                            unlock_spoiler_log,
+                            language: English,
+                            article: format.article(),
+                            description: format!("{} seed", format.display_name()),
+                        }
+                    }
+                    Some(draft_kind @ draft::Kind::TournoiFrancoS5) => {
+                        let all_settings = &fr::S5_SETTINGS[..];
+                        let mut args = args.to_owned();
+                        let mut mq_dungeons_count = None::<u8>;
+                        let mut hard_settings_ok = false;
+                        args.retain(|arg| if arg == "advanced" && !hard_settings_ok {
+                            hard_settings_ok = true;
+                            false
+                        } else if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
+                            mq_dungeons_count = Some(mq);
+                            false
+                        } else {
+                            true
+                        });
+                        let settings = match &*args {
+                            [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                            [arg] if arg == "base" => HashMap::default(),
+                            [arg] if arg == "random" => Draft {
+                                high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                                went_first: None,
+                                skipped_bans: 0,
+                                settings: collect![as HashMap<_, _>:
+                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
+                                    Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
+                                ],
+                            }.complete_randomly(self.draft_kind().unwrap()).await.to_racetime()?,
+                            [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                                new_state: Draft {
+                                    high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                                    went_first: None,
+                                    skipped_bans: 0,
+                                    settings: collect![as HashMap<_, _>:
+                                        Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                        Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
+                                        Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
+                                    ],
+                                },
+                                unlock_spoiler_log,
+                            }),
+                            [arg] if all_settings.iter().any(|&fr::Setting { name, .. }| name == arg) => return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() }),
+                            [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
+                            args => {
+                                let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                                let mut settings = HashMap::default();
+                                let mut tuples = args.into_iter().tuples();
+                                for (setting, value) in &mut tuples {
+                                    if let Some(&fr::Setting { default, other, .. }) = all_settings.iter().find(|&fr::Setting { name, .. }| **name == setting) {
+                                        if setting == "dungeon-er" && value == "mixed" {
+                                            settings.insert(Cow::Borrowed("dungeon-er"), Cow::Borrowed("on"));
+                                            settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed("mixed"));
+                                        } else if value == default || other.iter().any(|(other, _, _)| value == **other) {
+                                            settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                        } else {
+                                            return Ok(SeedCommandParseResult::Error { language: English, msg: format!("I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or ")).into() })
+                                        }
+                                    } else {
+                                        return Ok(SeedCommandParseResult::SendSettings { language: English, msg: format!("I don't recognize {}. Use one of the following:",
+                                            if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("the setting “{setting}”")) } else { Cow::Borrowed("one of those settings") },
+                                        ).into() })
+                                    }
+                                }
+                                if tuples.into_buffer().next().is_some() {
+                                    return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                                } else {
+                                    settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()));
+                                    settings
+                                }
+                            }
+                        };
+                        SeedCommandParseResult::Regular {
+                            rando_version_override: draft_kind.rando_version(),
+                            settings: match self {
+                                Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
+                                Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
+                                Self::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&settings),
+                                _ => unreachable!(),
+                            },
+                            plando: serde_json::Map::default(),
+                            bingo_passphrase: None,
+                            unlock_spoiler_log,
+                            language: self.language(),
+                            article: if let French = self.language() { "une" } else { "a" },
+                            description: format!("seed {} {}", if let French = self.language() { "avec" } else { "with" }, fr::display_draft_picks(self.language(), all_settings, &settings)),
+                        }
+                    }
+                    _ => unimplemented!(),
+                }
+            }
             Self::StandardRuleset => match args {
                 [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
-                [arg] if arg == "s8" => SeedCommandParseResult::Regular { settings: s::s8_settings(), plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "an", description: format!("S8 seed") },
+                [arg] if arg == "s8" => SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    settings: s::s8_settings(),
+                    plando: serde_json::Map::default(),
+                    bingo_passphrase: None,
+                    unlock_spoiler_log,
+                    language: English,
+                    article: "an",
+                    description: format!("S8 seed"),
+                },
                 [arg] if arg == "weekly" => {
                     let mut transaction = global.db_pool.begin().await.to_racetime()?;
                     let event = event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.expect("missing weeklies event");
@@ -1330,7 +1515,16 @@ impl Goal {
                     let (_, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
                     let mut settings = settings.into_owned();
                     settings.insert(format!("password_lock"), json!(true));
-                    SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("weekly seed") }
+                    SeedCommandParseResult::Regular {
+                        rando_version_override: None,
+                        settings,
+                        plando: serde_json::Map::default(),
+                        bingo_passphrase: None,
+                        unlock_spoiler_log,
+                        language: English,
+                        article: "a",
+                        description: format!("weekly seed"),
+                    }
                 }
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
@@ -1341,7 +1535,16 @@ impl Goal {
                 let (_, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured for weeklies");
                 let mut settings = settings.into_owned();
                 settings.insert(format!("password_lock"), json!(true));
-                SeedCommandParseResult::Regular { settings, plando: serde_json::Map::default(), unlock_spoiler_log, language: English, article: "a", description: format!("weekly seed") }
+                SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    settings,
+                    plando: serde_json::Map::default(),
+                    bingo_passphrase: None,
+                    unlock_spoiler_log,
+                    language: English,
+                    article: "a",
+                    description: format!("weekly seed"),
+                }
             }
             Self::TournoiFrancoS3 | Self::TournoiFrancoS4 | Self::TournoiFrancoS5 => {
                 let all_settings = match self {
@@ -1419,6 +1622,7 @@ impl Goal {
                     }
                 };
                 SeedCommandParseResult::Regular {
+                    rando_version_override: None,
                     settings: match self {
                         Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
                         Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
@@ -1426,6 +1630,7 @@ impl Goal {
                         _ => unreachable!(),
                     },
                     plando: serde_json::Map::default(),
+                    bingo_passphrase: None,
                     unlock_spoiler_log,
                     language: self.language(),
                     article: if let French = self.language() { "une" } else { "a" },
@@ -1490,8 +1695,10 @@ enum DraftCommandParseResult {
 
 pub(crate) enum SeedCommandParseResult {
     Regular {
+        rando_version_override: Option<VersionedBranch>,
         settings: seed::Settings,
         plando: serde_json::Map<String, serde_json::Value>,
+        bingo_passphrase: Option<String>,
         unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
         article: &'static str,
@@ -1575,8 +1782,7 @@ pub(crate) struct SeedMetadata {
 }
 
 impl GlobalState {
-
-    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let password_lock = settings.get("password_lock").is_some_and(|password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
@@ -1611,11 +1817,31 @@ impl GlobalState {
                     // Start rolling the seed immediately upon the room being opened.
                     PrerollMode::Long => {}
                 }
-                match self.ootr_api_client.roll_seed_with_retry(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
+                match self.ootr_api_client.roll_seed_with_retry(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings.clone()).await {
                     Ok(ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password }) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
-                            bingo: None,
+                            bingo: match (settings.remove("bingosync_url"), bingo_passphrase) {
+                                (None, None) => None,
+                                (None, Some(passphrase)) => {
+                                    eprintln!("rolled seed {file_stem:?} with no Bingosync URL but with Bingo passphrase {passphrase:?}"); //TODO warn race room and send Night report
+                                    None
+                                }
+                                (Some(url), None) => {
+                                    eprintln!("rolled seed {file_stem:?} with Bingosync URL {url} but with no Bingo passphrase"); //TODO warn race room and send Night report
+                                    None
+                                }
+                                (Some(url), Some(passphrase)) => Some(seed::BingoData {
+                                    url: match url.as_str().expect("settings with non-string Bingosync URL").parse() {
+                                        Ok(url) => url,
+                                        Err(e) => {
+                                            update_tx.send(SeedRollUpdate::Error(e.into())).await?;
+                                            return Ok(())
+                                        }
+                                    },
+                                    passphrase,
+                                }),
+                            },
                             files: Some(seed::Files::OotrWeb {
                                 file_stem: Cow::Owned(file_stem),
                                 id, gen_time,
@@ -2456,17 +2682,33 @@ enum RaceState {
     SpoilerSent,
 }
 
+trait SeedHandlerCtx {
+    fn global(&self) -> &GlobalState;
+}
+
+impl SeedHandlerCtx for RaceContext<GlobalState> {
+    fn global(&self) -> &GlobalState {
+        &self.global_state
+    }
+}
+
+impl SeedHandlerCtx for Arc<GlobalState> {
+    fn global(&self) -> &GlobalState {
+        &self
+    }
+}
+
 trait SeedHandler {
-    type Ctx;
+    type Ctx: SeedHandlerCtx;
     type SeedResult;
 
-    async fn roll_seed(&self, ctx: &Self::Ctx, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
+    async fn roll_seed(&self, ctx: &Self::Ctx, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn roll_rsl_seed(&self, ctx: &Self::Ctx, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn roll_tfb_seed(&self, ctx: &Self::Ctx, display_name: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn queue_existing_seed(&self, ctx: &Self::Ctx, seed: seed::Data, language: Language, article: &'static str, description: String) -> Self::SeedResult;
     async fn advance_draft(&self, ctx: &Self::Ctx, state: &RaceState) -> Result<Self::SeedResult, Error>;
 
-    async fn roll_official_seed(&self, ctx: &Self::Ctx, event: &event::Data<'_>, state: &RaceState, existing_seed: seed::Data) -> Result<Option<Self::SeedResult>, Error> {
+    async fn roll_official_seed(&self, ctx: &Self::Ctx, race: &Race, event: &event::Data<'_>, state: &RaceState, existing_seed: seed::Data, bingo_room_name: &str) -> Result<Option<Self::SeedResult>, Error> {
         Ok(Some(if existing_seed.files.is_some() {
             self.queue_existing_seed(ctx, existing_seed, English, "a", format!("seed")).await //TODO better article/description
         } else if let Some(goal) = Goal::for_event(event.series, &*event.event) {
@@ -2497,10 +2739,10 @@ trait SeedHandler {
                     | Goal::SongsOfHope
                     | Goal::TournamentOfTruthS2
                     | Goal::TriforceBlitzProgressionSpoiler
-                        => self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                        => self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                     | Goal::WeTryToBeBetterS1
                     | Goal::WeTryToBeBetterS2
-                        => self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
+                        => self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                     | Goal::Cc7
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
@@ -2514,15 +2756,15 @@ trait SeedHandler {
                         => unreachable!("should have draft state set"),
                     Goal::BattleRoyaleS1 => {
                         let (settings, plando) = ohko::s1_settings();
-                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::BattleRoyaleS2 => {
                         let (settings, plando) = ohko::s2_settings();
-                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::CopaLatinoamerica2025 => {
                         let (settings, plando) = latam::settings_2025();
-                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                     Goal::PicRs2 => self.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
@@ -2537,11 +2779,16 @@ trait SeedHandler {
                             weights,
                         }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
+                    Goal::SlugOpen2026 => {
+                        let format = sco::Format::for_race(race).expect("SlugCentral Open race should have format set");
+                        let (rando_version, settings, bingo_passphrase) = format.single_settings(ctx.global(), Some(bingo_room_name)).await.to_racetime()?.expect("should have draft state set");
+                        self.roll_seed(ctx, format.preroll_seeds(), rando_version, settings, serde_json::Map::default(), bingo_passphrase, goal.unlock_spoiler_log(true, false), English, format.article(), format!("{} seed", format.display_name())).await
+                    }
                     Goal::StandardRuleset | Goal::StandardWeeklies => {
                         let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured Standard event");
                         let mut settings = settings.into_owned();
                         settings.insert(format!("password_lock"), json!(true));
-                        self.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), goal.unlock_spoiler_log(true, false), English, if event.event == "w" { "a" } else { "an" }, match &*event.event {
+                        self.roll_seed(ctx, goal.preroll_seeds(event_id), version, settings, serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, if event.event == "w" { "a" } else { "an" }, match &*event.event {
                             "9" | "9cc" => format!("S9 seed"),
                             "w" => format!("weekly seed"),
                             _ => unimplemented!(),
@@ -2858,10 +3105,10 @@ impl SeedHandler for Handler {
     type Ctx = RaceContext<GlobalState>;
     type SeedResult = ();
 
-    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_seed(preroll, true, delay_until, version, settings, plando, unlock_spoiler_log), language, article, description).await;
+        self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_seed(preroll, true, delay_until, version, settings, plando, bingo_passphrase, unlock_spoiler_log), language, article, description).await;
     }
 
     async fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
@@ -2899,7 +3146,7 @@ impl SeedHandler for Handler {
                     ("a", format!("seed with {}", step.message))
                 };
                 let event = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| event);
-                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, serde_json::Map::default(), unlock_spoiler_log, goal.language(), article, description).await;
+                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, serde_json::Map::default(), None, unlock_spoiler_log, goal.language(), article, description).await;
             }
             draft::StepKind::DoneRsl { preset, world_count } => {
                 let (article, description) = if let French = goal.language() {
@@ -3525,6 +3772,119 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::SlugOpen2026 => ctx.send_message(
+                                "Welcome! This is a practice room for the SlugCentral Open 2026. Learn more about the tournament at https://midos.house/event/sco/2026",
+                                true,
+                                vec![
+                                    ("Roll seed (Franco, base settings)", ActionButton::Message {
+                                        message: format!("!seed franco base ${{mq}}mq"),
+                                        help_text: Some(format!("Create a seed with the base settings.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Master Quest Dungeons"),
+                                                default: Some(json!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (Franco, random settings)", ActionButton::Message {
+                                        message: format!("!seed franco random ${{advanced}} ${{mq}}mq"),
+                                        help_text: Some(format!("Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("advanced"),
+                                                label: format!("Allow advanced settings"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Bool,
+                                                placeholder: None,
+                                                options: Vec::default(),
+                                            },
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Master Quest Dungeons"),
+                                                default: Some(json!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (Franco, custom settings)", ActionButton::Message {
+                                        message: format!("!seed franco {} ${{mq}}mq", fr::S5_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                        help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                        survey: Some(fr::S5_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                            name: setting.name.to_owned(),
+                                            label: setting.display.to_owned(),
+                                            default: Some(json!(setting.default)),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Radio,
+                                            placeholder: None,
+                                            options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
+                                                .chain(setting.other.iter().map(|(name, _, display)| (name.to_string(), display.to_string())))
+                                                .chain((setting.name == "dungeon-er").then(|| (format!("mixed"), format!("dungeon ER (mixed)"))))
+                                                .collect(),
+                                        }).chain(iter::once(SurveyQuestion {
+                                            name: format!("mq"),
+                                            label: format!("Master Quest Dungeons"),
+                                            default: Some(json!("0")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                        })).collect()),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Start settings draft (Franco)", ActionButton::Message {
+                                        message: format!("!seed franco draft ${{advanced}} ${{mq}}mq"),
+                                        help_text: Some(format!("Pick the settings here in the chat.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("advanced"),
+                                                label: format!("Allow advanced settings"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Bool,
+                                                placeholder: None,
+                                                options: Vec::default(),
+                                            },
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Master Quest Dungeons"),
+                                                default: Some(json!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Start Draft")),
+                                    }),
+                                    ("Roll seed (other formats)", ActionButton::Message {
+                                        message: format!("!seed ${{format}}"),
+                                        help_text: Some(format!("Create a seed for the selected format.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("format"),
+                                                label: format!("Format"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: all::<sco::Format>().filter(|format| *format != sco::Format::Franco).map(|format| (format.slug().to_owned(), format.display_name().to_owned())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                ],
+                            ).await?,
                             Goal::SongsOfHope => ctx.send_message(
                                 "Welcome! This is a practice room for Songs of Hope, a charity tournament for the Autism of Society of America. Learn more about the tournament at https://midos.house/event/soh/1",
                                 true,
@@ -3986,7 +4346,7 @@ impl RaceHandler<GlobalState> for Handler {
             cleanup_timeout: None,
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
-        if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
+        if let Some(OfficialRaceData { ref cal_event, ref event, ref restreams, .. }) = this.official_data {
             if !restreams.is_empty() {
                 let restreams_text = restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned"))).join(" and "); // don't use English.join_str since racetime.gg parses the comma as part of the URL
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
@@ -4039,7 +4399,7 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&text, true, Vec::default()).await?;
             }
             lock!(@read state = this.race_state; {
-                this.roll_official_seed(ctx, event, &state, existing_seed).await?;
+                this.roll_official_seed(ctx, &cal_event.race, event, &state, existing_seed, &if let Some(info) = &ctx.data().await.info_user { format!("{}: {}", goal.as_str(), info) } else { goal.as_str().to_owned() }).await?;
             });
         }
         Ok(this)
@@ -4461,13 +4821,13 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                         match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.eq_ignore_ascii_case("spoilerseed"), false, &args).await.to_racetime()? {
-                            SeedCommandParseResult::Regular { settings, plando, unlock_spoiler_log, language, article, description } => {
+                            SeedCommandParseResult::Regular { rando_version_override, settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description } => {
                                 let event = if let Goal::StandardWeeklies = goal {
                                     event::Data::new(&mut transaction, Series::Standard, "w").await.to_racetime()?.map(Cow::Owned)
                                 } else {
                                     self.official_data.as_ref().map(|OfficialRaceData { event, .. }| Cow::Borrowed(event))
                                 };
-                                self.roll_seed(ctx, goal.preroll_seeds(event.as_ref().map(|event| (event.series, &*event.event))), goal.rando_version(event.as_deref()), settings, plando, unlock_spoiler_log, language, article, description).await
+                                self.roll_seed(ctx, goal.preroll_seeds(event.as_ref().map(|event| (event.series, &*event.event))), rando_version_override.unwrap_or_else(|| goal.rando_version(event.as_deref())), settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description).await
                             },
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Tfb { display_name, preset, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, display_name, preset, true, unlock_spoiler_log, language, article, description).await,
@@ -4767,6 +5127,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
+                    | Goal::SlugOpen2026
                     | Goal::SongsOfHope
                     | Goal::StandardRuleset
                     | Goal::StandardWeeklies
@@ -5023,9 +5384,9 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                 type Ctx = Arc<GlobalState>;
                 type SeedResult = mpsc::Receiver<SeedRollUpdate>;
 
-                async fn roll_seed(&self, global: &Arc<GlobalState>, _: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
+                async fn roll_seed(&self, global: &Arc<GlobalState>, _: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
                     let delay_until = Some(self.start - TimeDelta::minutes(15));
-                    global.clone().roll_seed(PrerollMode::Long, true, delay_until, version, settings, plando, unlock_spoiler_log)
+                    global.clone().roll_seed(PrerollMode::Long, bingo_passphrase.is_none(), delay_until, version, settings, plando, bingo_passphrase, unlock_spoiler_log)
                 }
 
                 async fn roll_rsl_seed(&self, global: &Arc<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
@@ -5060,7 +5421,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
             } else {
                 RaceState::Init
             };
-            if let Some(mut rx) = (AsyncSeedHandler { start: cal_event.start().expect("opening room for official race without start time") }).roll_official_seed(&global, event, &race_state, cal_event.race.seed.clone()).await? {
+            if let Some(mut rx) = (AsyncSeedHandler { start: cal_event.start().expect("opening room for official race without start time") }).roll_official_seed(&global, &cal_event.race, event, &race_state, cal_event.race.seed.clone(), &format!("{}: asynced race", goal.as_str()) /*TODO display race info instead of “asynced race” */).await? {
                 let mut msg = Cow::Borrowed("there was an error rolling your seed, please ask an organizer to roll it manually");
                 while let Some(update) = rx.recv().await {
                     match update {
@@ -5179,8 +5540,13 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
             let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
             let event = race.event(&mut transaction).await?;
             if let Some(goal) = Goal::for_event(event.series, &*event.event) {
-                if let PrerollMode::Long = goal.preroll_seeds(Some((event.series, &*event.event))) {
-                    if let Some((version, mut settings, bingo_passphrase)) = race.single_settings(&global, &event, true).await? {
+                let preroll_mode = if let Some(sco_format) = sco::Format::for_race(&race) {
+                    sco_format.preroll_seeds()
+                } else {
+                    goal.preroll_seeds(Some((event.series, &*event.event)))
+                };
+                if let PrerollMode::Long = preroll_mode {
+                    if let Some((version, settings, bingo_passphrase)) = race.single_settings(&global, &event, true).await? {
                         transaction.commit().await?;
                         if race.seed.files.is_none()
                         && let Some(start) = race
@@ -5197,6 +5563,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                     version.clone(),
                                     settings.clone(),
                                     serde_json::Map::default(),
+                                    bingo_passphrase.clone(),
                                     goal.unlock_spoiler_log(true, false),
                                 );
                                 loop {
@@ -5210,11 +5577,6 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                                 let extra = seed.extra(Utc::now()).await?;
                                                 seed.file_hash = extra.file_hash;
                                                 seed.password = extra.password;
-                                                seed.bingo = if let (Some(url), Some(passphrase)) = (settings.remove("bingosync_url"), bingo_passphrase) {
-                                                    Some(seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase })
-                                                } else {
-                                                    extra.bingo
-                                                };
                                                 // reload race data in case anything changed during seed rolling
                                                 let mut transaction = global.db_pool.begin().await?;
                                                 let mut race = Race::from_id(&mut transaction, &global.http_client, race.id).await?;
@@ -5264,6 +5626,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                             },
                             settings.clone(),
                             serde_json::Map::default(),
+                            None,
                             goal.unlock_spoiler_log(false, false),
                         );
                         loop {
