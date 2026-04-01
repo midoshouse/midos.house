@@ -68,7 +68,7 @@ if (-not $?) {
     throw 'Native Failure'
 }
 
-ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, listed, short_name, team_config, discord_guild) VALUES (''sco'', ''2026'', ''SlugCentral Open 2026'', TRUE, ''Slug Open'', ''slugopen'', 987565688820469781);"'
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, listed, short_name, team_config, discord_guild, discord_scheduling_channel, discord_race_room_channel, discord_race_results_channel, discord_organizer_channel) VALUES (''sco'', ''2026'', ''SlugCentral Open 2026'', TRUE, ''Slug Open'', ''slugopen'', 987565688820469781, 1487449014902194180, 1487449217344475346, 1487449279269179534, 1487449157655335102);"'
 if (-not $?) {
     throw 'Native Failure'
 }
@@ -99,6 +99,46 @@ if (-not $?) {
 }
 
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO organizers (series, event, organizer) VALUES (''sco'', ''2026'', -3874943390487736167);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO teams (id, series, event, name, racetime_slug) VALUES (-4960871259971959700, ''sco'', ''2026'', ''SlugCentral Open test team 1'', ''slugcentral-open-test-team-1'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-4960871259971959700, -3874943390487736167, ''created'', ''power'', TRUE, TRUE);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-4960871259971959700, 137149793105548454, ''confirmed'', ''wisdom'', TRUE, FALSE);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-4960871259971959700, 6193685995567200830, ''confirmed'', ''courage'', FALSE, FALSE);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO teams (id, series, event, name, racetime_slug) VALUES (-3742612991024895536, ''sco'', ''2026'', ''SlugCentral Open test team 2'', ''slugcentral-open-test-team-2'');"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-3742612991024895536, 8175787319745695527, ''created'', ''power'', TRUE, TRUE);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-3742612991024895536, 2728112804012319386, ''confirmed'', ''wisdom'', TRUE, FALSE);"'
+if (-not $?) {
+    throw 'Native Failure'
+}
+
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-3742612991024895536, -2871260142009583217, ''confirmed'', ''courage'', FALSE, FALSE);"'
 if (-not $?) {
     throw 'Native Failure'
 }
