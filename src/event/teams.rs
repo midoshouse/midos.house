@@ -455,6 +455,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 } else if qual_event.series == Series::SpeedGaming && qual_event.event == "2025onl" && racetime_id == "ZbpNAaBvn5BJkg04" {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(96.20), r64(98.45), r64(0.00), r64(89.54)]);
+                } else if qual_event.series == Series::Standard && qual_event.event == "8" && racetime_id == "ZbpNAaBvn5BJkg04" {
+                    user_teams.insert(user.id, team.clone());
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(879.3406950051751), r64(951.7427921609709), r64(1061.1862257605446), r64(886.4433468105399), r64(998.1002187946477), r64(1068.2248505659336), r64(1012.2516020105614), r64(937.6929640620418), r64(952.9889842185521), r64(1044.158719834512), r64(971.2929980811368), r64(990.3848225802512)]);
                 } else if qual_event.series == Series::Standard && qual_event.event == "9" && racetime_id == "ZbpNAaBvn5BJkg04" {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(828.60), r64(972.82), r64(979.43), r64(829.50), r64(912.99), r64(947.95), r64(1011.65), r64(938.46)]);

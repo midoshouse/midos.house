@@ -418,7 +418,8 @@ impl Draft {
             Kind::MultiworldS4 => u8::try_from(mw::S4_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS5 => u8::try_from(mw::S5_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS6 => u8::try_from(mw::S6_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
-            Kind::SlugOpen => u8::try_from(self.settings.iter().filter(|(_, state)| !matches!(&***state, "wheel_ban" | "wheel_pick")).count()).unwrap(),
+            Kind::SlugOpen => u8::try_from(self.settings.iter().filter(|(_, state)| !matches!(&***state, "wheel_ban" | "wheel_pick")).count()
+                + ["high", "low"].into_iter().filter(|seed| all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("{seed}_{role}"))).count() == 2).count()).unwrap(), // implicit 3rd team member format claim
             Kind::TournoiFrancoS3 => u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS4 => u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS5 => u8::try_from(fr::S5_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
@@ -1318,7 +1319,7 @@ impl Draft {
                         MessageContext::RaceTime { low_seed_name, .. } => format!("{low_seed_name}, pick a format using “!pick <format>”."),
                     },
                 },
-                4..=9 => Step {
+                n @ 4..=9 => Step {
                     kind: StepKind::Claim,
                     message: match msg_ctx {
                         MessageContext::None => String::default(),
@@ -1328,23 +1329,28 @@ impl Draft {
                             let low_seed = low_seed.remove(0);
                             let mut remaining_members = Vec::default();
                             for (member, role) in high_seed.members_roles(&mut *transaction).await? {
-                                if !self.settings.contains_key(&*format!("high_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) {
+                                if !self.settings.contains_key(&*format!("high_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) && all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("high_{role}"))).count() < 2 {
                                     remaining_members.push(member);
                                 }
                             }
                             for (member, role) in low_seed.members_roles(&mut *transaction).await? {
-                                if !self.settings.contains_key(&*format!("low_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) {
+                                if !self.settings.contains_key(&*format!("low_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) && all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("low_{role}"))).count() < 2 {
                                     remaining_members.push(member);
                                 }
                             }
                             let mut builder = MessageBuilder::default();
+                            if n == 4 {
+                                builder.push("The formats for this match are ");
+                                builder.push_safe(English.join_str_opt(all::<sco::Format>().filter(|format| matches!(self.settings.get(format.slug()).map(|state| &**state), Some("wheel_pick" | "picked"))).map(|format| format.display_name())).expect("no formats drafted"));
+                                builder.push_line(".");
+                            }
                             for (idx, member) in remaining_members.into_iter().enumerate() {
                                 if idx > 0 {
                                     builder.push(' ');
                                 }
                                 builder.mention_user(&member);
                             }
-                            builder.push(": claim a format using ")
+                            builder.push(": claim a format to play using ")
                                 .mention_command(command_ids.claim.unwrap(), "claim")
                                 .push(".")
                                 .build()
@@ -1358,10 +1364,10 @@ impl Draft {
                         if let Some("wheel_pick" | "picked") = self.settings.get(format.slug()).map(|state| &**state) {
                             let high_seed = all::<mw::Role>()
                                 .find(|role| self.settings.get(&*format!("high_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format"))).is_some_and(|iter_format| format.slug() == iter_format))
-                                .expect("missing format assignment");
+                                .unwrap_or_else(|| all::<mw::Role>().filter(|role| !self.settings.contains_key(&*format!("high_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format")))).exactly_one().expect("missing format assignment"));
                             let low_seed = all::<mw::Role>()
                                 .find(|role| self.settings.get(&*format!("low_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format"))).is_some_and(|iter_format| format.slug() == iter_format))
-                                .expect("missing format assignment");
+                                .unwrap_or_else(|| all::<mw::Role>().filter(|role| !self.settings.contains_key(&*format!("low_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format")))).exactly_one().expect("missing format assignment"));
                             assignments.push((format, [high_seed, low_seed]));
                         }
                     }
@@ -2846,35 +2852,40 @@ impl Draft {
                     }
                 }
                 Action::Claim { user, format } => {
-                    if self.settings.get(format.slug()).is_none_or(|state| !matches!(&**state, "wheel_pick" | "picked")) {
-                        return Ok(Err(match msg_ctx {
-                            MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, this format was not picked in the format draft."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this format was not picked in the format draft."),
-                        }))
-                    }
-                    if ["high", "low"].into_iter().any(|team| all::<mw::Role>().any(|role| self.settings.get(&*format!("{team}_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))).is_some_and(|claimed_format| claimed_format == format.slug()))) {
-                        return Ok(Err(match msg_ctx {
-                            MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, this format has already been claimed."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this format has already been claimed."),
-                        }))
-                    }
                     let MessageContext::Discord { transaction, team, .. } = msg_ctx else { unimplemented!("claiming a format requires team info") };
+                    let seed = if team.id == self.high_seed { "high" } else { "low" };
                     let role = team.members_roles(transaction).await?.into_iter()
                         .find(|(member, _)| *member == user)
                         .expect("sender is not a member of the active team")
                         .1;
+                    if self.settings.get(format.slug()).is_none_or(|state| !matches!(&**state, "wheel_pick" | "picked")) {
+                        return Ok(Err(format!("Sorry, this format was not picked in the format draft.")))
+                    }
+                    if let Some(role) = all::<mw::Role>().find(|role| self.settings.get(&*format!("{seed}_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format"))).is_some_and(|claimed_format| claimed_format == format.slug())) {
+                        let user = team.members_roles(transaction).await?.into_iter()
+                            .find(|(_, iter_role)| *iter_role == role.into())
+                            .expect("no team member with this role")
+                            .0;
+                        return Ok(Err(MessageBuilder::default().push("Sorry, this format has already been claimed by ").mention_user(&user).push(".").build()))
+                    }
                     match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::Claim => {
-                            self.settings.insert(Cow::Owned(format!("{}_{}", if team.id == self.high_seed { "high" } else { "low" }, role.css_class().expect("solo role in SlugCentral Open format"))), Cow::Borrowed(format.slug()));
-                            //TODO insert third team member's format claim by process of elimination if applicable
+                            let had_claim = self.settings.insert(Cow::Owned(format!("{seed}_{}", role.css_class().expect("solo role in SlugCentral Open format"))), Cow::Borrowed(format.slug())).is_some();
                             Ok(match msg_ctx {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                MessageContext::Discord { .. } => MessageBuilder::default()
-                                    .mention_user(&user)
-                                    .push(" has claimed a format.")
-                                    .build(),
+                                MessageContext::Discord { .. } => if had_claim {
+                                    MessageBuilder::default()
+                                        .mention_user(&user)
+                                        .push(" has changed ")
+                                        .push(user.possessive_determiner())
+                                        .push(" format claim.")
+                                        .build()
+                                } else {
+                                    MessageBuilder::default()
+                                        .mention_user(&user)
+                                        .push(" has claimed a format.")
+                                        .build()
+                                },
                             })
                         }
                         _ => Err(match msg_ctx {

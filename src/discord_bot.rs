@@ -395,8 +395,9 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
 
 async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
-    match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
-        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } | draft::StepKind::DoneSlugOpen(_) => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+    let draft = race.draft.as_mut().unwrap();
+    match draft.next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
+        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } | draft::StepKind::DoneSlugOpen(_) => match draft.apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
             Ok(_) => unreachable!(),
             Err(error_msg) => {
                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -473,6 +474,26 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
                 if let Some((page_name, _)) = page.checked_add(1).and_then(|next_page| available_choices.page(next_page)) {
                     response_msg = response_msg.button(CreateButton::new(format!("{action}_page_{}", page + 1)).label(page_name).style(ButtonStyle::Secondary));
                 }
+            }
+            interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
+        }
+        draft::StepKind::Claim => {
+            let response_content = format!("Select the format to {action}:");
+            let mut response_msg = CreateInteractionResponseMessage::new()
+                .ephemeral(true)
+                .content(response_content);
+            let draft::MessageContext::Discord { team, .. } = &msg_ctx else { unimplemented!("claiming a format requires team info") };
+            let seed = if team.id == draft.high_seed { "high" } else { "low" };
+            let available_formats = all::<sco::Format>()
+                .filter(|format| draft.settings.get(format.slug()).is_some_and(|state| matches!(&**state, "wheel_pick" | "picked")))
+                .filter(|format| !all::<mw::Role>().any(|role| draft.settings.get(&*format!("{seed}_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))).is_some_and(|claimed_format| claimed_format == format.slug())))
+                .collect_vec();
+            if available_formats.len() <= BUTTONS_PER_PAGE {
+                for format in available_formats {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_format_{}", format.slug())).label(format.display_name()));
+                }
+            } else {
+                unimplemented!()
             }
             interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
         }
@@ -637,17 +658,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .kind(CommandType::ChatInput)
                     .add_context(InteractionContext::Guild)
                     .description(description!("Selects a format to play."))
-                    .add_option({
-                        let mut option = CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "format",
-                            "The format you want to play.",
-                        );
-                        for format in all::<sco::Format>() {
-                            option = option.add_string_choice(format.display_name(), format.slug());
-                        }
-                        option.required(true)
-                    })
                 );
                 Some(idx)
             } else {
@@ -1083,18 +1093,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.claim {
-                            let Some(user) = User::from_discord(&ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").db_pool, interaction.user_id()).await? else {
-                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                    .ephemeral(true)
-                                    .content("Sorry, your Discord account doesn't seem to be connected to a Mido's House account.")
-                                )).await?;
-                                return Ok(())
-                            };
-                            let format = match interaction.data.options[0].value {
-                                CommandDataOptionValue::String(ref format) => format.parse().expect("unknown SlugCentral Open format"),
-                                _ => panic!("unexpected slash command option type"),
-                            };
-                            draft_action(ctx, interaction, draft::Action::Claim { user, format }).await?;
+                            send_draft_settings_page(ctx, interaction, "claim", 0).await?;
                         } else if interaction.data.id == command_ids.delete_after {
                             let Some(parent_channel) = interaction.channel.as_ref().and_then(|thread| thread.parent_id) else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -2402,6 +2401,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         send_draft_settings_page(ctx, interaction, "ban", page.parse().unwrap()).await?;
                     } else if let Some(setting) = custom_id.strip_prefix("ban_setting_") {
                         draft_action(ctx, interaction, draft::Action::Ban { setting: setting.to_owned() }).await?;
+                    } else if let Some(format) = custom_id.strip_prefix("claim_format_") {
+                        if let Some(user) = User::from_discord(&ctx.data.read().await.get::<GlobalState>().as_ref().expect("global state missing from Discord context").db_pool, interaction.user.id).await? {
+                            draft_action(ctx, interaction, draft::Action::Claim { user, format: format.parse()? }).await?;
+                        } else {
+                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .ephemeral(true)
+                                .content("Sorry, your Discord account is not connected to a Mido's House account.")
+                            )).await?;
+                        }
                     } else if let Some(page) = custom_id.strip_prefix("draft_page_") {
                         send_draft_settings_page(ctx, interaction, "draft", page.parse().unwrap()).await?;
                     } else if let Some(setting) = custom_id.strip_prefix("draft_setting_") {
