@@ -1488,15 +1488,28 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     Ok(Some(race)) => {
                                         let race = Race {
                                             draft: if reset_draft {
-                                                if let Some(draft_kind) = race.draft_kind(&event)
-                                                    && let Some(draft) = race.draft
-                                                    && let Entrants::Two(entrants) = &race.entrants
-                                                    && let Ok(low_seed) = entrants.iter()
-                                                        .filter_map(as_variant!(Entrant::MidosHouseTeam))
-                                                        .filter(|team| team.id != draft.high_seed)
-                                                        .exactly_one()
-                                                {
-                                                    Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
+                                                if let Some(draft_kind) = race.draft_kind(&event) && let Some(draft) = race.draft {
+                                                    if let draft::Kind::SlugOpen = draft_kind {
+                                                        Some(Draft {
+                                                            high_seed: draft.high_seed,
+                                                            went_first: Some(true),
+                                                            skipped_bans: 0,
+                                                            settings: {
+                                                                let mut settings = draft.settings;
+                                                                settings.retain(|_, value| value == "wheel_ban" || value == "wheel_pick");
+                                                                settings
+                                                            },
+                                                        })
+                                                    } else if let Entrants::Two(entrants) = &race.entrants
+                                                        && let Ok(low_seed) = entrants.iter()
+                                                            .filter_map(as_variant!(Entrant::MidosHouseTeam))
+                                                            .filter(|team| team.id != draft.high_seed)
+                                                            .exactly_one()
+                                                    {
+                                                        Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
+                                                    } else {
+                                                        None
+                                                    }
                                                 } else {
                                                     None
                                                 }
