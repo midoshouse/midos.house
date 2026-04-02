@@ -419,7 +419,7 @@ impl Draft {
             Kind::MultiworldS5 => u8::try_from(mw::S5_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS6 => u8::try_from(mw::S6_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::SlugOpen => u8::try_from(self.settings.iter().filter(|(_, state)| !matches!(&***state, "wheel_ban" | "wheel_pick")).count()
-                + ["high", "low"].into_iter().filter(|seed| all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("{seed}_{role}"))).count() == 2).count()).unwrap(), // implicit 3rd team member format claim
+                + ["high", "low"].into_iter().filter(|seed| all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("{seed}_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format")))).count() == 2).count()).unwrap(), // implicit 3rd team member format claim
             Kind::TournoiFrancoS3 => u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS4 => u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS5 => u8::try_from(fr::S5_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
@@ -1329,12 +1329,12 @@ impl Draft {
                             let low_seed = low_seed.remove(0);
                             let mut remaining_members = Vec::default();
                             for (member, role) in high_seed.members_roles(&mut *transaction).await? {
-                                if !self.settings.contains_key(&*format!("high_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) && all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("high_{role}"))).count() < 2 {
+                                if !self.settings.contains_key(&*format!("high_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) && all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("high_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format")))).count() < 2 {
                                     remaining_members.push(member);
                                 }
                             }
                             for (member, role) in low_seed.members_roles(&mut *transaction).await? {
-                                if !self.settings.contains_key(&*format!("low_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) && all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("low_{role}"))).count() < 2 {
+                                if !self.settings.contains_key(&*format!("low_{}", event::Role::from(role).css_class().expect("solo role in SlugCentral Open format"))) && all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("low_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format")))).count() < 2 {
                                     remaining_members.push(member);
                                 }
                             }
