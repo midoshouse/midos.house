@@ -1552,6 +1552,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             .push(verb)
                                             .push(" been reset.")
                                             .build();
+                                        //TODO post new status if draft was reset
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(false)
                                             .content(response_content)

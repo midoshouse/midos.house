@@ -839,7 +839,7 @@ impl Goal {
                 match format.draft_kind() {
                     None => ctx.say(format!("!seed {}: {}", format.slug(), format.display_name())).await?,
                     Some(draft::Kind::TournoiFrancoS5) => {
-                        ctx.say(format!("!seed {} base: {} base settings.", format.slug(), format.display_name())).await?;
+                        ctx.say(format!("!seed {}: {} base settings.", format.slug(), format.display_name())).await?;
                         ctx.say(format!("!seed {} random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.", format.slug())).await?;
                         ctx.say(format!("!seed {} draft: Pick the settings here in the chat.", format.slug())).await?;
                         ctx.say(format!("!seed {0} <setting> <value> <setting> <value>... (e.g. !seed {0} trials random bridge ad): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.", format.slug())).await?;
@@ -1422,7 +1422,7 @@ impl Goal {
                             true
                         });
                         let settings = match &*args {
-                            [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                            [] => HashMap::default(),
                             [arg] if arg == "base" => HashMap::default(),
                             [arg] if arg == "random" => Draft {
                                 high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
@@ -3776,22 +3776,6 @@ impl RaceHandler<GlobalState> for Handler {
                                 "Welcome! This is a practice room for the SlugCentral Open 2026. Learn more about the tournament at https://midos.house/event/sco/2026",
                                 true,
                                 vec![
-                                    ("Roll seed (Franco, base settings)", ActionButton::Message {
-                                        message: format!("!seed franco base ${{mq}}mq"),
-                                        help_text: Some(format!("Create a seed with the base settings.")),
-                                        survey: Some(vec![
-                                            SurveyQuestion {
-                                                name: format!("mq"),
-                                                label: format!("Master Quest Dungeons"),
-                                                default: Some(json!("0")),
-                                                help_text: None,
-                                                kind: SurveyQuestionKind::Select,
-                                                placeholder: None,
-                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
-                                            },
-                                        ]),
-                                        submit: Some(format!("Roll")),
-                                    }),
                                     ("Roll seed (Franco, random settings)", ActionButton::Message {
                                         message: format!("!seed franco random ${{advanced}} ${{mq}}mq"),
                                         help_text: Some(format!("Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.")),
@@ -3878,7 +3862,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 help_text: None,
                                                 kind: SurveyQuestionKind::Select,
                                                 placeholder: None,
-                                                options: all::<sco::Format>().filter(|format| *format != sco::Format::Franco).map(|format| (format.slug().to_owned(), format.display_name().to_owned())).collect(),
+                                                options: all::<sco::Format>().map(|format| (format.slug().to_owned(), format!("{}{}", format.display_name(), if format == sco::Format::Franco { " (base settings)" } else { "" }))).collect(),
                                             },
                                         ]),
                                         submit: Some(format!("Roll")),
