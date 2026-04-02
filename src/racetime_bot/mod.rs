@@ -3156,7 +3156,7 @@ impl SeedHandler for Handler {
                     ("a", format!("seed with {}", step.message))
                 };
                 let event = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| event);
-                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, serde_json::Map::default(), None, unlock_spoiler_log, goal.language(), article, description).await;
+                self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), kind.rando_version().unwrap_or_else(|| goal.rando_version(event)), settings, serde_json::Map::default(), None, unlock_spoiler_log, goal.language(), article, description).await;
             }
             draft::StepKind::DoneRsl { preset, world_count } => {
                 let (article, description) = if let French = goal.language() {
