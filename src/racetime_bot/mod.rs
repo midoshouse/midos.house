@@ -2966,8 +2966,8 @@ impl Handler {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-            lock!(@write state = self.race_state; if let Some(draft_kind) = self.draft_kind(goal).await {
-                match *state {
+            if let Some(draft_kind) = self.draft_kind(goal).await {
+                lock!(@write state = self.race_state; match *state {
                     RaceState::Init => match draft_kind {
                         draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?,
@@ -3021,10 +3021,10 @@ impl Handler {
                         French => ctx.say(format!("Désolé {reply_to}, mais il n'y a pas de draft, ou la phase de pick&ban est terminée.")).await?,
                         _ => ctx.say(format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                     },
-                }
+                });
             } else {
                 ctx.say(format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
-            });
+            }
         } else {
             match goal.language() {
                 French => ctx.say(format!("Désolé {reply_to}, mais la race a débuté.")).await?,
