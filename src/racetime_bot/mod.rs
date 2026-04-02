@@ -1060,6 +1060,7 @@ impl Goal {
                         settings: HashMap::default(),
                     }.complete_randomly(draft::Kind::S7).await.to_racetime()?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
                             high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                             went_first: None,
@@ -1137,6 +1138,7 @@ impl Goal {
                         settings: HashMap::default(),
                     }.complete_randomly(self.draft_kind().expect("multiworld tournament goal should have a draft kind")).await.to_racetime()?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
                             high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                             went_first: None,
@@ -1313,6 +1315,7 @@ impl Goal {
                 let (preset, world_count) = match args {
                     [] => (rsl::Preset::League, 1),
                     [preset] if preset == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
                             high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                             went_first: None,
@@ -1347,6 +1350,7 @@ impl Goal {
                         return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" })
                     },
                     [preset, lite] if preset == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
                             high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                             went_first: None,
@@ -1407,7 +1411,7 @@ impl Goal {
                             description: format!("{} seed", format.display_name()),
                         }
                     }
-                    Some(draft_kind @ draft::Kind::TournoiFrancoS5) => {
+                    Some(kind @ draft::Kind::TournoiFrancoS5) => {
                         let all_settings = &fr::S5_SETTINGS[..];
                         let mut args = args.to_owned();
                         let mut mq_dungeons_count = None::<u8>;
@@ -1433,7 +1437,7 @@ impl Goal {
                                     Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
                                     Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
                                 ],
-                            }.complete_randomly(self.draft_kind().unwrap()).await.to_racetime()?,
+                            }.complete_randomly(kind).await.to_racetime()?,
                             [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
                                 new_state: Draft {
                                     high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
@@ -1445,7 +1449,7 @@ impl Goal {
                                         Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
                                     ],
                                 },
-                                unlock_spoiler_log,
+                                kind, unlock_spoiler_log,
                             }),
                             [arg] if all_settings.iter().any(|&fr::Setting { name, .. }| name == arg) => return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() }),
                             [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
@@ -1478,7 +1482,7 @@ impl Goal {
                             }
                         };
                         SeedCommandParseResult::Regular {
-                            rando_version_override: draft_kind.rando_version(),
+                            rando_version_override: kind.rando_version(),
                             settings: match self {
                                 Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
                                 Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
@@ -1579,6 +1583,7 @@ impl Goal {
                         ],
                     }.complete_randomly(self.draft_kind().unwrap()).await.to_racetime()?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
                             high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                             went_first: None,
@@ -1735,6 +1740,7 @@ pub(crate) enum SeedCommandParseResult {
         msg: Cow<'static, str>,
     },
     StartDraft {
+        kind: draft::Kind,
         new_state: Draft,
         unlock_spoiler_log: UnlockSpoilerLog,
     },
@@ -2674,6 +2680,7 @@ enum RaceState {
     #[default]
     Init,
     Draft {
+        kind: draft::Kind,
         state: Draft,
         unlock_spoiler_log: UnlockSpoilerLog,
     },
@@ -2886,11 +2893,15 @@ impl Handler {
         }
     }
 
-    fn draft_kind(&self, goal: Goal) -> Option<draft::Kind> {
+    async fn draft_kind(&self, goal: Goal) -> Option<draft::Kind> {
         if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
             cal_event.race.draft_kind(event)
         } else {
-            goal.draft_kind() //TODO allow specifying draft kind for SlugCentral Open practice races
+            lock!(@read race_state = self.race_state; if let RaceState::Draft { kind, .. } = *race_state {
+                Some(kind)
+            } else {
+                goal.draft_kind()
+            })
         }
     }
 
@@ -2908,7 +2919,7 @@ impl Handler {
 
     async fn send_settings(&self, ctx: &RaceContext<GlobalState>, preface: &str, reply_to: &str) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
-        if let Some(draft_kind) = self.draft_kind(goal) {
+        if let Some(draft_kind) = self.draft_kind(goal).await {
             let available_settings = lock!(@read state = self.race_state; if let RaceState::Draft { state: ref draft, .. } = *state {
                 match draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
                     draft::StepKind::GoFirst => None,
@@ -2955,7 +2966,7 @@ impl Handler {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-            lock!(@write state = self.race_state; if let Some(draft_kind) = self.draft_kind(goal) {
+            lock!(@write state = self.race_state; if let Some(draft_kind) = self.draft_kind(goal).await {
                 match *state {
                     RaceState::Init => match draft_kind {
                         draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -3135,9 +3146,8 @@ impl SeedHandler for Handler {
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>, state: &RaceState) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
-        let Some(draft_kind) = self.draft_kind(goal) else { unreachable!() };
-        let RaceState::Draft { state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
-        let step = draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
+        let RaceState::Draft { kind, state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
+        let step = draft.next_step(kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
         match step.kind {
             draft::StepKind::Done(settings) => {
                 let (article, description) = if let French = goal.language() {
@@ -3266,9 +3276,9 @@ impl RaceHandler<GlobalState> for Handler {
                         )
                     }
                 }, true, Vec::default()).await?;
-                let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = cal_event.race.draft_kind(&event) {
+                let (race_state, high_seed_name, low_seed_name) = if let Some(kind) = cal_event.race.draft_kind(&event) {
                     let state = cal_event.race.draft.clone().expect("missing draft state");
-                    let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(draft_kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
+                    let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
                         // we just need to roll the seed so player/team names are no longer required
                         [format!("Team A"), format!("Team B")]
                     } else {
@@ -3301,7 +3311,7 @@ impl RaceHandler<GlobalState> for Handler {
                     };
                     (RaceState::Draft {
                         unlock_spoiler_log: goal.unlock_spoiler_log(true, false),
-                        state,
+                        kind, state,
                     }, high_seed_name, low_seed_name)
                 } else {
                     (RaceState::Init, format!("Team A"), format!("Team B"))
@@ -4833,10 +4843,10 @@ impl RaceHandler<GlobalState> for Handler {
                                 }, reply_to).await?;
                                 return Ok(())
                             }
-                            SeedCommandParseResult::StartDraft { new_state, unlock_spoiler_log } => {
+                            SeedCommandParseResult::StartDraft { kind, new_state, unlock_spoiler_log } => {
                                 *state = RaceState::Draft {
                                     state: new_state,
-                                    unlock_spoiler_log,
+                                    kind, unlock_spoiler_log,
                                 };
                                 self.advance_draft(ctx, &state).await?;
                             }
@@ -5397,10 +5407,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
             }
 
             let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
-            let race_state = if cal_event.race.draft_kind(&event).is_some() {
+            let race_state = if let Some(kind) = cal_event.race.draft_kind(&event) {
                 RaceState::Draft {
                     state: cal_event.race.draft.clone().expect("missing draft state"),
                     unlock_spoiler_log: goal.unlock_spoiler_log(true, false),
+                    kind,
                 }
             } else {
                 RaceState::Init
