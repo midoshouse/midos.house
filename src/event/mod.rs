@@ -1111,7 +1111,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::CoOp => coop::info(&mut transaction, &data).await?,
         Series::CopaDoBrasil => br::info(&mut transaction, &data).await?,
         Series::CopaLatinoamerica => latam::info(&mut transaction, &data).await?,
-        Series::EscapeFromKakariko => None, //TODO
+        Series::EscapeFromKakariko => efk::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Mq => None,
