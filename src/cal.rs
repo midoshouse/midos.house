@@ -2795,6 +2795,10 @@ pub(crate) async fn race_table(
                         }
                         @if has_seeds {
                             td {
+                                @if let Some(sco_format) = sco::Format::for_race(race) {
+                                    : sco_format.display_name();
+                                    br;
+                                }
                                 @if race.show_seed() {
                                     : seed::table_cell(now, &race.seed, true, race.show_password(), options.can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                                 } else {
