@@ -258,6 +258,24 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interactio
         // None < Some(_) so this code only runs if all applicable races are best-of-N
         applicable_races.retain(|race| race.game == Some(min_game));
     }
+    if applicable_races.len() > 1 {
+        let mut filtered_races = Vec::default();
+        for race in &applicable_races {
+            for entrant in race.entrants.to_vec() {
+                if match entrant {
+                    Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await?.into_iter().any(|member| member.discord.is_some_and(|discord| discord.id == interaction.user_id())),
+                    Entrant::MidosHouseTeamMember { member, .. } => member.discord.is_some_and(|discord| discord.id == interaction.user_id()),
+                    Entrant::Discord { id, .. } => id == interaction.user_id(),
+                    Entrant::Named { .. } => false,
+                } {
+                    filtered_races.push(race.clone());
+                }
+            }
+        }
+        if !filtered_races.is_empty() {
+            applicable_races = filtered_races;
+        }
+    }
     Ok(match applicable_races.into_iter().at_most_one() {
         Ok(None) => {
             let command_ids = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&interaction.guild_id()?))
