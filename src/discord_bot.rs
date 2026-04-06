@@ -345,7 +345,7 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
                         command_ids: ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id))
                             .expect("draft action called from outside registered guild")
                             .expect("interaction called from guild with conflicting draft kinds"),
-                        teams: race.teams().cloned().collect(),
+                        entrants: race.entrants.to_vec(),
                         transaction, guild_id, team,
                     };
                     Some((event, race, draft_kind, msg_ctx))
@@ -559,7 +559,7 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
                             let Some(ref draft) = new_race.draft else { unreachable!("just inserted") };
                             let mut msg_ctx = draft::MessageContext::Discord {
                                 guild_id: interaction.guild_id().unwrap(),
-                                teams: new_race.teams().cloned().collect(),
+                                entrants: new_race.entrants.to_vec(),
                                 team: Team::dummy(),
                                 transaction, command_ids,
                             };
@@ -1331,7 +1331,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     if let Some(draft_kind) = race.draft_kind(&event) {
                                         if let Some(ref draft) = race.draft {
                                             let mut msg_ctx = draft::MessageContext::Discord {
-                                                teams: race.teams().cloned().collect(),
+                                                entrants: race.entrants.to_vec(),
                                                 team: team.unwrap_or_else(Team::dummy),
                                                 transaction, guild_id, command_ids,
                                             };
@@ -2218,7 +2218,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                 if let Some(draft_kind) = race.draft_kind(&event) {
                                     if let Some(ref draft) = race.draft {
                                         let mut msg_ctx = draft::MessageContext::Discord {
-                                            teams: race.teams().cloned().collect(),
+                                            entrants: race.entrants.to_vec(),
                                             team: team.unwrap_or_else(Team::dummy),
                                             transaction, guild_id, command_ids,
                                         };
@@ -2678,7 +2678,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
     if let Some(draft_kind) = event.draft_kind() {
         if let Some(ref draft) = race.draft {
             let mut msg_ctx = draft::MessageContext::Discord {
-                teams: race.teams().cloned().collect(),
+                entrants: race.entrants.to_vec(),
                 team: Team::dummy(),
                 transaction, guild_id, command_ids,
             };

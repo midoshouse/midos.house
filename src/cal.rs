@@ -101,6 +101,13 @@ impl Entrant {
         }
     }
 
+    pub(crate) fn team(&self) -> Option<&Team> {
+        match self {
+            Self::MidosHouseTeam(team) | Self::MidosHouseTeamMember { team, .. } => Some(team),
+            Self::Discord { .. } | Self::Named { .. } => None,
+        }
+    }
+
     async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.member_ids(transaction).await?.len(),
@@ -193,10 +200,10 @@ pub(crate) enum Entrants {
 impl Entrants {
     fn to_db(&self) -> ([Option<Id<Teams>>; 3], [Option<&String>; 3], [Option<UserId>; 2], [Option<&String>; 2], [Option<&String>; 2], [Option<u32>; 2]) {
         match *self {
-            Entrants::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2], [None; 2]),
-            Entrants::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2], [Some(total), Some(finished)]),
-            Entrants::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2], [None; 2]),
-            Entrants::Two([ref p1, ref p2]) => {
+            Self::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2], [None; 2]),
+            Self::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2], [Some(total), Some(finished)]),
+            Self::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2], [None; 2]),
+            Self::Two([ref p1, ref p2]) => {
                 let (team1, p1, p1_discord, p1_racetime, p1_twitch) = match p1 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None, None),
                     Entrant::MidosHouseTeamMember { team, member } => (Some(team.id), None, None, member.racetime.as_ref().map(|racetime| &racetime.id), None),
@@ -211,7 +218,7 @@ impl Entrants {
                 };
                 ([team1, team2, None], [p1, p2, None], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [None; 2])
             }
-            Entrants::Three([ref p1, ref p2, ref p3]) => {
+            Self::Three([ref p1, ref p2, ref p3]) => {
                 let (team1, p1) = match p1 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None),
                     Entrant::Named { name, racetime_id: None, twitch_username: None } => (None, Some(name)),
@@ -229,6 +236,14 @@ impl Entrants {
                 };
                 ([team1, team2, team3], [p1, p2, p3], [None; 2], [None; 2], [None; 2], [None; 2])
             }
+        }
+    }
+
+    pub(crate) fn to_vec(&self) -> Vec<Entrant> {
+        match self {
+            Self::Open | Self::Count { .. } | Self::Named(_) => Vec::default(),
+            Self::Two(entrants) => entrants.iter().cloned().collect(),
+            Self::Three(entrants) => entrants.iter().cloned().collect(),
         }
     }
 }

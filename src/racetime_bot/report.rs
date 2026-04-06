@@ -412,7 +412,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     && let Some(Some(command_ids)) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied())
                 {
                     let mut msg_ctx = draft::MessageContext::Discord {
-                        teams: next_game.teams().cloned().collect(),
+                        entrants: next_game.entrants.to_vec(),
                         team: Team::dummy(),
                         transaction, guild_id, command_ids,
                     };
