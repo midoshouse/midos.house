@@ -80,7 +80,8 @@ where i64: sqlx::Type<DB> {
 
 #[async_trait]
 pub(crate) trait MessageBuilderExt {
-    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
+    async fn mention_entrant_short(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
+    async fn mention_entrant_long(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
     fn push_emoji(&mut self, emoji: &ReactionType) -> &mut Self;
@@ -90,7 +91,17 @@ pub(crate) trait MessageBuilderExt {
 
 #[async_trait]
 impl MessageBuilderExt for MessageBuilder {
-    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
+    async fn mention_entrant_short(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
+        match entrant {
+            Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
+            Entrant::MidosHouseTeamMember { member, .. } => { self.mention_user(member); }
+            Entrant::Discord { id,  .. } => { self.mention(id); }
+            Entrant::Named { name, .. } => { self.push_safe(name); }
+        }
+        Ok(self)
+    }
+
+    async fn mention_entrant_long(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
         match entrant {
             Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
             Entrant::MidosHouseTeamMember { team, member } => {

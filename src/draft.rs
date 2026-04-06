@@ -228,7 +228,7 @@ pub(crate) enum MessageContext<'a> {
         guild_id: GuildId,
         command_ids: CommandIds,
         entrants: Vec<Entrant>,
-        team: team::Team,
+        team: team::Team, //TODO use entrant here for more accurate response messages in SlugCentral Open
     },
     RaceTime {
         high_seed_name: &'a str,
@@ -469,7 +469,7 @@ impl Draft {
                                         let high_seed = high_seed.remove(0);
                                         let low_seed = low_seed.remove(0);
                                         MessageBuilder::default()
-                                            .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                            .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                             .push(": lock a setting to its default using ")
                                             .mention_command(command_ids.ban.unwrap(), "ban")
                                             .push(", or use ")
@@ -515,13 +515,13 @@ impl Draft {
                                         let low_seed = low_seed.remove(0);
                                         match n {
                                             2 | 3 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a major setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push('.')
                                                 .build(),
                                             4 | 5 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a minor setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push('.')
@@ -556,7 +556,7 @@ impl Draft {
                                 let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
-                                builder.mention_entrant(transaction, Some(*guild_id), high_seed).await?;
+                                builder.mention_entrant_short(transaction, Some(*guild_id), high_seed).await?;
                                 if game.is_some_and(|game| game > 1) {
                                     builder.push(": as the loser of the previous race, please choose whether you want to go ");
                                 } else {
@@ -659,7 +659,7 @@ impl Draft {
                                         let high_seed = high_seed.remove(0);
                                         let low_seed = low_seed.remove(0);
                                         MessageBuilder::default()
-                                            .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                            .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                             .push(": ban a setting using ")
                                             .mention_command(command_ids.pick.unwrap(), "ban")
                                             .push(", or use ")
@@ -729,7 +729,7 @@ impl Draft {
                                         let high_seed = high_seed.remove(0);
                                         let low_seed = low_seed.remove(0);
                                         MessageBuilder::default()
-                                            .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                            .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                             .push(": block a weight from being modified using ")
                                             .mention_command(command_ids.ban.unwrap(), "block")
                                             .push(", or use ")
@@ -771,7 +771,7 @@ impl Draft {
                                 let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
-                                builder.mention_entrant(transaction, Some(*guild_id), high_seed).await?;
+                                builder.mention_entrant_short(transaction, Some(*guild_id), high_seed).await?;
                                 if game.is_some_and(|game| game > 1) {
                                     builder.push(": as the loser of the previous race, please choose whether you want to go ");
                                 } else {
@@ -830,7 +830,7 @@ impl Draft {
                                         let high_seed = high_seed.remove(0);
                                         let low_seed = low_seed.remove(0);
                                         MessageBuilder::default()
-                                            .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                            .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                             .push(": lock a setting to its default using ")
                                             .mention_command(command_ids.ban.unwrap(), "ban")
                                             .push(", or use ")
@@ -878,25 +878,25 @@ impl Draft {
                                         let low_seed = low_seed.remove(0);
                                         match n {
                                             2 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push('.')
                                                 .build(),
                                             3 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push(". You will have another pick after this.")
                                                 .build(),
                                             4 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick your second setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push('.')
                                                 .build(),
                                             5 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push(". You can also use ")
@@ -934,7 +934,7 @@ impl Draft {
                                 let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
-                                builder.mention_entrant(transaction, Some(*guild_id), high_seed).await?;
+                                builder.mention_entrant_short(transaction, Some(*guild_id), high_seed).await?;
                                 if game.is_some_and(|game| game > 1) {
                                     builder.push(": as the losers of the previous race, please choose whether you want to go ");
                                 } else {
@@ -1012,7 +1012,7 @@ impl Draft {
                                         let high_seed = high_seed.remove(0);
                                         let low_seed = low_seed.remove(0);
                                         MessageBuilder::default()
-                                            .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                            .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                             .push(": lock a setting to its default using ")
                                             .mention_command(command_ids.ban.unwrap(), "ban")
                                             .push(", or use ")
@@ -1080,25 +1080,25 @@ impl Draft {
                                         let low_seed = low_seed.remove(0);
                                         match n {
                                             2 | 5 | 8 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push('.')
                                                 .build(),
                                             3 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push(". You will have another pick after this.")
                                                 .build(),
                                             4 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick your second setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push('.')
                                                 .build(),
                                             9 => MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(": pick a setting using ")
                                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                                 .push(". You can also use ")
@@ -1150,7 +1150,7 @@ impl Draft {
                                 let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
-                                builder.mention_entrant(transaction, Some(*guild_id), high_seed).await?;
+                                builder.mention_entrant_short(transaction, Some(*guild_id), high_seed).await?;
                                 if game.is_some_and(|game| game > 1) {
                                     builder.push(": as the losers of the previous race, please choose whether you want to go ");
                                 } else {
@@ -1207,7 +1207,7 @@ impl Draft {
                                 .push(" and picked ")
                                 .push(all::<sco::Format>().find(|format| self.settings.get(format.slug()).is_some_and(|state| state == "wheel_pick")).expect("missing wheel pick").display_name())
                                 .push_line(".")
-                                .mention_entrant(transaction, Some(*guild_id), high_seed).await?
+                                .mention_entrant_short(transaction, Some(*guild_id), high_seed).await?
                                 .push(": you have been randomly selected to go first. Ban a format using ")
                                 .mention_command(command_ids.ban.unwrap(), "ban")
                                 .push(".")
@@ -1244,7 +1244,7 @@ impl Draft {
                             let (_, mut low_seed) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                             let low_seed = low_seed.remove(0);
                             MessageBuilder::default()
-                                .mention_entrant(transaction, Some(*guild_id), low_seed).await?
+                                .mention_entrant_short(transaction, Some(*guild_id), low_seed).await?
                                 .push(": ban a format using ")
                                 .mention_command(command_ids.ban.unwrap(), "ban")
                                 .push(".")
@@ -1277,7 +1277,7 @@ impl Draft {
                             let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                             let high_seed = high_seed.remove(0);
                             MessageBuilder::default()
-                                .mention_entrant(transaction, Some(*guild_id), high_seed).await?
+                                .mention_entrant_short(transaction, Some(*guild_id), high_seed).await?
                                 .push(": pick a format using ")
                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                 .push(".")
@@ -1310,7 +1310,7 @@ impl Draft {
                             let (_, mut low_seed) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                             let low_seed = low_seed.remove(0);
                             MessageBuilder::default()
-                                .mention_entrant(transaction, Some(*guild_id), low_seed).await?
+                                .mention_entrant_short(transaction, Some(*guild_id), low_seed).await?
                                 .push(": pick a format using ")
                                 .mention_command(command_ids.pick.unwrap(), "pick")
                                 .push(".")
@@ -1452,7 +1452,7 @@ impl Draft {
                                     let high_seed = high_seed.remove(0);
                                     let low_seed = low_seed.remove(0);
                                     MessageBuilder::default()
-                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                         .push(if let French = kind.language() {
                                             " : Est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant "
                                         } else {
@@ -1523,7 +1523,7 @@ impl Draft {
                                             let high_seed = high_seed.remove(0);
                                             let low_seed = low_seed.remove(0);
                                             MessageBuilder::default()
-                                                .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                 .push(if let French = kind.language() {
                                                     " : Veuillez ban un setting en utilisant "
                                                 } else {
@@ -1602,7 +1602,7 @@ impl Draft {
                                             match (kind, n) {
                                                 (_, 9) | (Kind::TournoiFrancoS4, 7) => if let French = kind.language() {
                                                     let mut builder = MessageBuilder::default();
-                                                    builder.mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
+                                                    builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
                                                     builder.push(" : Choisissez un setting avec ");
                                                     builder.mention_command(command_ids.pick.unwrap(), "pick");
                                                     builder.push('.');
@@ -1614,7 +1614,7 @@ impl Draft {
                                                     builder.build()
                                                 } else {
                                                     let mut builder = MessageBuilder::default();
-                                                    builder.mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
+                                                    builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
                                                     builder.push(": pick a setting using ");
                                                     builder.mention_command(command_ids.pick.unwrap(), "pick");
                                                     builder.push('.');
@@ -1627,14 +1627,14 @@ impl Draft {
                                                 },
                                                 (_, 2 | 7 | 8) => if let French = kind.language() {
                                                     MessageBuilder::default()
-                                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(" : Choisissez un setting en utilisant ")
                                                         .mention_command(command_ids.pick.unwrap(), "pick")
                                                         .push('.')
                                                         .build()
                                                 } else {
                                                     MessageBuilder::default()
-                                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(": pick a setting using ")
                                                         .mention_command(command_ids.pick.unwrap(), "pick")
                                                         .push('.')
@@ -1642,14 +1642,14 @@ impl Draft {
                                                 },
                                                 (_, 3 | 5) => if let French = kind.language() {
                                                     MessageBuilder::default()
-                                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(" : Choisissez un setting avec ")
                                                         .mention_command(command_ids.pick.unwrap(), "pick")
                                                         .push(". Vous aurez un autre pick après celui-ci.")
                                                         .build()
                                                 } else {
                                                     MessageBuilder::default()
-                                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(": pick a setting using ")
                                                         .mention_command(command_ids.pick.unwrap(), "pick")
                                                         .push(". You will have another pick after this.")
@@ -1657,14 +1657,14 @@ impl Draft {
                                                 },
                                                 (_, 4 | 6) => if let French = kind.language() {
                                                     MessageBuilder::default()
-                                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(" : Choisissez votre second setting avec ")
                                                         .mention_command(command_ids.pick.unwrap(), "pick")
                                                         .push('.')
                                                         .build()
                                                 } else {
                                                     MessageBuilder::default()
-                                                        .mention_entrant(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(": pick your second setting using ")
                                                         .mention_command(command_ids.pick.unwrap(), "pick")
                                                         .push('.')
@@ -1721,7 +1721,7 @@ impl Draft {
                                 let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
-                                builder.mention_entrant(transaction, Some(*guild_id), high_seed).await?;
+                                builder.mention_entrant_short(transaction, Some(*guild_id), high_seed).await?;
                                 builder.push(" : Vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer ");
                                 builder.mention_command(command_ids.first.unwrap(), "first");
                                 builder.push(". Autrement, entrez ");
@@ -1735,7 +1735,7 @@ impl Draft {
                                 let (mut high_seed, _) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
-                                builder.mention_entrant(transaction, Some(*guild_id), high_seed).await?;
+                                builder.mention_entrant_short(transaction, Some(*guild_id), high_seed).await?;
                                 builder.push(": you have won the coin flip. Choose whether you want to go ");
                                 builder.mention_command(command_ids.first.unwrap(), "first");
                                 builder.push(" or ");

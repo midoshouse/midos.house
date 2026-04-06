@@ -101,14 +101,14 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     builder.push(" : ");
                 }
                 builder.push("Ni ");
-                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 if winning_room != losing_room {
                     builder.push(" [<");
                     builder.push(winning_room.to_string());
                     builder.push(">]");
                 }
                 builder.push(" ni ");
-                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 if winning_room != losing_room {
                     builder.push(" [<");
                     builder.push(losing_room.to_string());
@@ -147,14 +147,14 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     }
                     (None, None) => {}
                 }
-                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 if winning_room != losing_room {
                     builder.push(" [<");
                     builder.push(winning_room.to_string());
                     builder.push(">]");
                 }
                 builder.push(" and ");
-                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 if winning_room != losing_room {
                     builder.push(" [<");
                     builder.push(losing_room.to_string());
@@ -217,7 +217,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     builder.push_safe(phase_round);
                     builder.push(" : ");
                 }
-                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(winning_time.format(French));
                 builder.push(')');
@@ -227,7 +227,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     builder.push(">]");
                 }
                 builder.push(if winner.name_is_plural() { " ont battu " } else { " a battu " });
-                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(losing_time.format(French));
                 builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
@@ -260,7 +260,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     }
                     (None, None) => {}
                 }
-                builder.mention_entrant(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(winning_time.format(English));
                 if breaks_used {
@@ -273,7 +273,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     builder.push(">]");
                 }
                 builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
-                builder.mention_entrant(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(losing_time.format(English));
                 if breaks_used {

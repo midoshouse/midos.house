@@ -1789,19 +1789,19 @@ impl Event {
                     msg.push_safe(phase_round);
                     //TODO adjust for asyncs
                     msg.push(" : ");
-                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                    msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                     msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                    msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                 }
                 Entrants::Three([ref team1, ref team2, ref team3]) => {
                     msg.push_safe(phase_round);
                     //TODO adjust for asyncs
                     msg.push(" : ");
-                    msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                    msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                     msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                    msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                     msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                    msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                 }
             }
         } else {
@@ -1828,29 +1828,29 @@ impl Event {
                         match self.kind {
                             EventKind::Normal => {
                                 msg.push(": ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                             }
                             EventKind::Async1 => {
                                 msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                             }
                             EventKind::Async2 => {
                                 msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                             }
                             EventKind::Async3 => unreachable!(),
                         }
                     } else {
                         //TODO adjust for asyncs
-                        msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                        msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                         msg.push(" vs ");
-                        msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                        msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                     }
                 }
                 Entrants::Three([ref team1, ref team2, ref team3]) => {
@@ -1859,44 +1859,44 @@ impl Event {
                         match self.kind {
                             EventKind::Normal => {
                                 msg.push(": ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                             }
                             EventKind::Async1 => {
                                 msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                             }
                             EventKind::Async2 => {
                                 msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                             }
                             EventKind::Async3 => {
                                 msg.push(" (async): ");
-                                msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
-                                msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                                msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                             }
                         }
                     } else {
                         //TODO adjust for asyncs
-                        msg.mention_entrant(&mut *transaction, guild, team1).await?;
+                        msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                         msg.push(" vs ");
-                        msg.mention_entrant(&mut *transaction, guild, team2).await?;
+                        msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                         msg.push(" vs ");
-                        msg.mention_entrant(&mut *transaction, guild, team3).await?;
+                        msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                     }
                 }
             }
