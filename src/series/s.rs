@@ -193,23 +193,23 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
-pub(crate) const RANDOBOT_CAN_ROLL_WEEKLY: bool = true;
-pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Short;
+pub(crate) const RANDOBOT_CAN_ROLL_WEEKLY: bool = false;
+pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Medium;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-w-9.0.26.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/efk/chests-2026-9.0.1-blitz.110.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "advanced";
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "EfK";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
             : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2026, 3, 28, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are an Advanced Logic showcase, see ";
-            a(href = "https://discord.com/channels/274180765816848384/512053754015645696/1485730431176278056") : "the announcement";
+            : format_datetime(Utc.with_ymd_and_hms(2026, 4, 11, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " are Escape from Kakariko, see ";
+            a(href = uri!(event::info(Series::EscapeFromKakariko, "2026"))) : "the tournament";
             : " for details.";
         }
     }
