@@ -106,13 +106,24 @@ pub(crate) async fn platforms(global: &GlobalState, me: Option<User>, uri: Origi
             }
             tr {
                 th : "SummerCart64";
-                td(colspan = "3") {
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/53") : "Planned";
+                td(rowspan = "2", colspan = "3") {
+                    : "Work in progress (";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/pull/61") : "multiworld";
+                    : ", ";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/pull/34") : "randomizer";
+                    : ")";
                 }
             }
             tr {
+                th : "64drive";
+            }
+            tr {
                 th : "Wii Virtual Console";
-                td(colspan = "3") : "Would require a modification to Virtual Console itself. The “Multiworld 2.0” project claims to have solved this issue but has not shared any details out of concerns for competitive integrity.";
+                td(colspan = "3") {
+                    : "Work in progress (";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/pull/34") : "randomizer";
+                    : ")";
+                }
             }
             tr {
                 th {
