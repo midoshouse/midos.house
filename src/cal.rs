@@ -3802,23 +3802,32 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                             }
                         }
                     } else {
-                        @if cal_event.start().is_some_and(|start| start <= Utc::now() + TimeDelta::minutes(15)) {
-                            @let ctx = ctx.take_request_async();
-                            @let mut errors = ctx.errors().collect_vec();
-                            div(class = "info") {
-                                p : "Your async is ready.";
-                                : full_form(uri!(request_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
-                                    : form_field("confirm", &mut errors, html! {
-                                        input(type = "checkbox", id = "confirm", name = "confirm");
-                                        label(for = "confirm") {
-                                            @if let TeamConfig::Solo | TeamConfig::SlugOpen = event.team_config {
-                                                : "I am ready to play the seed";
-                                            } else {
-                                                : "We are ready to play the seed";
+                        @if let Some(start) = cal_event.start() {
+                            @let available_at = start - TimeDelta::minutes(15);
+                            @if Utc::now() >= available_at {
+                                @let ctx = ctx.take_request_async();
+                                @let mut errors = ctx.errors().collect_vec();
+                                div(class = "info") {
+                                    p : "Your async is ready.";
+                                    : full_form(uri!(request_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
+                                        : form_field("confirm", &mut errors, html! {
+                                            input(type = "checkbox", id = "confirm", name = "confirm");
+                                            label(for = "confirm") {
+                                                @if let TeamConfig::Solo | TeamConfig::SlugOpen = event.team_config {
+                                                    : "I am ready to play the seed";
+                                                } else {
+                                                    : "We are ready to play the seed";
+                                                }
                                             }
-                                        }
-                                    });
-                                }, errors, "Request Now");
+                                        });
+                                    }, errors, "Request Now");
+                                }
+                            } else {
+                                p {
+                                    : "Your async will be available at ";
+                                    : format_datetime(available_at, DateTimeFormat { long: true, running_text: true });
+                                    : ". Please wait until then and refresh this page to request the seed.";
+                                }
                             }
                         }
                     }
