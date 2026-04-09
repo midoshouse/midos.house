@@ -1672,7 +1672,7 @@ impl Event {
             {
                 // don't create racetime.gg rooms for in-person races
                 RaceHandleMode::Notify
-            } else if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() && !goal.is_custom() {
+            } else if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() && (!goal.is_custom() || self.is_public_async_part()) {
                 RaceHandleMode::RaceTime
             } else {
                 // racetime.gg doesn't properly support asyncs, see https://github.com/racetimeGG/racetime-app/issues/8
