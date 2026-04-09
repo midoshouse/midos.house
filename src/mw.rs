@@ -106,7 +106,7 @@ pub(crate) async fn platforms(global: &GlobalState, me: Option<User>, uri: Origi
             }
             tr {
                 th : "SummerCart64";
-                td(rowspan = "2", colspan = "3") {
+                td(rowspan = "3", colspan = "3") {
                     : "Work in progress (";
                     a(href = "https://github.com/midoshouse/ootr-multiworld/pull/61") : "multiworld";
                     : ", ";
@@ -119,11 +119,6 @@ pub(crate) async fn platforms(global: &GlobalState, me: Option<User>, uri: Origi
             }
             tr {
                 th : "Wii Virtual Console";
-                td(colspan = "3") {
-                    : "Work in progress (";
-                    a(href = "https://github.com/fenhl/OoT-Randomizer/pull/34") : "randomizer";
-                    : ")";
-                }
             }
             tr {
                 th {
