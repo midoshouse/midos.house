@@ -5371,6 +5371,8 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
         },
         RaceHandleMode::AsyncForm => {
             struct AsyncSeedHandler {
+                goal: Goal,
+                race: Race,
                 start: DateTime<Utc>,
             }
 
@@ -5399,10 +5401,34 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                     rx
                 }
 
-                async fn advance_draft(&self, _: &Arc<GlobalState>, _: &RaceState) -> Result<Self::SeedResult, Error> {
-                    let (tx, rx) = mpsc::channel(1);
-                    tx.send(SeedRollUpdate::Error(RollError::Draft)).await.unwrap();
-                    Ok(rx)
+                async fn advance_draft(&self, global: &Arc<GlobalState>, state: &RaceState) -> Result<Self::SeedResult, Error> {
+                    let RaceState::Draft { kind, state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
+                    let step = draft.next_step(kind, self.race.game, &mut draft::MessageContext::RaceTime { high_seed_name: "Team A", low_seed_name: "Team B", reply_to: "friend" }).await.to_racetime()?;
+                    Ok(match step.kind {
+                        draft::StepKind::Done(settings) => {
+                            let (article, description) = if let French = self.goal.language() {
+                                ("une", format!("seed avec {}", step.message))
+                            } else {
+                                ("a", format!("seed with {}", step.message))
+                            };
+                            let event = self.race.event(&mut global.db_pool.begin().await.to_racetime()?).await.to_racetime()?;
+                            self.roll_seed(global, self.goal.preroll_seeds(Some((event.series, &*event.event))), kind.rando_version().unwrap_or_else(|| self.goal.rando_version(Some(&event))), settings, serde_json::Map::default(), None, unlock_spoiler_log, self.goal.language(), article, description).await
+                        }
+                        draft::StepKind::DoneRsl { preset, world_count } => {
+                            let (article, description) = if let French = self.goal.language() {
+                                ("une", format!("seed avec {}", step.message))
+                            } else {
+                                ("a", format!("seed with {}", step.message))
+                            };
+                            self.roll_rsl_seed(global, preset, world_count, unlock_spoiler_log, self.goal.language(), article, description).await
+                        }
+                        draft::StepKind::DoneSlugOpen(_) => unimplemented!("SlugCentral Open format draft in race room"),
+                        draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Claim => {
+                            let (tx, rx) = mpsc::channel(1);
+                            tx.send(SeedRollUpdate::Error(RollError::Draft)).await.unwrap();
+                            rx
+                        }
+                    })
                 }
             }
 
@@ -5416,7 +5442,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
             } else {
                 RaceState::Init
             };
-            if let Some(mut rx) = (AsyncSeedHandler { start: cal_event.start().expect("opening room for official race without start time") }).roll_official_seed(&global, &cal_event.race, event, &race_state, cal_event.race.seed.clone(), &format!("{}: asynced race", goal.as_str()) /*TODO display race info instead of “asynced race” */).await? {
+            if let Some(mut rx) = (AsyncSeedHandler {
+                start: cal_event.start().expect("opening room for official race without start time"),
+                race: cal_event.race.clone(),
+                goal,
+            }).roll_official_seed(&global, &cal_event.race, event, &race_state, cal_event.race.seed.clone(), &format!("{}: asynced race", goal.as_str()) /*TODO display race info instead of “asynced race” */).await? {
                 let mut msg = Cow::Borrowed("there was an error rolling your seed, please ask an organizer to roll it manually");
                 while let Some(update) = rx.recv().await {
                     match update {
