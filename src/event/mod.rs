@@ -2646,7 +2646,7 @@ pub(crate) enum PracticeSeedKind {
     RandomAdvanced,
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum PracticeError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Draft(#[from] draft::Error),
@@ -2664,6 +2664,43 @@ pub(crate) enum PracticeError {
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
+}
+
+impl IsNetworkError for PracticeError {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::Data(_) => false,
+            Self::Draft(e) => e.is_network_error(),
+            Self::Event(e) => e.is_network_error(),
+            Self::Http(e) => e.is_network_error(),
+            Self::Json(_) => false,
+            Self::OotrWeb(e) => e.is_network_error(),
+            Self::Page(e) => e.is_network_error(),
+            Self::ParseInt(_) => false,
+            Self::RandoVersion(_) => false,
+            Self::Roll(_) => false,
+            Self::RslScriptPath(_) => false,
+            Self::SlugOpenSingleSettings(e) => e.is_network_error(),
+            Self::Sql(_) => false,
+            Self::Url(_) => false,
+            Self::Utf8(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+        }
+    }
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for PracticeError {
+    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'static> {
+        let status = if self.is_network_error() {
+            Status::BadGateway //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
+        } else {
+            Status::InternalServerError
+        };
+        eprintln!("responded with {status} to request to {}", request.uri());
+        eprintln!("display: {self}");
+        eprintln!("debug: {self:?}");
+        Err(status)
+    }
 }
 
 #[rocket::post("/event/<series>/<event>/practice?<kind>&<sco_format>", data = "<form>")]
