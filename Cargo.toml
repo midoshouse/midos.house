@@ -16,7 +16,9 @@ strip = true
 opt-level = 3
 
 [lints.rust]
+ambiguous_import_visibilities = "allow" #TODO how to fix this properly? The compiler suggestion creates follow-up errors
 rust_2018_idioms = "deny"
+unknown_lints = "allow" # backwards compatibility for Rust 1.91 (ambiguous_import_visibilities does not exist yet, but is required to compile on Rust 1.95)
 unsafe_code = "forbid"
 unused = "deny"
 unused_crate_dependencies = "deny"

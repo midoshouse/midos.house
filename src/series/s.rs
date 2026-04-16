@@ -164,15 +164,6 @@ pub(crate) enum WeeklyKind {
 }
 
 impl WeeklyKind {
-    pub(crate) fn cal_id_part(&self) -> &'static str {
-        match self {
-            Self::Kokiri => "kokiri",
-            Self::Goron => "goron",
-            Self::Zora => "zora",
-            Self::Gerudo => "gerudo",
-        }
-    }
-
     pub(crate) fn next_weekly_after(&self, min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
         let mut time = match self {
             Self::Kokiri => Utc.with_ymd_and_hms(2025, 1, 4, 23, 0, 0).single().expect("wrong hardcoded datetime"),

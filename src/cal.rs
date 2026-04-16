@@ -6,7 +6,6 @@ use {
             Description,
             DtEnd,
             DtStart,
-            RRule,
             Summary,
             URL,
         },
@@ -751,7 +750,6 @@ impl Race {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
-        let now = Utc::now();
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
             races.push(Self::from_id(&mut *transaction, http_client, id).await?);
@@ -823,38 +821,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
-                "w" => for kind in all::<s::WeeklyKind>() {
-                    let schedule = RaceSchedule::Live { start: kind.next_weekly_after(now).to_utc(), end: None, room: None };
-                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
-                        let race = Race {
-                            id: Id::new(&mut *transaction).await?,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: Source::Manual,
-                            entrants: Entrants::Open,
-                            phase: None,
-                            round: Some(format!("{kind} Weekly")),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule_updated_at: None,
-                            fpa_invoked: false,
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            commentators: HashMap::default(),
-                            trackers: HashMap::default(),
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: false,
-                            schedule_locked: false,
-                            notified: false,
-                            schedule,
-                        };
-                        race.save(&mut *transaction).await?;
-                        races.push(race);
-                    }
-                },
+                "w" => {}
                 //TODO add archives of old Standard tournaments and Challenge Cups?
                 _ => {} // new events are scheduled via Mido's House
             },
@@ -2032,7 +1999,6 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, cal: &mut ICalendar<'_>, event: &event::Data<'_>, delay: bool) -> Result<(), Error> {
     let now = Utc::now();
-    let mut latest_instantiated_weeklies = HashMap::new();
     for race in Race::for_event(transaction, &global.http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -2129,25 +2095,8 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &G
                     cal_event.push(URL::new(uri!(base_uri(), event::info(event.series, &*event.event)).to_string()));
                 }
                 cal.add_event(cal_event);
-                match (event.series, &*event.event, &race.round) {
-                    (Series::Standard, "w", Some(round)) => if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
-                        if let Ok(kind) = kind.parse::<s::WeeklyKind>() {
-                            latest_instantiated_weeklies.insert(kind, start);
-                        }
-                    },
-                    _ => {}
-                }
             }
         }
-    }
-    for (kind, start) in latest_instantiated_weeklies {
-        let mut cal_event = ics::Event::new(format!("weekly-{}@midos.house", kind.cal_id_part()), dtstamp(now));
-        cal_event.push(Summary::new(format!("{kind} Weekly")));
-        let start = kind.next_weekly_after(start);
-        cal_event.push(dtstart(start));
-        cal_event.push(dtend(start + Series::Standard.default_race_duration()));
-        cal_event.push(RRule::new("FREQ=WEEKLY;INTERVAL=2"));
-        cal.add_event(cal_event);
     }
     Ok(())
 }
