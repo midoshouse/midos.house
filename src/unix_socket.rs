@@ -193,7 +193,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalSta
                                             settings.remove("password_lock");
                                         }
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global.clone().roll_seed(goal.preroll_seeds(None /*TODO replace is_official parameter with optional series and event */), !no_web, None, rando_version_override.unwrap_or_else(|| goal.rando_version(None /*TODO replace is_official parameter with optional series and event */)), settings, plando, bingo_passphrase, unlock_spoiler_log)
+                                        global.clone().roll_seed(goal.preroll_seeds(), !no_web, None, rando_version_override.unwrap_or_else(|| goal.rando_version()), settings, plando, bingo_passphrase, unlock_spoiler_log)
                                     }
                                     Ok(SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");

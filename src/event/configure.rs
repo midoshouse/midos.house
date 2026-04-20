@@ -18,84 +18,39 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, global: &Glo
         if event.organizers(&mut transaction).await?.contains(me) {
             let mut errors = ctx.errors().collect_vec();
             html! {
-                @if event.series == Series::Standard && event.event == "w" {
-                    p {
-                        : "RandoBot support: ";
-                        @if s::RANDOBOT_CAN_ROLL_WEEKLY {
-                            : "yes";
-                        } else {
-                            : "no";
-                        }
-                    }
-                    p {
-                        : "Preroll mode: ";
-                        : format!("{:?}", s::WEEKLY_PREROLL_MODE);
-                    }
-                    p {
-                        : "Short settings description (for race room welcome message): ";
-                        : s::SHORT_WEEKLY_SETTINGS;
-                    }
-                    @let (rando_version, single_settings) = event.single_settings().await?.expect("no settings configured for weeklies");
-                    p {
-                        : "Randomizer version: ";
-                        @match rando_version {
-                            VersionedBranch::Pinned { version } => : version.to_string();
-                            VersionedBranch::Latest { branch } => {
-                                : "latest ";
-                                : branch.to_string();
-                                : " branch (updates automatically)";
-                            }
-                            VersionedBranch::Custom { github_username, branch } => {
-                                : "custom (GitHub user/organization name: ";
-                                : github_username;
-                                : ", branch: ";
-                                : branch;
-                                : ")";
-                            }
-                        }
-                    }
-                    p : "Settings:";
-                    pre : serde_json::to_string_pretty(&single_settings)?;
-                    p {
-                        : "The data above is currently not editable for technical reasons. Please contact ";
-                        : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?; // Fenhl
-                        : " if you've spotted an error in it.";
-                    } //TODO make editable
-                } else {
-                    : full_form(uri!(post(event.series, &*event.event)), csrf, html! {
-                        @if let MatchSource::StartGG(_) = event.match_source() {
-                            : form_field("auto_import", &mut errors, html! {
-                                input(type = "checkbox", id = "auto_import", name = "auto_import", checked? = ctx.field_value("auto_import").map_or(event.auto_import, |value| value == "on"));
-                                label(for = "auto_import") : "Automatically import new races from start.gg";
-                                label(class = "help") : "(If this option is turned off, you can import races by clicking the Import button on the Races tab.)";
-                            });
-                        }
-                        : form_field("min_schedule_notice", &mut errors, html! {
-                            label(for = "min_schedule_notice") : "Minimum scheduling notice:";
-                            input(type = "text", name = "min_schedule_notice", value = ctx.field_value("min_schedule_notice").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.min_schedule_notice)))); //TODO h:m:s fields?
-                            label(class = "help") : "(Races must be scheduled at least this far in advance. Can be configured to be as low as 0 seconds, but note that if a race is scheduled less than 30 minutes in advance, the room is opened immediately, and if a race is scheduled less than 15 minutes in advance, the seed is posted immediately.)";
+                : full_form(uri!(post(event.series, &*event.event)), csrf, html! {
+                    @if let MatchSource::StartGG(_) = event.match_source() {
+                        : form_field("auto_import", &mut errors, html! {
+                            input(type = "checkbox", id = "auto_import", name = "auto_import", checked? = ctx.field_value("auto_import").map_or(event.auto_import, |value| value == "on"));
+                            label(for = "auto_import") : "Automatically import new races from start.gg";
+                            label(class = "help") : "(If this option is turned off, you can import races by clicking the Import button on the Races tab.)";
                         });
-                        @if matches!(event.match_source(), MatchSource::StartGG(_)) || event.discord_race_results_channel.is_some() {
-                            : form_field("retime_window", &mut errors, html! {
-                                label(for = "retime_window") : "Retime window:";
-                                input(type = "text", name = "retime_window", value = ctx.field_value("retime_window").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.retime_window)))); //TODO h:m:s fields?
-                                label(class = "help") {
-                                    : "(If the time difference between ";
-                                    @if event.team_config.is_racetime_team_format() {
-                                        : "teams'";
-                                    } else {
-                                        : "runners'";
-                                    }
-                                    : " finish times is less than this, the result is not auto-reported.)";
+                    }
+                    : form_field("min_schedule_notice", &mut errors, html! {
+                        label(for = "min_schedule_notice") : "Minimum scheduling notice:";
+                        input(type = "text", name = "min_schedule_notice", value = ctx.field_value("min_schedule_notice").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.min_schedule_notice)))); //TODO h:m:s fields?
+                        label(class = "help") : "(Races must be scheduled at least this far in advance. Can be configured to be as low as 0 seconds, but note that if a race is scheduled less than 30 minutes in advance, the room is opened immediately, and if a race is scheduled less than 15 minutes in advance, the seed is posted immediately.)";
+                    });
+                    @if matches!(event.match_source(), MatchSource::StartGG(_)) || event.discord_race_results_channel.is_some() {
+                        : form_field("retime_window", &mut errors, html! {
+                            label(for = "retime_window") : "Retime window:";
+                            input(type = "text", name = "retime_window", value = ctx.field_value("retime_window").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.retime_window)))); //TODO h:m:s fields?
+                            label(class = "help") {
+                                : "(If the time difference between ";
+                                @if event.team_config.is_racetime_team_format() {
+                                    : "teams'";
+                                } else {
+                                    : "runners'";
                                 }
-                            });
-                            : form_field("manual_reporting_with_breaks", &mut errors, html! {
-                                input(type = "checkbox", id = "manual_reporting_with_breaks", name = "manual_reporting_with_breaks", checked? = ctx.field_value("manual_reporting_with_breaks").map_or(event.manual_reporting_with_breaks, |value| value == "on"));
-                                label(for = "manual_reporting_with_breaks") : "Disable automatic result reporting if !breaks command is used";
-                            });
-                        }
-                    }, errors, "Save");
-                }
+                                : " finish times is less than this, the result is not auto-reported.)";
+                            }
+                        });
+                        : form_field("manual_reporting_with_breaks", &mut errors, html! {
+                            input(type = "checkbox", id = "manual_reporting_with_breaks", name = "manual_reporting_with_breaks", checked? = ctx.field_value("manual_reporting_with_breaks").map_or(event.manual_reporting_with_breaks, |value| value == "on"));
+                            label(for = "manual_reporting_with_breaks") : "Disable automatic result reporting if !breaks command is used";
+                        });
+                    }
+                }, errors, "Save");
                 h2 : "More options";
                 ul {
                     li {

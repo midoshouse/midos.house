@@ -1,17 +1,9 @@
-use {
-    chrono::Days,
-    derive_more::{
-        Display,
-        FromStr,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
-        racetime_bot::PrerollMode,
-    },
+    prelude::*,
 };
 
 pub(crate) struct Setting {
@@ -155,105 +147,24 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> seed::Settings 
     settings
 }
 
-#[derive(FromStr, Display, PartialEq, Eq, Hash, Sequence)]
-pub(crate) enum WeeklyKind {
-    Kokiri,
-    Goron,
-    Zora,
-    Gerudo,
-}
-
-impl WeeklyKind {
-    pub(crate) fn next_weekly_after(&self, min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
-        let mut time = match self {
-            Self::Kokiri => Utc.with_ymd_and_hms(2025, 1, 4, 23, 0, 0).single().expect("wrong hardcoded datetime"),
-            Self::Goron => Utc.with_ymd_and_hms(2025, 1, 5, 19, 0, 0).single().expect("wrong hardcoded datetime"),
-            Self::Zora => Utc.with_ymd_and_hms(2025, 1, 11, 19, 0, 0).single().expect("wrong hardcoded datetime"),
-            Self::Gerudo => Utc.with_ymd_and_hms(2025, 1, 12, 14, 0, 0).single().expect("wrong hardcoded datetime"),
-        }.with_timezone(&America::New_York);
-        while time <= min_time {
-            let date = time.date_naive().checked_add_days(Days::new(14)).unwrap();
-            time = date.and_hms_opt(match self {
-                Self::Kokiri => 18,
-                Self::Goron | Self::Zora => 14,
-                Self::Gerudo => 9,
-            }, 0, 0).unwrap().and_local_timezone(America::New_York).single().expect("error determining weekly time");
-        }
-        time
-    }
-}
-
-// Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
-pub(crate) const RANDOBOT_CAN_ROLL_WEEKLY: bool = false;
-pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Medium;
-pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/efk/chests-2026-9.0.1-blitz.110.json")).expect("failed to parse chest weights"));
-
-    WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-}
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "EfK";
-fn long_weekly_settings() -> RawHtml<String> {
-    html! {
-        p {
-            : "Settings are typically changed once every 2 or 4 weeks and posted in ";
-            a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
-            : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2026, 4, 11, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are Escape from Kakariko, see ";
-            a(href = uri!(event::info(Series::EscapeFromKakariko, "2026"))) : "the tournament";
-            : " for details.";
-        }
-    }
-}
-
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
         "w" => {
             let organizers = data.organizers(transaction).await?;
-            let main_tournament_season = sqlx::query_scalar!("SELECT event FROM events WHERE series = 's'")
-                .fetch_all(&mut **transaction).await?
-                .into_iter()
-                .filter_map(|event| event.parse::<u32>().ok())
-                .max().expect("no main tournaments in database");
-            let main_tournament = Data::new(transaction, Series::Standard, main_tournament_season.to_string()).await?.expect("database changed during transaction");
+            let main_tournament = Data::new(transaction, Series::Standard, "9").await?.expect("database changed during transaction");
             let main_tournament_organizers = main_tournament.organizers(transaction).await?;
             let (main_tournament_organizers, race_mods) = organizers.into_iter().partition::<Vec<_>, _>(|organizer| main_tournament_organizers.contains(organizer));
-            let now = Utc::now();
             Some(html! {
                 article {
                     p {
-                        : "The Standard weeklies are a set of community races organized by the race mods (";
+                        : "The Standard weeklies were a set of community races organized by different groups over the years, most recently the race mods (";
                         : English.join_html_opt(race_mods);
                         : ") and main tournament organizers (";
                         : English.join_html_opt(main_tournament_organizers);
-                        : ") in cooperation with ZeldaSpeedRuns. The races are open to all participants and use ";
+                        : ") in cooperation with ZeldaSpeedRuns. The races were open to all participants and used various settings under ";
                         a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "the Standard ruleset";
-                        : ".";
+                        : ". They were retired in April of 2026 due to decreased interest.";
                     }
-                    p : "The race schedule runs on a 2-week cycle:";
-                    ol {
-                        li {
-                            : "The Kokiri weekly, Saturdays of week A at 6PM Eastern Time (next: ";
-                            : format_datetime(WeeklyKind::Kokiri.next_weekly_after(now), DateTimeFormat { long: true, running_text: false });
-                            : ")";
-                        }
-                        li {
-                            : "The Goron weekly, Sundays of week A at 2PM Eastern Time (next: ";
-                            : format_datetime(WeeklyKind::Goron.next_weekly_after(now), DateTimeFormat { long: true, running_text: false });
-                            : ")";
-                        }
-                        li {
-                            : "The Zora weekly, Saturdays of week B at 2PM Eastern Time (next: ";
-                            : format_datetime(WeeklyKind::Zora.next_weekly_after(now), DateTimeFormat { long: true, running_text: false });
-                            : ")";
-                        }
-                        li {
-                            : "The Gerudo weekly, Sundays of week B at 9AM Eastern Time (next: ";
-                            : format_datetime(WeeklyKind::Gerudo.next_weekly_after(now), DateTimeFormat { long: true, running_text: false });
-                            : ")";
-                        }
-                    }
-                    : long_weekly_settings();
                 }
             })
         }
@@ -1997,23 +1908,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         }),
         _ => None,
     })
-}
-
-pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
-    html! {
-        article {
-            p {
-                : "The room for each race will be opened 30 minutes before the scheduled starting time. ";
-                @if me.as_ref().is_some_and(|me| me.racetime.is_some()) {
-                    : "You don't need to sign up beforehand.";
-                } else {
-                    : "You will need a ";
-                    a(href = format!("https://{}/", racetime_host())) : "racetime.gg";
-                    : " account to participate.";
-                }
-            }
-        }
-    }
 }
 
 pub(crate) fn s6_settings() -> seed::Settings {

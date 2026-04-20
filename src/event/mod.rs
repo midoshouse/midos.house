@@ -382,7 +382,7 @@ impl<'a> Data<'a> {
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, "2024onl" | "2024live") => from_file!("../../assets/event/sgl/chests-2024-ee4d35b.json"),
             (Series::SpeedGaming, "2025onl" | "2025live") => from_file!("../../assets/event/sgl/chests-2025-8.3.21.json"),
-            (Series::Standard, "w") => s::weekly_chest_appearances(),
+            (Series::Standard, "w") => ChestAppearances::random(), //TODO pick random chest appearances from past settings
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
             (Series::Standard, "8" | "8cc") => from_file!("../../assets/event/s/chests-8-8.2.json"),
@@ -892,10 +892,7 @@ impl<'a> Data<'a> {
             (Series::TriforceBlitz, "5coop") => Some("Triforce Blitz S5 Co-op"),
             _ => None,
         };
-        let practice_race_url = if let Some(mut goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
-            if self.series == Series::Standard && self.event == "w" && !s::RANDOBOT_CAN_ROLL_WEEKLY {
-                goal = racetime_bot::Goal::StandardWeeklies;
-            }
+        let practice_race_url = if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
             let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
             if let Some(goal_id) = goal.official_id() {
                 practice_url.query_pairs_mut().append_pair("goal", &goal_id.to_string());
