@@ -5420,7 +5420,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
         msg.push(" : ");
         cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
         msg.push(" <");
-        msg.push(room_url_fr.to_string());
+        msg.push(room_url_fr.as_str());
         msg.push('>');
         msg.build()
     } else {

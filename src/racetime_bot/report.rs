@@ -1,4 +1,5 @@
 use {
+    itertools::Position,
     nonempty_collections::nev,
     tokio::sync::RwLockReadGuard,
     crate::{
@@ -78,7 +79,50 @@ impl Score for tfb::Score {
     }
 }
 
-async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, breaks_used: bool, restreamed: bool, mut entrants: [(Entrant, S, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
+#[derive(PartialEq, Eq)]
+enum TeamLinks {
+    Room(Url),
+    AsyncForm(Vec<(&'static str, Option<Url>)>),
+}
+
+impl TeamLinks {
+    fn format_discord(&self, msg: &mut MessageBuilder, is_bracketed: bool) {
+        match self {
+            Self::Room(url) => {
+                msg.push('<');
+                msg.push(url.as_str());
+                msg.push('>');
+            }
+            Self::AsyncForm(vods) => {
+                if !is_bracketed { msg.push('('); }
+                if let [(_, vod)] = &**vods {
+                    if let Some(vod) = vod {
+                        msg.push_named_link_no_preview("vod", vod.as_str());
+                    } else {
+                        msg.push("no vod");
+                    }
+                } else {
+                    msg.push("vods: ");
+                    for (pos, (role, vod)) in vods.iter().with_position() {
+                        match pos {
+                            Position::First | Position::Only => {}
+                            Position::Middle | Position::Last => { msg.push(", "); }
+                        }
+                        if let Some(vod) = vod {
+                            msg.push_named_link_no_preview(*role, vod.as_str());
+                        } else {
+                            msg.push(*role);
+                            msg.push(": no vod");
+                        }
+                    }
+                }
+                if !is_bracketed { msg.push(')'); }
+            }
+        }
+    }
+}
+
+async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, breaks_used: bool, restreamed: bool, mut entrants: [(Entrant, S, TeamLinks); 2]) -> Result<Transaction<'a, Postgres>, Error> {
     entrants.sort_unstable_by_key(|(_, time, _)| time.sort_key());
     let [(winner, winning_time, winning_room), (loser, losing_time, losing_room)] = entrants;
     if winning_time.is_dnf() && losing_time.is_dnf() {
@@ -103,22 +147,21 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 builder.push("Ni ");
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 if winning_room != losing_room {
-                    builder.push(" [<");
-                    builder.push(winning_room.to_string());
-                    builder.push(">]");
+                    builder.push(" [");
+                    winning_room.format_discord(&mut builder, true);
+                    builder.push(']');
                 }
                 builder.push(" ni ");
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 if winning_room != losing_room {
-                    builder.push(" [<");
-                    builder.push(losing_room.to_string());
-                    builder.push(">]");
+                    builder.push(" [");
+                    losing_room.format_discord(&mut builder, true);
+                    builder.push(']');
                 }
                 builder.push(" n'ont fini");
                 if winning_room == losing_room {
-                    builder.push(" <");
-                    builder.push(winning_room);
-                    builder.push('>');
+                    builder.push(' ');
+                    winning_room.format_discord(&mut builder, false);
                 }
                 builder.build()
             } else {
@@ -149,22 +192,21 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 }
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                 if winning_room != losing_room {
-                    builder.push(" [<");
-                    builder.push(winning_room.to_string());
-                    builder.push(">]");
+                    builder.push(" [");
+                    winning_room.format_discord(&mut builder, true);
+                    builder.push(']');
                 }
                 builder.push(" and ");
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 if winning_room != losing_room {
-                    builder.push(" [<");
-                    builder.push(losing_room.to_string());
-                    builder.push(">]");
+                    builder.push(" [");
+                    losing_room.format_discord(&mut builder, true);
+                    builder.push(']');
                 }
                 builder.push(" both did not finish");
                 if winning_room == losing_room {
-                    builder.push(" <");
-                    builder.push(winning_room);
-                    builder.push('>');
+                    builder.push(' ');
+                    winning_room.format_discord(&mut builder, false);
                 }
                 builder.build()
             };
@@ -173,13 +215,12 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
     } else if losing_time.time_window(&winning_time).is_some_and(|time_window| time_window <= event.retime_window) {
         if let Some(organizer_channel) = event.discord_organizer_channel {
             let mut msg = MessageBuilder::default();
-            msg.push("race finished as a draw: <");
-            msg.push(winning_room.to_string());
+            msg.push("race finished as a draw: ");
+            winning_room.format_discord(&mut msg, false);
             if winning_room != losing_room {
-                msg.push("> and <");
-                msg.push(losing_room);
+                msg.push(" and ");
+                losing_room.format_discord(&mut msg, false);
             }
-            msg.push('>');
             if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
                 msg.push(" — please manually ");
                 if let Some(results_channel) = event.discord_race_results_channel {
@@ -222,17 +263,19 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 builder.push(winning_time.format(French));
                 builder.push(')');
                 if winning_room != losing_room {
-                    builder.push(" [<");
-                    builder.push(winning_room.to_string());
-                    builder.push(">]");
+                    builder.push(" [");
+                    winning_room.format_discord(&mut builder, true);
+                    builder.push(']');
                 }
                 builder.push(if winner.name_is_plural() { " ont battu " } else { " a battu " });
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                 builder.push(" (");
                 builder.push(losing_time.format(French));
-                builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
-                builder.push(losing_room.to_string());
-                builder.push(if winning_room == losing_room { ">" } else { ">]" });
+                builder.push(if winning_room == losing_room { ") " } else { ") [" });
+                losing_room.format_discord(&mut builder, winning_room != losing_room);
+                if winning_room != losing_room {
+                    builder.push(']');
+                }
                 builder.build()
             } else {
                 let mut builder = MessageBuilder::default();
@@ -268,9 +311,9 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 }
                 builder.push(')');
                 if winning_room != losing_room {
-                    builder.push(" [<");
-                    builder.push(winning_room.to_string());
-                    builder.push(">]");
+                    builder.push(" [");
+                    winning_room.format_discord(&mut builder, true);
+                    builder.push(']');
                 }
                 builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
@@ -279,9 +322,11 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 if breaks_used {
                     builder.push(if restreamed { " including breaks" } else { " adjusted for breaks" });
                 }
-                builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
-                builder.push(losing_room.to_string());
-                builder.push(if winning_room == losing_room { ">" } else { ">]" });
+                builder.push(if winning_room == losing_room { ") " } else { ") [" });
+                losing_room.format_discord(&mut builder, winning_room != losing_room);
+                if winning_room != losing_room {
+                    builder.push(']');
+                }
                 builder.build()
             };
             results_channel.say(discord_ctx!(ctx.global_state), msg).await.to_racetime()?;
@@ -453,7 +498,7 @@ async fn report_ffa(ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, even
             (None, None) => {}
         }
         builder.push("race finished: <");
-        builder.push(room.to_string());
+        builder.push(room.as_str());
         builder.push('>');
         results_channel.say(discord_ctx!(ctx.global_state), builder.build()).await.to_racetime()?;
     }
@@ -580,7 +625,7 @@ impl Handler {
                                             racetime_id: Some(rt_user.id.clone()),
                                             twitch_username: rt_user.twitch_name.clone(),
                                         }
-                                    }, tfb_scores.remove(&rt_user.id).expect("missing TFB score"), room.clone()));
+                                    }, tfb_scores.remove(&rt_user.id).expect("missing TFB score"), TeamLinks::Room(room.clone())));
                                 }
                             }
                             if let Ok(teams) = teams.try_into() {
@@ -602,7 +647,7 @@ impl Handler {
                                             racetime_id: Some(rt_user.id.clone()),
                                             twitch_username: rt_user.twitch_name.clone(),
                                         }
-                                    }, adjust_for_breaks(entrant.finish_time, breaks, restreamed), room.clone()));
+                                    }, adjust_for_breaks(entrant.finish_time, breaks, restreamed), TeamLinks::Room(room.clone())));
                                 }
                             }
                             if let Ok(teams) = teams.try_into() {
@@ -629,20 +674,35 @@ impl Handler {
                             struct ExactlyOneError;
 
                             for private_async_part in cal_event.race.cal_events().filter(|cal_event| cal_event.is_private_async_part()) {
+                                let nonactive_team = private_async_part.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
                                 if let Some(ref room) = private_async_part.room() {
-                                    let nonactive_team = private_async_part.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
                                     let data = ctx.global_state.http_client.get(format!("{}/data", room.to_string()))
                                         .send().await?
                                         .detailed_error_for_status().await.to_racetime()?
                                         .json_with_text_in_error::<RaceData>().await.to_racetime()?;
-                                    team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::clone(room));
+                                    team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::Room(Url::clone(room)));
                                     for entrant in &data.entrants {
                                         team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
+                                    }
+                                } else {
+                                    let members = nonactive_team.member_ids_roles(&mut transaction).await.to_racetime()?;
+                                    let data = sqlx::query!(
+                                        r#"SELECT player AS "player: Id<Users>", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)"#,
+                                        cal_event.race.id as _,
+                                        &members.iter().map(|(member_id, _)| i64::from(*member_id)).collect_vec(),
+                                    ).fetch_all(&mut *transaction).await.to_racetime()?;
+                                    if members.iter().all(|(member_id, _)| data.iter().any(|row| row.player == *member_id)) {
+                                        team_times.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), data.iter().map(|row| Ok::<_, Error>(adjust_for_breaks(row.time.map(decode_pginterval).transpose().to_racetime()?, breaks, restreamed))).try_collect()?);
+                                        team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::AsyncForm(data.into_iter().map(|row| {
+                                            let (_, role) = *members.iter().find(|(member_id, _)| *member_id == row.player).expect("async submission from unexpected player");
+                                            let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
+                                            Ok::<_, Error>((role_name, row.vod.map(|vod| vod.parse()).transpose()?))
+                                        }).try_collect()?));
                                     }
                                 }
                             }
                             let active_team = cal_event.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
-                            team_rooms.insert(active_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?);
+                            team_rooms.insert(active_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::Room(Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?));
                             for entrant in &data.entrants {
                                 team_times.entry(active_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                             }
@@ -650,7 +710,7 @@ impl Handler {
                             for entrant in &data.entrants {
                                 if let Some(ref team) = entrant.team {
                                     if let hash_map::Entry::Vacant(entry) = team_rooms.entry(team.slug.clone()) {
-                                        entry.insert(Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?);
+                                        entry.insert(TeamLinks::Room(Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?));
                                     }
                                     team_times.entry(team.slug.clone()).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                                 } else {

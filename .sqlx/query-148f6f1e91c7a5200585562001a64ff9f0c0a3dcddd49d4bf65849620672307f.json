@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT player AS \"player: Id<Users>\", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "player: Id<Users>",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "vod",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "time",
+        "type_info": "Interval"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "148f6f1e91c7a5200585562001a64ff9f0c0a3dcddd49d4bf65849620672307f"
+}
