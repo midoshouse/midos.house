@@ -1823,11 +1823,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                 )).await?;
                                                 transaction.rollback().await?;
                                             } else {
-                                                let was_scheduled = match race.schedule {
-                                                    RaceSchedule::Unscheduled => None,
-                                                    RaceSchedule::Live { start, .. } => Some(Some(start)),
-                                                    RaceSchedule::Async { .. } => Some(None),
-                                                };
+                                                let was_scheduled = race.schedule.clone();
                                                 let kind = match race.entrants {
                                                     Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
@@ -1872,11 +1868,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
                                                 };
                                                 let mut cal_event = cal::Event { race, kind };
-                                                if let Some(Some(old_start)) = was_scheduled && event.series == Series::Standard && event.event == "9" {
+                                                if let RaceSchedule::Live { start, .. } = was_scheduled && event.series == Series::Standard && event.event == "9" {
                                                     let mut content = MessageBuilder::default();
                                                     cal_event.format_discord(&mut transaction, Some(OOTR_GUILD), English, &mut content).await?;
                                                     content.push(" was rescheduled from ");
-                                                    content.push_timestamp(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                     content.push(" to async");
                                                     S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
                                                 }
@@ -1918,7 +1914,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                             let mut response_content = MessageBuilder::default();
                                                             response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
                                                             response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                            response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
+                                                            let is_reschedule = match was_scheduled {
+                                                                RaceSchedule::Unscheduled => false,
+                                                                RaceSchedule::Live { .. } => true,
+                                                                RaceSchedule::Async { start1, start2, start3, .. } => match kind {
+                                                                    cal::EventKind::Normal => true,
+                                                                    cal::EventKind::Async1 => start1.is_some(),
+                                                                    cal::EventKind::Async2 => start2.is_some(),
+                                                                    cal::EventKind::Async3 => start3.is_some(),
+                                                                },
+                                                            };
+                                                            response_content.push(if is_reschedule { " has been rescheduled for " } else { " is now scheduled for " });
                                                             response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             let response_content = response_content
                                                                 .push(". The race room will be opened momentarily.")
@@ -1958,7 +1964,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                         let mut response_content = MessageBuilder::default();
                                                         response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
                                                         response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
-                                                        response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        let is_reschedule = match was_scheduled {
+                                                            RaceSchedule::Unscheduled => false,
+                                                            RaceSchedule::Live { .. } => true,
+                                                            RaceSchedule::Async { start1, start2, start3, .. } => match kind {
+                                                                cal::EventKind::Normal => true,
+                                                                cal::EventKind::Async1 => start1.is_some(),
+                                                                cal::EventKind::Async2 => start2.is_some(),
+                                                                cal::EventKind::Async3 => start3.is_some(),
+                                                            },
+                                                        };
+                                                        response_content.push(if is_reschedule { " has been rescheduled for " } else { " is now scheduled for " });
                                                         response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                         response_content.push('.');
                                                         for (window, kind) in overlapping_maintenance_windows {
