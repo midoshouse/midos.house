@@ -133,10 +133,7 @@ impl Restream {
             cal_event.race.schedule.set_live_start(self.when_countdown);
             if let Some(was_scheduled) = schedule_changed {
                 use {
-                    serenity::all::{
-                        CreateAllowedMentions,
-                        CreateMessage,
-                    },
+                    serenity::all::CreateMessage,
                     crate::discord_bot::*,
                 };
 
@@ -149,16 +146,28 @@ impl Restream {
                         )
                     };
                     lock!(new_room_lock = global.new_room_lock; {
-                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, cal_event, &event).await? {
+                        if let Some((_, msg, allowed_mentions)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, cal_event, &event).await? {
                             if let Some(channel) = event.discord_race_room_channel {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(discord_ctx, &msg).await?;
+                                    thread.send_message(discord_ctx, {
+                                        let mut msg = CreateMessage::default().content(&msg);
+                                        if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                        msg
+                                    }).await?;
                                     channel.send_message(discord_ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
                                 } else {
-                                    channel.say(discord_ctx, msg).await?;
+                                    channel.send_message(discord_ctx, {
+                                        let mut msg = CreateMessage::default().content(msg);
+                                        if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                        msg
+                                    }).await?;
                                 }
                             } else if let Some(thread) = cal_event.race.scheduling_thread {
-                                thread.say(discord_ctx, msg).await?;
+                                thread.send_message(discord_ctx, {
+                                    let mut msg = CreateMessage::default().content(msg);
+                                    if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                    msg
+                                }).await?;
                             } else if let Some(channel) = event.discord_organizer_channel {
                                 channel.say(discord_ctx, msg).await?;
                             } else {

@@ -62,7 +62,7 @@ hyper = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
 itertools = "0.14"
-kuchiki = "0.8"
+kuchiki = "0.8" #TODO unmaintained, replace with `scraper` crate?
 lazy-regex = "3"
 log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock" }

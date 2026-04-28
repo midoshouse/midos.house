@@ -84,6 +84,23 @@ impl Team {
         })
     }
 
+    pub(crate) async fn allowed_mentions(&self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>) -> sqlx::Result<CreateAllowedMentions> {
+        Ok(if let Ok(member) = self.members(&mut *transaction).await?.into_iter().exactly_one() {
+            CreateAllowedMentions::new().users(member.discord.map(|discord| discord.id))
+        } else {
+            let team_role = if let (Some(guild), Some(racetime_slug)) = (guild, &self.racetime_slug) {
+                sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, PgSnowflake(guild) as _, racetime_slug).fetch_optional(&mut **transaction).await?
+            } else {
+                None
+            };
+            if let Some(PgSnowflake(team_role)) = team_role {
+                CreateAllowedMentions::new().roles(iter::once(team_role))
+            } else {
+                CreateAllowedMentions::new()
+            }
+        })
+    }
+
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, running_text: bool) -> sqlx::Result<RawHtml<String>> {
         Ok(if let Ok(member) = self.members(transaction).await?.into_iter().exactly_one() {
             member.to_html()

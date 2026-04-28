@@ -16,10 +16,7 @@ use {
         SampleString as _,
     },
     reqwest::StatusCode,
-    serenity::all::{
-        CreateAllowedMentions,
-        CreateMessage,
-    },
+    serenity::all::CreateMessage,
     smart_default::SmartDefault,
     systemstat::{
         ByteSize,
@@ -5163,7 +5160,7 @@ impl RaceHandler<GlobalState> for Handler {
     }
 }
 
-pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String)>, Error> {
+pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String, Option<CreateAllowedMentions>)>, Error> {
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await.to_racetime()? {
         RaceHandleMode::None => return Ok(None),
         RaceHandleMode::Notify => Err(Cow::Borrowed("please get your equipment and report to the tournament room")),
@@ -5408,7 +5405,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
         }
     };
     let is_room_url = room_url.is_ok();
-    let msg = if let French = event.language
+    let (msg, allowed_mentions) = if let French = event.language
         && let Ok(ref room_url_fr) = room_url
         && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
         && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4 AND display_fr IS NOT NULL) AS "exists!""#, event.series as _, &event.event, phase, round).fetch_one(&mut **transaction).await.to_racetime()?
@@ -5418,11 +5415,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
         msg.push("La race commence ");
         msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
         msg.push(" : ");
-        cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
+        let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
         msg.push(" <");
         msg.push(room_url_fr.as_str());
         msg.push('>');
-        msg.build()
+        (msg.build(), allowed_mentions)
     } else {
         let ping_role = if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
             Some(RoleId::new(640750480246571014)) // @Standard
@@ -5439,7 +5436,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
         msg.push("race starting ");
         msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
         msg.push(": ");
-        cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await.to_racetime()?;
+        let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await.to_racetime()?;
         match room_url {
             Ok(room_url) => {
                 msg.push(' ');
@@ -5459,9 +5456,9 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                 cal_event.race.notified = true;
             },
         }
-        msg.build()
+        (msg.build(), allowed_mentions)
     };
-    Ok(Some((is_room_url, msg)))
+    Ok(Some((is_room_url, msg, allowed_mentions)))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -5648,7 +5645,7 @@ async fn create_rooms(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) 
                     let mut transaction = global.db_pool.begin().await?;
                     for mut cal_event in cal::Event::rooms_to_open(&mut transaction, &global.http_client).await? {
                         let event = cal_event.race.event(&mut transaction).await?;
-                        if let Some((is_room_url, msg)) = create_room(&mut transaction, &global, &racetime_host_info(), &mut cal_event, &event).await? {
+                        if let Some((is_room_url, msg, allowed_mentions)) = create_room(&mut transaction, &global, &racetime_host_info(), &mut cal_event, &event).await? {
                             let ctx = discord_ctx!(global);
                             if is_room_url && cal_event.is_private_async_part() {
                                 let msg = match cal_event.race.entrants {
@@ -5670,14 +5667,22 @@ async fn create_rooms(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) 
                                 }
                             } else if !cal_event.is_private_async_part() && let Some(channel) = event.discord_race_room_channel {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(ctx, &msg).await?;
+                                    thread.send_message(ctx, {
+                                        let mut msg = CreateMessage::default().content(&msg);
+                                        if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                        msg
+                                    }).await?;
                                     channel.send_message(ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
                                 } else {
                                     channel.say(ctx, msg).await?;
                                 }
                             } else {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(ctx, msg).await?;
+                                    thread.send_message(ctx, {
+                                        let mut msg = CreateMessage::default().content(msg);
+                                        if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                        msg
+                                    }).await?;
                                 } else if let Some(channel) = event.discord_organizer_channel {
                                     channel.say(ctx, msg).await?;
                                 } else {

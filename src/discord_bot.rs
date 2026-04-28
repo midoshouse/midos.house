@@ -2,7 +2,6 @@ use {
     serenity::all::{
         CacheHttp,
         Content,
-        CreateAllowedMentions,
         CreateButton,
         CreateCommand,
         CreateCommandOption,
@@ -1279,9 +1278,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                 )
                                             };
                                             lock!(new_room_lock = global.new_room_lock; {
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
+                                                if let Some((_, msg, allowed_mentions)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
                                                     if let Some(channel) = event.discord_race_room_channel {
-                                                        channel.say(ctx, &msg).await?;
+                                                        channel.send_message(ctx, {
+                                                            let mut msg = CreateMessage::default().content(&msg);
+                                                            if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                                            msg
+                                                        }).await?;
                                                     }
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
@@ -1664,9 +1667,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                         )
                                                     };
                                                     lock!(new_room_lock = global.new_room_lock; {
-                                                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
+                                                        if let Some((_, msg, allowed_mentions)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
                                                             if let Some(channel) = event.discord_race_room_channel {
-                                                                channel.say(ctx, &msg).await?;
+                                                                channel.send_message(ctx, {
+                                                                    let mut msg = CreateMessage::default().content(&msg);
+                                                                    if let Some(allowed_mentions) = allowed_mentions { msg = msg.allowed_mentions(allowed_mentions) }
+                                                                    msg
+                                                                }).await?;
                                                             }
                                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                                 .ephemeral(false)
@@ -1885,7 +1892,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                         )
                                                     };
                                                     lock!(new_room_lock = global.new_room_lock; {
-                                                        let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
+                                                        let should_post_regular_response = if let Some((is_room_url, mut msg, _)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, &mut cal_event, &event).await? {
                                                             if is_room_url && cal_event.is_private_async_part() {
                                                                 msg = match cal_event.race.entrants {
                                                                     Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),

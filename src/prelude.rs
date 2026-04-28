@@ -151,6 +151,7 @@ pub(crate) use {
     serde_with::serde_as,
     serenity::{
         all::{
+            CreateAllowedMentions,
             Context as DiscordCtx,
             MessageBuilder,
         },

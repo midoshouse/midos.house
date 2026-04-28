@@ -114,6 +114,15 @@ impl Entrant {
         })
     }
 
+    pub(crate) async fn allowed_mentions(&self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>) -> sqlx::Result<CreateAllowedMentions> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.allowed_mentions(transaction, guild).await?,
+            Self::MidosHouseTeamMember { team, member } => team.allowed_mentions(transaction, guild).await?.users(member.discord.as_ref().map(|discord| discord.id)),
+            Self::Discord { id,  .. } => CreateAllowedMentions::new().users(iter::once(id)),
+            Self::Named { .. } => CreateAllowedMentions::new(),
+        })
+    }
+
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, running_text).await?,
@@ -1737,8 +1746,8 @@ impl Event {
         })
     }
 
-    pub(crate) async fn format_discord(&self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, language: Language, msg: &mut MessageBuilder) -> sqlx::Result<()> {
-        if let French = language
+    pub(crate) async fn format_discord(&self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, language: Language, msg: &mut MessageBuilder) -> sqlx::Result<Option<CreateAllowedMentions>> {
+        Ok(if let French = language
             && let (Some(phase), Some(round)) = (self.race.phase.as_ref(), self.race.round.as_ref())
             && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", self.race.series as _, &self.race.event, phase, round).fetch_optional(&mut **transaction).await?
             && self.race.game.is_none()
@@ -1771,6 +1780,7 @@ impl Event {
                     msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
                 }
             }
+            None //TODO adjust for asyncs
         } else {
             let info_prefix = match (&self.race.phase, &self.race.round) {
                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
@@ -1778,16 +1788,20 @@ impl Event {
                 (None, Some(round)) => Some(round.clone()),
                 (None, None) => None,
             };
-            match self.race.entrants {
-                Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
-                    msg.push_safe(prefix);
-                },
+            let allowed_mentions = match self.race.entrants {
+                Entrants::Open | Entrants::Count { .. } => {
+                    if let Some(prefix) = info_prefix {
+                        msg.push_safe(prefix);
+                    }
+                    None
+                }
                 Entrants::Named(ref entrants) => {
                     if let Some(prefix) = info_prefix {
                         msg.push_safe(prefix);
                         msg.push(": ");
                     }
                     msg.push_safe(entrants);
+                    None
                 }
                 Entrants::Two([ref team1, ref team2]) => {
                     if let Some(prefix) = info_prefix {
@@ -1798,18 +1812,21 @@ impl Event {
                                 msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
+                                None
                             }
                             EventKind::Async1 => {
                                 msg.push(" (async): ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
+                                Some(team1.allowed_mentions(transaction, guild).await?)
                             }
                             EventKind::Async2 => {
                                 msg.push(" (async): ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
+                                Some(team2.allowed_mentions(transaction, guild).await?)
                             }
                             EventKind::Async3 => unreachable!(),
                         }
@@ -1818,6 +1835,7 @@ impl Event {
                         msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                         msg.push(" vs ");
                         msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
+                        None
                     }
                 }
                 Entrants::Three([ref team1, ref team2, ref team3]) => {
@@ -1831,6 +1849,7 @@ impl Event {
                                 msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
+                                None
                             }
                             EventKind::Async1 => {
                                 msg.push(" (async): ");
@@ -1839,6 +1858,7 @@ impl Event {
                                 msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
+                                Some(team1.allowed_mentions(transaction, guild).await?)
                             }
                             EventKind::Async2 => {
                                 msg.push(" (async): ");
@@ -1847,6 +1867,7 @@ impl Event {
                                 msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
+                                Some(team2.allowed_mentions(transaction, guild).await?)
                             }
                             EventKind::Async3 => {
                                 msg.push(" (async): ");
@@ -1855,6 +1876,7 @@ impl Event {
                                 msg.mention_entrant_long(&mut *transaction, guild, team1).await?;
                                 msg.push(" vs ");
                                 msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
+                                Some(team3.allowed_mentions(transaction, guild).await?)
                             }
                         }
                     } else {
@@ -1864,15 +1886,16 @@ impl Event {
                         msg.mention_entrant_long(&mut *transaction, guild, team2).await?;
                         msg.push(" vs ");
                         msg.mention_entrant_long(&mut *transaction, guild, team3).await?;
+                        None
                     }
                 }
-            }
+            };
             if let Some(game) = self.race.game {
                 msg.push(", game ");
                 msg.push(game.to_string());
             }
-        }
-        Ok(())
+            allowed_mentions
+        })
     }
 }
 
