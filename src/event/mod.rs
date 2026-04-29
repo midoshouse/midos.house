@@ -2892,7 +2892,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                         return Ok(None)
                     }
                 };
-                let response = global.http_client
+                match global.http_client
                     .post("https://triforceblitz.com/api/v1/seeds")
                     .bearer_auth(&global.config.tfb_api_key)
                     .json(&tfb::SeedRequest {
@@ -2904,8 +2904,22 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     .timeout(Duration::from_secs(5 * 60))
                     .send().await?
                     .detailed_error_for_status().await?
-                    .json_with_text_in_error::<tfb::SeedResponse>().await?;
-                RedirectOrContent::Redirect(Redirect::to(response.seed_url.to_string()))
+                    .json_with_text_in_error::<tfb::SeedResponse>().await?
+                {
+                    tfb::SeedResponse::Ready { seed_url, .. } => RedirectOrContent::Redirect(Redirect::to(seed_url.to_string())),
+                    tfb::SeedResponse::Failed { generation_error } => {
+                        eprintln!("rolling TFB seed failed, error message:\n{generation_error}");
+                        let content = html! {
+                            : data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
+                            p {
+                                : "Sorry, the seed could not be rolled because the randomizer reported an error. Please reload this page to try again. If this error persists, please report it to ";
+                                : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
+                                : ".";
+                            }
+                        };
+                        RedirectOrContent::Content(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)
+                    }
+                }
             } else {
                 let Some((rando_version, mut settings, bingo_passphrase)) = (if let Some(sco_format) = sco_format {
                     sco_format.single_settings(global, Some(&format!("{} Practice: {}", data.display_name, sco_format.display_name()))).await?.map(|(rando_version, settings, bingo_passphrase)| (rando_version, Cow::Owned(settings), bingo_passphrase))

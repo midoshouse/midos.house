@@ -30,11 +30,17 @@ pub(crate) struct SeedRequest {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct SeedResponse {
-    pub(crate) id: Uuid,
-    pub(crate) hash_icons: [HashIcon; 5],
-    pub(crate) seed_password: Option<[OcarinaNote; 6]>,
-    pub(crate) seed_url: Url,
+#[serde(tag = "generation_status", rename_all = "UPPERCASE")]
+pub(crate) enum SeedResponse {
+    Ready {
+        id: Uuid,
+        hash_icons: [HashIcon; 5],
+        seed_password: Option<[OcarinaNote; 6]>,
+        seed_url: Url,
+    },
+    Failed {
+        generation_error: String,
+    },
 }
 
 #[derive(Deserialize)]

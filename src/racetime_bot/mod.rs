@@ -2037,7 +2037,7 @@ impl GlobalState {
                 },
             };
             let mut attempts = 0;
-            let response = loop {
+            let (uuid, hash_icons, password) = loop {
                 attempts += 1;
                 let response = self.http_client
                     .post("https://triforceblitz.com/api/v1/seeds")
@@ -2047,23 +2047,29 @@ impl GlobalState {
                     .send().await?
                     .detailed_error_for_status().await;
                 match response {
-                    Ok(response) => break response,
-                    Err(wheel::Error::ResponseStatus { inner, .. }) if attempts < 3 && inner.status().is_some_and(|status| status.is_server_error()) => continue,
+                    Ok(response) => match response.json_with_text_in_error::<tfb::SeedResponse>().await? {
+                        tfb::SeedResponse::Ready { id, hash_icons, seed_password, seed_url: _ } => break (id, hash_icons, seed_password),
+                        tfb::SeedResponse::Failed { .. } if attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until) => continue,
+                        tfb::SeedResponse::Failed { generation_error } => return Err(RollError::Retries {
+                            num_retries: attempts,
+                            last_error: Some(generation_error),
+                        }),
+                    },
+                    Err(wheel::Error::ResponseStatus { inner, .. }) if (attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until)) && inner.status().is_some_and(|status| status.is_server_error()) => continue,
                     Err(e) => return Err(e.into()),
                 }
             };
-            let response = response.json_with_text_in_error::<tfb::SeedResponse>().await?;
             update_tx.send(SeedRollUpdate::Done {
                 seed: seed::Data {
-                    file_hash: Some(response.hash_icons),
-                    password: response.seed_password,
+                    file_hash: Some(hash_icons),
                     bingo: None,
                     files: Some(seed::Files::TriforceBlitz {
                         is_dev: false,
-                        uuid: response.id,
                         scheduled_spoiler_unlock: None,
+                        uuid,
                     }),
                     progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
+                    password,
                 },
                 rsl_preset: None,
                 unlock_spoiler_log,
