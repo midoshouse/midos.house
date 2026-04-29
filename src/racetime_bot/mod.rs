@@ -5072,12 +5072,12 @@ impl RaceHandler<GlobalState> for Handler {
                                                 msg.push("post the announcement in ");
                                                 msg.mention(&results_channel);
                                             }
-                                            match cal_event.race.startgg_set_url() {
-                                                Ok(Some(startgg_set_url)) => {
+                                            match cal_event.race.startgg_report_url() {
+                                                Ok(Some(startgg_report_url)) => {
                                                     if event.discord_race_results_channel.is_some() {
                                                         msg.push(" and ");
                                                     }
-                                                    msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
+                                                    msg.push_named_link_no_preview("report the result on start.gg", startgg_report_url);
                                                 }
                                                 Ok(None) => {}
                                                 Err(_) => {

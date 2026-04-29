@@ -227,11 +227,11 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     msg.push("post the announcement in ");
                     msg.mention(&results_channel);
                 }
-                if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                if let Some(startgg_report_url) = cal_event.race.startgg_report_url().to_racetime()? {
                     if event.discord_race_results_channel.is_some() {
                         msg.push(" and ");
                     }
-                    msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
+                    msg.push_named_link_no_preview("report the result on start.gg", startgg_report_url);
                 }
                 msg.push(" after adjusting the times");
             }
@@ -566,11 +566,11 @@ impl Handler {
                         msg.push("post the announcement in ");
                         msg.mention(&results_channel);
                     }
-                    if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                    if let Some(startgg_report_url) = cal_event.race.startgg_report_url().to_racetime()? {
                         if event.discord_race_results_channel.is_some() {
                             msg.push(" and ");
                         }
-                        msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
+                        msg.push_named_link_no_preview("report the result on start.gg", startgg_report_url);
                     }
                     msg.push(" after adjusting the times");
                 }
@@ -590,11 +590,11 @@ impl Handler {
                         msg.push("post the announcement in ");
                         msg.mention(&results_channel);
                     }
-                    if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                    if let Some(startgg_report_url) = cal_event.race.startgg_report_url().to_racetime()? {
                         if event.discord_race_results_channel.is_some() {
                             msg.push(" and ");
                         }
-                        msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
+                        msg.push_named_link_no_preview("report the result on start.gg", startgg_report_url);
                     }
                     msg.push(" after adjusting the times");
                 }

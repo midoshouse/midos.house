@@ -982,6 +982,14 @@ impl Race {
         })
     }
 
+    pub(crate) fn startgg_report_url(&self) -> Result<Option<Url>, url::ParseError> {
+        Ok(if let Source::StartGG { ref event, set: startgg::ID(ref set), .. } = self.source {
+            Some(format!("https://start.gg/{event}/set/{set}/report").parse()?)
+        } else {
+            None
+        })
+    }
+
     pub(crate) fn cal_events(&self) -> impl Iterator<Item = Event> + Send + use<> {
         match self.schedule {
             RaceSchedule::Unscheduled => Box::new(iter::empty()) as Box<dyn Iterator<Item = Event> + Send>,
