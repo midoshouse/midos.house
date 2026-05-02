@@ -649,7 +649,7 @@ impl Race {
         };
 
         macro_rules! update_end {
-            ($var:ident, $room:ident, $query:literal) => {
+            ($var:ident, $room:ident, $team:expr, $query:literal) => {
                 let $var = if let Some(end) = row.$var {
                     Some(end)
                 } else if let Some(ref room) = row.$room {
@@ -662,16 +662,19 @@ impl Race {
                         sqlx::query!($query, end, id as _).execute(&mut **transaction).await?;
                     }
                     end
+                } else if let Some(team) = $team && let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2 AND submitted IS NOT NULL"#, id as _, team as _).fetch_optional(&mut **transaction).await? {
+                    sqlx::query!($query, submitted, id as _).execute(&mut **transaction).await?;
+                    Some(submitted)
                 } else {
                     None
                 };
             };
         }
 
-        update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE id = $2");
-        update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
-        update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
-        update_end!(async_end3, async_room3, "UPDATE races SET async_end3 = $1 WHERE id = $2");
+        update_end!(end_time, room, None::<Id<Teams>>, "UPDATE races SET end_time = $1 WHERE id = $2");
+        update_end!(async_end1, async_room1, row.team1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
+        update_end!(async_end2, async_room2, row.team2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
+        update_end!(async_end3, async_room3, row.team3, "UPDATE races SET async_end3 = $1 WHERE id = $2");
         let mut mh_volunteers = sqlx::query!(r#"SELECT language AS "language: Language", volunteer AS "volunteer: Id<Users>", role AS "role: VolunteerRole" FROM race_volunteers WHERE race = $1"#, id as _).fetch(&mut **transaction);
         let mut mh_restreamers = HashMap::new();
         let mut commentators = HashMap::<_, NESet<_>>::default();

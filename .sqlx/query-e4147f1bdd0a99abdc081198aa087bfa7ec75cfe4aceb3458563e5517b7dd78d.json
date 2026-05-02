@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT submitted AS \"submitted!\" FROM race_async_teams WHERE race = $1 AND team = $2 AND submitted IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "submitted!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "e4147f1bdd0a99abdc081198aa087bfa7ec75cfe4aceb3458563e5517b7dd78d"
+}
