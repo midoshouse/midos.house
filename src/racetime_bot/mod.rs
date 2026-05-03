@@ -198,6 +198,7 @@ pub(crate) enum Goal {
     MixedPoolsS2,
     MixedPoolsS3,
     MixedPoolsS4,
+    MixedPoolsS5,
     Mq,
     MultiworldS3,
     MultiworldS4,
@@ -263,6 +264,7 @@ impl Goal {
             Self::MixedPoolsS2 => Ok((Series::MixedPools, "2")),
             Self::MixedPoolsS3 => Ok((Series::MixedPools, "3")),
             Self::MixedPoolsS4 => Ok((Series::MixedPools, "4")),
+            Self::MixedPoolsS5 => Ok((Series::MixedPools, "5")),
             Self::Mq => Ok((Series::Mq, "1")),
             Self::MultiworldS3 => Ok((Series::Multiworld, "3")),
             Self::MultiworldS4 => Ok((Series::Multiworld, "4")),
@@ -323,6 +325,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -373,6 +376,7 @@ impl Goal {
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MixedPoolsS3 => "3rd Mixed Pools Tournament",
             Self::MixedPoolsS4 => "4th Mixed Pools Tournament",
+            Self::MixedPoolsS5 => "5th Mixed Pools Tournament",
             Self::Mq => "12 MQ Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::MultiworldS4 => "4th Multiworld Tournament",
@@ -423,6 +427,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -484,6 +489,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
             | Self::Mq
             | Self::NineDaysOfSaws
             | Self::Pic7
@@ -559,6 +565,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
             | Self::SlugOpen2026 // will be overridden per format
                 => PrerollMode::Long,
         }
@@ -586,6 +593,7 @@ impl Goal {
                 | Self::MixedPoolsS2
                 | Self::MixedPoolsS3
                 | Self::MixedPoolsS4
+                | Self::MixedPoolsS5
                 | Self::Mq
                 | Self::MultiworldS3
                 | Self::MultiworldS4
@@ -639,6 +647,7 @@ impl Goal {
             Self::MixedPoolsS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17) },
             Self::MixedPoolsS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4) },
             Self::MixedPoolsS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 2, 76, 10) },
+            Self::MixedPoolsS5 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 9, 0, 42, 2) },
             Self::Mq => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::MultiworldS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 2, 205) },
             Self::MultiworldS4 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 199) },
@@ -688,6 +697,7 @@ impl Goal {
             Self::MixedPoolsS2 => Some(mp::s2_settings()),
             Self::MixedPoolsS3 => Some(mp::s3_settings()),
             Self::MixedPoolsS4 => Some(mp::s4_settings()),
+            Self::MixedPoolsS5 => Some(mp::s5_settings()),
             Self::Mq => Some(mq::s1_settings()),
             Self::MultiworldS3 => None, // settings draft
             Self::MultiworldS4 => None, // settings draft
@@ -742,6 +752,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
             | Self::Mq
             | Self::S6
             | Self::S8
@@ -932,6 +943,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
             | Self::Mq
             | Self::Pic7
             | Self::S6
@@ -2684,6 +2696,7 @@ trait SeedHandler {
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
                     | Goal::MixedPoolsS4
+                    | Goal::MixedPoolsS5
                     | Goal::Mq
                     | Goal::Pic7
                     | Goal::S6
@@ -3405,6 +3418,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::MixedPoolsS2
                             | Goal::MixedPoolsS3
                             | Goal::MixedPoolsS4
+                            | Goal::MixedPoolsS5
                             | Goal::Mq
                             | Goal::Pic7
                             | Goal::PicRs2
@@ -5025,6 +5039,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
                     | Goal::MixedPoolsS4
+                    | Goal::MixedPoolsS5
                     | Goal::Mq
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
