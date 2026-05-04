@@ -5157,7 +5157,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let ctx = ctx.clone();
                         self.cleanup_timeout = Some(tokio::spawn(async move {
                             sleep(Duration::from_secs(60 * 60)).await;
-                            if cleaned_up.load(atomic::Ordering::SeqCst) {
+                            if !cleaned_up.load(atomic::Ordering::SeqCst) {
                                 if let Some((event, cal_event)) = official_data {
                                     if let Some(organizer_channel) = event.discord_organizer_channel {
                                         let mut msg = MessageBuilder::default();
