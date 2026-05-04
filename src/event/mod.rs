@@ -1023,7 +1023,7 @@ pub(crate) enum Error {
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] PracticeFavicon(#[from] PracticeFaviconError),
-    #[error(transparent)] RaceTime(#[from] racetime::Error),
+    #[error(transparent)] RaceTime(#[from] racetime_bot::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
@@ -2556,7 +2556,7 @@ pub(crate) enum PracticeFaviconError {
 impl IsNetworkError for PracticeFaviconError {
     fn is_network_error(&self) -> bool {
         match self {
-            Self::Roll(_) => false,
+            Self::Roll(_) => false, //TODO
             Self::SlugOpenSingleSettings(e) => e.is_network_error(),
             Self::Url(_) => false,
         }
@@ -2676,7 +2676,7 @@ impl IsNetworkError for PracticeError {
             Self::Page(e) => e.is_network_error(),
             Self::ParseInt(_) => false,
             Self::RandoVersion(_) => false,
-            Self::Roll(_) => false,
+            Self::Roll(_) => false, //TODO
             Self::RslScriptPath(_) => false,
             Self::SlugOpenSingleSettings(e) => e.is_network_error(),
             Self::Sql(_) => false,

@@ -19,6 +19,14 @@
                     cargo
                 ];
             };
+            pre-commit = pkgs.mkShell {
+                packages = with pkgs; [
+                    cargo
+                    cargo-msrv
+                    clang
+                    python3
+                ];
+            };
         });
     };
 }

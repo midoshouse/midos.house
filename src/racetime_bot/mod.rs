@@ -3,8 +3,6 @@ use {
     mhstatus::OpenRoom,
     ootr_utils as rando,
     racetime::{
-        Error,
-        ResultExt as _,
         handler::{
             RaceContext,
             RaceHandler,
@@ -38,6 +36,72 @@ mod report;
 #[cfg(windows)] pub(crate) const PYTHON: &str = "py";
 
 pub(crate) const CATEGORY: &str = "ootr";
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error(transparent)] Auth(#[from] racetime::AuthError),
+    #[error(transparent)] Cal(#[from] cal::Error),
+    #[error(transparent)] Discord(#[from] discord_bot::Error),
+    #[error(transparent)] Draft(#[from] draft::Error),
+    #[error(transparent)] Edit(#[from] racetime::EditError),
+    #[error(transparent)] EventData(#[from] event::DataError),
+    #[error(transparent)] GoalFromStr(#[from] GoalFromStrError),
+    #[error(transparent)] Http(#[from] reqwest::Error),
+    #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
+    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+    #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
+    #[error(transparent)] Roll(#[from] RollError),
+    #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
+    #[error(transparent)] Send(#[from] racetime::handler::SendError),
+    #[error(transparent)] Serenity(#[from] serenity::Error),
+    #[error(transparent)] Server(#[from] racetime::handler::ServerErrors),
+    #[error(transparent)] SlugOpenSingleSettings(#[from] sco::SingleSettingsError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] StartGG(#[from] startgg::Error),
+    #[error(transparent)] StartRace(#[from] racetime::StartError),
+    #[error(transparent)] Url(#[from] url::ParseError),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("ExactlyOneError while formatting result of last async half")]
+    ExactlyOne,
+    #[error("missing field in GraphQL query response for set {0}")]
+    GraphQLQueryResponse(startgg::ID),
+    #[error("failed to determine settings for SlugCentral Open format")]
+    NoSingleSettings,
+}
+
+impl IsNetworkError for Error {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::Auth(e) => e.is_network_error(),
+            Self::Cal(e) => e.is_network_error(),
+            Self::Discord(_) => false,
+            Self::Draft(e) => e.is_network_error(),
+            Self::Edit(e) => e.is_network_error(),
+            Self::EventData(_) => false,
+            Self::GoalFromStr(_) => false,
+            Self::Http(e) => e.is_network_error(),
+            Self::Json(_) => false,
+            Self::OotrWeb(e) => e.is_network_error(),
+            Self::ParseInt(_) => false,
+            Self::PgInterval(_) => false,
+            Self::Roll(_) => false, //TODO
+            Self::SeedData(e) => e.is_network_error(),
+            Self::Send(e) => e.is_network_error(),
+            Self::Serenity(_) => false,
+            Self::SlugOpenSingleSettings(e) => e.is_network_error(),
+            Self::Sql(_) => false,
+            Self::StartGG(e) => e.is_network_error(),
+            Self::StartRace(e) => e.is_network_error(),
+            Self::Url(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+            Self::ExactlyOne => false,
+            Self::GraphQLQueryResponse(_) => false,
+            Self::NoSingleSettings => false,
+            Self::Server(_) => false,
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ParseUserError {
@@ -977,7 +1041,7 @@ impl Goal {
                         progression_spoiler,
                         bingosync_url,
                         bingo_passphrase
-                    "#, self.as_str(), no_password).fetch_optional(&mut **transaction).await.to_racetime()? {
+                    "#, self.as_str(), no_password).fetch_optional(&mut **transaction).await? {
                         let _ = global.seed_cache_tx.send(());
                         SeedCommandParseResult::QueueExisting {
                             data: seed::Data::from_db(
@@ -1048,7 +1112,7 @@ impl Goal {
                         went_first: None,
                         skipped_bans: 0,
                         settings: HashMap::default(),
-                    }.complete_randomly(draft::Kind::S7).await.to_racetime()?,
+                    }.complete_randomly(draft::Kind::S7).await?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
                         kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
@@ -1126,7 +1190,7 @@ impl Goal {
                         went_first: None,
                         skipped_bans: 0,
                         settings: HashMap::default(),
-                    }.complete_randomly(self.draft_kind().expect("multiworld tournament goal should have a draft kind")).await.to_racetime()?,
+                    }.complete_randomly(self.draft_kind().expect("multiworld tournament goal should have a draft kind")).await?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
                         kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
@@ -1385,11 +1449,7 @@ impl Goal {
                 let Ok(format) = format.parse::<sco::Format>() else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that SlugCentral Open format" }) };
                 match format.draft_kind() {
                     None => {
-                        #[derive(Debug, thiserror::Error)]
-                        #[error("failed to determine settings for SlugCentral Open format")]
-                        struct NoSingleSettings;
-
-                        let (rando_version, settings, bingo_passphrase) = format.single_settings(global, Some(&format!("{} Practice: {}", self.as_str(), format.display_name()))).await.to_racetime()?.ok_or(NoSingleSettings).to_racetime()?;
+                        let (rando_version, settings, bingo_passphrase) = format.single_settings(global, Some(&format!("{} Practice: {}", self.as_str(), format.display_name()))).await?.ok_or(Error::NoSingleSettings)?;
                         SeedCommandParseResult::Regular {
                             rando_version_override: Some(rando_version),
                             settings,
@@ -1427,7 +1487,7 @@ impl Goal {
                                     Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
                                     Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
                                 ],
-                            }.complete_randomly(kind).await.to_racetime()?,
+                            }.complete_randomly(kind).await?,
                             [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
                                 new_state: Draft {
                                     high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
@@ -1539,7 +1599,7 @@ impl Goal {
                             Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
                             Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
                         ],
-                    }.complete_randomly(self.draft_kind().unwrap()).await.to_racetime()?,
+                    }.complete_randomly(self.draft_kind().unwrap()).await?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
                         kind: self.draft_kind().expect("missing draft kind"),
                         new_state: Draft {
@@ -1620,8 +1680,8 @@ impl Goal {
                         .get("https://triforceblitz.com/api/v1/seed-of-the-day/current")
                         .bearer_auth(&global.config.tfb_api_key)
                         .send().await?
-                        .detailed_error_for_status().await.to_racetime()?
-                        .json_with_text_in_error::<tfb::SotdResponse>().await.to_racetime()?;
+                        .detailed_error_for_status().await?
+                        .json_with_text_in_error::<tfb::SotdResponse>().await?;
                     if let Some(entry) = response.entries.into_iter().find(|entry| entry.preset_key == preset_key) {
                         SeedCommandParseResult::QueueExisting { data: seed::Data {
                             file_hash: Some(entry.seed.hash_icons),
@@ -2241,7 +2301,7 @@ pub(crate) enum RollError {
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
-    #[cfg(unix)] #[error(transparent)] RaceTime(#[from] Error),
+    #[cfg(unix)] #[error(transparent)] RaceTime(#[from] Box<Error>),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] RslScriptPath(#[from] rsl::ScriptPathError),
@@ -2290,6 +2350,12 @@ pub(crate) enum RollError {
     #[cfg(windows)]
     #[error("failed to access user directories")]
     UserDirs,
+}
+
+impl From<Error> for RollError {
+    fn from(e: Error) -> Self {
+        Self::RaceTime(Box::new(e))
+    }
 }
 
 impl From<mpsc::error::SendError<SeedRollUpdate>> for RollError {
@@ -2359,57 +2425,57 @@ impl SeedRollUpdate {
                         progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
                     }));
                     if unlock_spoiler_log == UnlockSpoilerLog::Now && locked_spoiler_log_path.is_some() {
-                        fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
+                        fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                         *locked_spoiler_log_path = None;
                     }
                 }
-                let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                let extra = seed.extra(Utc::now()).await?;
                 if let Some(OfficialRaceData { cal_event, .. }) = official_data {
                     match seed.files.as_ref().expect("received seed with no files") {
                         seed::Files::MidosHouse { file_stem, .. } => {
                             sqlx::query!(
                                 "UPDATE races SET file_stem = $1 WHERE id = $2",
                                 file_stem, cal_event.race.id as _,
-                            ).execute(db_pool).await.to_racetime()?;
+                            ).execute(db_pool).await?;
                         }
                         seed::Files::OotrWeb { id, gen_time, file_stem } => {
                             sqlx::query!(
                                 "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3 WHERE id = $4",
                                 *id as i64, gen_time, file_stem, cal_event.race.id as _,
-                            ).execute(db_pool).await.to_racetime()?;
+                            ).execute(db_pool).await?;
                         }
                         seed::Files::TriforceBlitz { is_dev, uuid, scheduled_spoiler_unlock: _ } => {
                             sqlx::query!(
                                 "UPDATE races SET is_tfb_dev = $1, tfb_uuid = $2 WHERE id = $3",
                                 is_dev, uuid, cal_event.race.id as _,
-                            ).execute(db_pool).await.to_racetime()?;
+                            ).execute(db_pool).await?;
                         }
                     }
                     if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
                         sqlx::query!(
                             "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
                             hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, cal_event.race.id as _,
-                        ).execute(db_pool).await.to_racetime()?;
+                        ).execute(db_pool).await?;
                         if let Some(preset) = rsl_preset {
                             match seed.files.as_ref().expect("received seed with no files") {
                                 seed::Files::MidosHouse { file_stem, .. } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                                         format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
-                                    ).execute(db_pool).await.to_racetime()?;
+                                    ).execute(db_pool).await?;
                                 }
                                 seed::Files::OotrWeb { id, gen_time, file_stem } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                                         format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
-                                    ).execute(db_pool).await.to_racetime()?;
+                                    ).execute(db_pool).await?;
                                 }
                                 seed::Files::TriforceBlitz { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
                             }
                         }
                     }
                     if let Some(password) = extra.password {
-                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.into_iter().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await.to_racetime()?;
+                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.into_iter().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await?;
                     }
                 }
                 let seed_url = match seed.files.as_ref().expect("received seed with no files") {
@@ -2447,11 +2513,11 @@ impl SeedRollUpdate {
                 set_bot_raceinfo(ctx, &seed, rsl_preset, false).await?;
                 if let Some(OfficialRaceData { cal_event, event, restreams, .. }) = official_data {
                     // send multiworld rooms
-                    let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                    let mut transaction = ctx.global_state.db_pool.begin().await?;
                     let mut mw_rooms_created = 0;
                     for team in cal_event.active_teams() {
                         if let Some(mw::Impl::MidosHouse) = team.mw_impl {
-                            let members = team.members_roles(&mut transaction).await.to_racetime()?;
+                            let members = team.members_roles(&mut transaction).await?;
                             let mut reply_to = String::default();
                             for (member, role) in &members {
                                 if event.team_config.role_is_racing(*role) {
@@ -2469,7 +2535,7 @@ impl SeedRollUpdate {
                             if let Some(hash) = extra.file_hash {
                                 let mw_room_name = cal_event.race.mw_room_name(event, team.id);
                                 let tracker_room_name = restreams.values().any(|restream| restream.restreamer_racetime_id.is_some()).then(|| Alphanumeric.sample_string(&mut rng(), 32));
-                                crate::mw::create_room(&mw_room_name, hash, members.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).map(|(member, _)| member.id), tracker_room_name.as_deref()).await.to_racetime()?;
+                                crate::mw::create_room(&mw_room_name, hash, members.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).map(|(member, _)| member.id), tracker_room_name.as_deref()).await?;
                                 ctx.say(format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;
                                 if let Some(tracker_room_name) = tracker_room_name {
                                     let mut all_notified = true;
@@ -2481,7 +2547,7 @@ impl SeedRollUpdate {
                                         }
                                     }
                                     if !all_notified {
-                                        FENHL.create_dm_channel(discord_ctx!(ctx.global_state)).await.to_racetime()?.say(discord_ctx!(ctx.global_state), format!("auto-tracker room for {reply_to}: `{tracker_room_name}`")).await.to_racetime()?;
+                                        FENHL.create_dm_channel(discord_ctx!(ctx.global_state)).await?.say(discord_ctx!(ctx.global_state), format!("auto-tracker room for {reply_to}: `{tracker_room_name}`")).await?;
                                     }
                                 }
                                 mw_rooms_created += 1;
@@ -2493,7 +2559,7 @@ impl SeedRollUpdate {
                     if mw_rooms_created > 0 {
                         ctx.say(format!("You can find your room{} at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen.", if mw_rooms_created > 1 { "s" } else { "" })).await?;
                     }
-                    transaction.commit().await.to_racetime()?;
+                    transaction.commit().await?;
                 }
                 lock!(@write state = state; *state = RaceState::Rolled(seed));
             }
@@ -2522,7 +2588,7 @@ impl SeedRollUpdate {
             Self::Error(e) => {
                 eprintln!("seed roll error in https://{}{}: {e} ({e:?})", racetime_host(), ctx.data().await.url);
                 if let Environment::Production = Environment::default() {
-                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("seed roll error in https://{}{}: {e} ({e:?})", racetime_host(), ctx.data().await.url))).await.to_racetime()?;
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("seed roll error in https://{}{}: {e} ({e:?})", racetime_host(), ctx.data().await.url))).await?;
                 }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl and if necessary roll the seed manually.").await?;
             }
@@ -2586,7 +2652,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
 }
 
 async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
-    let extra = seed.extra(Utc::now()).await.to_racetime()?;
+    let extra = seed.extra(Utc::now()).await?;
     ctx.set_bot_raceinfo(&format!(
         "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}",
         rsl_preset = rsl_preset.map(|preset| format!("{}\n", preset.race_info())).unwrap_or_default(),
@@ -2600,7 +2666,8 @@ async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl
             seed::Files::TriforceBlitz { is_dev: false, uuid, .. } => format!("https://triforceblitz.com/seed/{uuid}"),
             seed::Files::TriforceBlitz { is_dev: true, uuid, .. } => format!("https://dev.triforceblitz.com/seeds/{uuid}"),
         },
-    )).await
+    )).await?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -2752,11 +2819,11 @@ trait SeedHandler {
                     }
                     Goal::SlugOpen2026 => {
                         let format = sco::Format::for_race(race).expect("SlugCentral Open race should have format set");
-                        let (rando_version, settings, bingo_passphrase) = format.single_settings(ctx.global(), Some(bingo_room_name)).await.to_racetime()?.expect("should have draft state set");
+                        let (rando_version, settings, bingo_passphrase) = format.single_settings(ctx.global(), Some(bingo_room_name)).await?.expect("should have draft state set");
                         self.roll_seed(ctx, format.preroll_seeds(), rando_version, settings, serde_json::Map::default(), bingo_passphrase, goal.unlock_spoiler_log(true, false), English, format.article(), format!("{} seed", format.display_name())).await
                     }
                     Goal::StandardRuleset => {
-                        let (version, settings) = event.single_settings().await.to_racetime()?.expect("no settings configured Standard event");
+                        let (version, settings) = event.single_settings().await?.expect("no settings configured Standard event");
                         let mut settings = settings.into_owned();
                         settings.insert(format!("password_lock"), json!(true));
                         self.roll_seed(ctx, goal.preroll_seeds(), version, settings, serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, "an", match &*event.event {
@@ -2881,10 +2948,10 @@ impl Handler {
     }
 
     async fn send_settings(&self, ctx: &RaceContext<GlobalState>, preface: &str, reply_to: &str) -> Result<(), Error> {
-        let goal = self.goal(ctx).await.to_racetime()?;
+        let goal = self.goal(ctx).await?;
         if let Some(draft_kind) = self.draft_kind(goal).await {
             let available_settings = lock!(@read state = self.race_state; if let RaceState::Draft { state: ref draft, .. } = *state {
-                match draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
+                match draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await?.kind {
                     draft::StepKind::GoFirst => None,
                     draft::StepKind::Ban { available_settings, .. } => Some(available_settings.all().map(|setting| setting.description).collect()),
                     draft::StepKind::Pick { available_choices, .. } => Some(available_choices.all().map(|setting| setting.description).collect()),
@@ -2926,7 +2993,7 @@ impl Handler {
     }
 
     async fn draft_action(&self, ctx: &RaceContext<GlobalState>, sender: Option<&UserData>, action: draft::Action) -> Result<(), Error> {
-        let goal = self.goal(ctx).await.to_racetime()?;
+        let goal = self.goal(ctx).await?;
         let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
             if let Some(draft_kind) = self.draft_kind(goal).await {
@@ -2940,22 +3007,22 @@ impl Handler {
                     },
                     RaceState::Draft { state: ref mut draft, .. } => {
                         let is_active_team = if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
-                            let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                            let mut transaction = ctx.global_state.db_pool.begin().await?;
                             let is_active_team = if let Some(sender) = sender
-                                && let Some(user) = User::from_racetime(&mut *transaction, &sender.id).await.to_racetime()?
-                                && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?
+                                && let Some(user) = User::from_racetime(&mut *transaction, &sender.id).await?
+                                && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await?
                             {
-                                draft.is_active_team(draft_kind, cal_event.race.game, team.id).await.to_racetime()?
+                                draft.is_active_team(draft_kind, cal_event.race.game, team.id).await?
                             } else {
                                 false
                             };
-                            transaction.commit().await.to_racetime()?;
+                            transaction.commit().await?;
                             is_active_team
                         } else {
                             true
                         };
                         if is_active_team {
-                            match draft.apply(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
+                            match draft.apply(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await? {
                                 Ok(_) => self.advance_draft(ctx, &state).await?,
                                 Err(mut error_msg) => {
                                     unlock!();
@@ -3052,12 +3119,12 @@ impl Handler {
                         match files {
                             seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
                                 lock!(@write seed_metadata = ctx.global_state.seed_metadata; seed_metadata.remove(&**file_stem));
-                                fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
+                                fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                             },
                             seed::Files::OotrWeb { id, file_stem, .. } => {
-                                ctx.global_state.ootr_api_client.unlock_spoiler_log(*id).await.to_racetime()?;
-                                let spoiler_log = ctx.global_state.ootr_api_client.seed_details(*id).await.to_racetime()?.spoiler_log;
-                                fs::write(Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json")), &spoiler_log).await.to_racetime()?;
+                                ctx.global_state.ootr_api_client.unlock_spoiler_log(*id).await?;
+                                let spoiler_log = ctx.global_state.ootr_api_client.seed_details(*id).await?.spoiler_log;
+                                fs::write(Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json")), &spoiler_log).await?;
                             }
                             seed::Files::TriforceBlitz { .. } => {} // automatically unlocked by triforceblitz.com
                         }
@@ -3108,9 +3175,9 @@ impl SeedHandler for Handler {
     }
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>, state: &RaceState) -> Result<(), Error> {
-        let goal = self.goal(ctx).await.to_racetime()?;
+        let goal = self.goal(ctx).await?;
         let RaceState::Draft { kind, state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
-        let step = draft.next_step(kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
+        let step = draft.next_step(kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await?;
         match step.kind {
             draft::StepKind::Done(settings) => {
                 let (article, description) = if let French = goal.language() {
@@ -3137,6 +3204,8 @@ impl SeedHandler for Handler {
 
 #[async_trait]
 impl RaceHandler<GlobalState> for Handler {
+    type Error = Error;
+
     async fn should_handle(race_data: &RaceData, global: Arc<GlobalState>) -> Result<bool, Error> {
         Ok(Self::should_handle_inner(race_data, global, None).await)
     }
@@ -3145,7 +3214,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(Some(self))).await)
     }
 
-    async fn task(global: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+    async fn task(global: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<Result<(), racetime::bot::HandleError<Error>>>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
             let res = join_handle.await;
@@ -3161,10 +3230,19 @@ impl RaceHandler<GlobalState> for Handler {
                         clean_shutdown.updates.send(CleanShutdownUpdate::Empty).allow_unreceived();
                     }
                 });
-                if res.is_err() {
-                    eprintln!("race handler for https://{}{} panicked", racetime_host(), data.url);
-                    if let Environment::Production = Environment::default() {
-                        let _ = wheel::night_report(&format!("{}/error", night_path()), Some(&format!("race handler for https://{}{} panicked", racetime_host(), data.url))).await;
+                match res {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        eprintln!("race handler for https://{}{} errored: {e}\ndebug info: {e:?}", racetime_host(), data.url);
+                        if let Environment::Production = Environment::default() {
+                            let _ = wheel::night_report(&format!("{}/error", night_path()), Some(&format!("race handler for https://{}{} errored: {e}\ndebug info: {e:?}", racetime_host(), data.url))).await;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("race handler for https://{}{} panicked: {e}\ndebug info: {e:?}", racetime_host(), data.url);
+                        if let Environment::Production = Environment::default() {
+                            let _ = wheel::night_report(&format!("{}/error", night_path()), Some(&format!("race handler for https://{}{} panicked: {e}\ndebug info: {e:?}", racetime_host(), data.url))).await;
+                        }
                     }
                 }
             });
@@ -3174,13 +3252,13 @@ impl RaceHandler<GlobalState> for Handler {
 
     async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
         let data = ctx.data().await;
-        let goal = data.goal.name.parse::<Goal>().to_racetime()?;
+        let goal = data.goal.name.parse::<Goal>()?;
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = lock!(new_room_lock = ctx.global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
-            let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-            let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", racetime_host(), ctx.data().await.url).parse()?).await.to_racetime()? {
-                let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
+            let mut transaction = ctx.global_state.db_pool.begin().await?;
+            let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", racetime_host(), ctx.data().await.url).parse()?).await? {
+                let event = cal_event.race.event(&mut transaction).await?;
                 let mut entrants = Vec::default();
-                for member in cal_event.racetime_users_to_invite(&mut transaction, discord_ctx!(ctx.global_state), &event).await.to_racetime()? {
+                for member in cal_event.racetime_users_to_invite(&mut transaction, discord_ctx!(ctx.global_state), &event).await? {
                     match member {
                         Ok(member) => {
                             if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == member)) {
@@ -3206,7 +3284,7 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&if let French = goal.language()
                     && !event.is_single_race()
                     && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
-                    && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?
+                    && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?
                 {
                     format!(
                         "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : {}",
@@ -3232,26 +3310,26 @@ impl RaceHandler<GlobalState> for Handler {
                 }, true, Vec::default()).await?;
                 let (race_state, high_seed_name, low_seed_name) = if let Some(kind) = cal_event.race.draft_kind(&event) {
                     let state = cal_event.race.draft.clone().expect("missing draft state");
-                    let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
+                    let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } = state.next_step(kind, cal_event.race.game, &mut draft::MessageContext::None).await?.kind {
                         // we just need to roll the seed so player/team names are no longer required
                         [format!("Team A"), format!("Team B")]
                     } else {
                         match cal_event.race.entrants {
                             Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => [format!("Team A"), format!("Team B")],
                             Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                let name1 = if let Ok(member) = team1.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one()
+                                let name1 = if let Ok(member) = team1.members(&mut transaction).await?.into_iter().exactly_one()
                                     && let Some(ref racetime) = member.racetime
                                 {
                                     racetime.display_name.clone()
                                 } else {
-                                    team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned)
+                                    team1.name(&mut transaction).await?.map_or_else(|| format!("Team A"), Cow::into_owned)
                                 };
-                                let name2 = if let Ok(member) = team2.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one()
+                                let name2 = if let Ok(member) = team2.members(&mut transaction).await?.into_iter().exactly_one()
                                     && let Some(ref racetime) = member.racetime
                                 {
                                     racetime.display_name.clone()
                                 } else {
-                                    team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned)
+                                    team2.name(&mut transaction).await?.map_or_else(|| format!("Team B"), Cow::into_owned)
                                 };
                                 if team1.id == state.high_seed {
                                     [name1, name2]
@@ -3275,7 +3353,7 @@ impl RaceHandler<GlobalState> for Handler {
                     restreams.insert(video_url.clone(), RestreamState {
                         language: Some(language),
                         restreamer_racetime_id: if let Some(restreamer) = cal_event.race.restreamers.get(&language) {
-                            Some(restreamer.racetime_id(&mut transaction).await.to_racetime()?)
+                            Some(restreamer.racetime_id(&mut transaction).await?)
                         } else {
                             None
                         },
@@ -3347,7 +3425,7 @@ impl RaceHandler<GlobalState> for Handler {
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 password: None,
-                                bingo: seed::BingoData::read(file_stem).await.to_racetime()?,
+                                bingo: seed::BingoData::read(file_stem).await?,
                                 files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: None,
@@ -3356,12 +3434,12 @@ impl RaceHandler<GlobalState> for Handler {
                             });
                             break
                         } else if let Some((_, seed_id)) = regex_captures!(r"^Seed: https://ootrandomizer\.com/seed/get?id=([0-9]+)$", section) {
-                            let id = seed_id.parse().to_racetime()?;
-                            let file_stem = ctx.global_state.ootr_api_client.patch_file_stem(id).await.to_racetime()?;
+                            let id = seed_id.parse()?;
+                            let file_stem = ctx.global_state.ootr_api_client.patch_file_stem(id).await?;
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 password: None, //TODO get from API
-                                bingo: seed::BingoData::read(&file_stem).await.to_racetime()?,
+                                bingo: seed::BingoData::read(&file_stem).await?,
                                 files: Some(seed::Files::OotrWeb {
                                     gen_time: Utc::now(),
                                     file_stem: Cow::Owned(file_stem),
@@ -4268,7 +4346,7 @@ impl RaceHandler<GlobalState> for Handler {
                     false,
                 )
             };
-            transaction.commit().await.to_racetime()?;
+            transaction.commit().await?;
             new_data
         });
         let this = Self {
@@ -4343,7 +4421,7 @@ impl RaceHandler<GlobalState> for Handler {
     }
 
     async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
-        let goal = self.goal(ctx).await.to_racetime()?;
+        let goal = self.goal(ctx).await?;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
             cmd @ ("ban" | "block" | "draft" | "first" | "no" | "pick" | "second" | "skip" | "yes") => match goal.parse_draft_command(cmd, &args) {
@@ -4487,7 +4565,7 @@ impl RaceHandler<GlobalState> for Handler {
                         } else {
                             "Fair play agreement is always active in official races."
                         }).await?;
-                    } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+                    } else if !self.can_monitor(ctx, is_monitor, msg).await? {
                         ctx.say(if let French = goal.language() {
                             format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                         } else {
@@ -4513,7 +4591,7 @@ impl RaceHandler<GlobalState> for Handler {
                         } else {
                             format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")
                         }).await?;
-                    } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+                    } else if !self.can_monitor(ctx, is_monitor, msg).await? {
                         ctx.say(if let French = goal.language() {
                             format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                         } else {
@@ -4545,7 +4623,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")
                 }).await?,
             },
-            "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+            "lock" => if self.can_monitor(ctx, is_monitor, msg).await? {
                 self.locked = true;
                 ctx.say(if let French = goal.language()
                     && !self.is_official()
@@ -4561,7 +4639,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                 }).await?;
             },
-            "monitor" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+            "monitor" => if self.can_monitor(ctx, is_monitor, msg).await? {
                 let monitor = &msg.user.as_ref().expect("received !monitor command from bot").id;
                 if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *monitor)) {
                     match entrant.status.value {
@@ -4641,7 +4719,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, this command is only available for official races.")
                 }).await?;
             },
-            "restreamer" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+            "restreamer" => if self.can_monitor(ctx, is_monitor, msg).await? {
                 if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
                     if let [restream_url, restreamer] = &args[..] {
                         let restream_url = if restream_url.contains('/') {
@@ -4650,7 +4728,7 @@ impl RaceHandler<GlobalState> for Handler {
                             Url::parse(&format!("https://twitch.tv/{restream_url}"))
                         };
                         if let Ok(restream_url) = restream_url {
-                            let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                            let mut transaction = ctx.global_state.db_pool.begin().await?;
                             match parse_user(&mut transaction, &ctx.global_state.http_client, restreamer).await {
                                 Ok(restreamer_racetime_id) => {
                                     if restreams.is_empty() {
@@ -4667,7 +4745,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 }
                                 Err(e) => ctx.say(format!("Sorry {reply_to}, I couldn't parse the restreamer: {e}")).await?,
                             }
-                            transaction.commit().await.to_racetime()?;
+                            transaction.commit().await?;
                         } else {
                             ctx.say(format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
                         }
@@ -4749,15 +4827,15 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 lock!(@write state = self.race_state; match *state {
-                    RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+                    RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await? {
                         ctx.say(if let French = goal.language() {
                             format!("Désolé {reply_to}, la race est verrouillée. Seuls {} peuvent générer une seed pour cette race.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                         } else {
                             format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
                         }).await?;
                     } else {
-                        let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.eq_ignore_ascii_case("spoilerseed"), false, &args).await.to_racetime()? {
+                        let mut transaction = ctx.global_state.db_pool.begin().await?;
+                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.eq_ignore_ascii_case("spoilerseed"), false, &args).await? {
                             SeedCommandParseResult::Regular { rando_version_override, settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), rando_version_override.unwrap_or_else(|| goal.rando_version()), settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Tfb { display_name, preset, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, display_name, preset, true, unlock_spoiler_log, language, article, description).await,
@@ -4792,7 +4870,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 format!("Sorry {reply_to}, {msg}")
                             }).await?,
                         }
-                        transaction.commit().await.to_racetime()?;
+                        transaction.commit().await?;
                     },
                     RaceState::Draft { .. } => ctx.say(format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.say(format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
@@ -4818,7 +4896,7 @@ impl RaceHandler<GlobalState> for Handler {
                     "Draftable settings:"
                 }
             }, reply_to).await?),
-            "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+            "unlock" => if self.can_monitor(ctx, is_monitor, msg).await? {
                 self.locked = false;
                 ctx.say(if let French = goal.language() {
                     "Race déverrouillée. N'importe qui peut désormais générer une seed."
@@ -4843,7 +4921,7 @@ impl RaceHandler<GlobalState> for Handler {
 
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
-        let goal = self.goal(ctx).await.to_racetime()?;
+        let goal = self.goal(ctx).await?;
         if let Some(OfficialRaceData { ref event, ref restreams, ref entrants, ref mut scores, .. }) = self.official_data {
             for entrant in &data.entrants {
                 if let Some(user) = &entrant.user {
@@ -4873,14 +4951,14 @@ impl RaceHandler<GlobalState> for Handler {
         }
         if !self.start_saved {
             if let (Goal::Rsl, Some(start)) = (goal, data.started_at) {
-                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await?;
                 self.start_saved = true;
             }
         }
         match data.status.value {
             RaceStatusValue::Pending => if !self.password_sent {
                 lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
-                    let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                    let extra = seed.extra(Utc::now()).await?;
                     if let Some(password) = extra.password {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
@@ -4893,7 +4971,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     "9" => Some(ChannelId::new(1444301469011415111)),
                                     _ => {
                                         if let Environment::Production = Environment::default() {
-                                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("no password channel configured for event s/{}", event.event))).await.to_racetime()?;
+                                            wheel::night_report(&format!("{}/error", night_path()), Some(&format!("no password channel configured for event s/{}", event.event))).await?;
                                         }
                                         None
                                     }
@@ -4905,7 +4983,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     for note in password {
                                         msg.push_emoji(&ocarina_note_to_ootr_discord_emoji(note));
                                     }
-                                    channel.say(discord_ctx!(ctx.global_state), msg.build()).await.to_racetime()?;
+                                    channel.say(discord_ctx!(ctx.global_state), msg.build()).await?;
                                 }
                             }
                         }
@@ -5126,7 +5204,7 @@ impl RaceHandler<GlobalState> for Handler {
             RaceStatusValue::Cancelled => {
                 if !self.password_sent {
                     lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
-                        let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                        let extra = seed.extra(Utc::now()).await?;
                         if let Some(password) = extra.password {
                             ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password))).await?;
                             set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
@@ -5143,7 +5221,7 @@ impl RaceHandler<GlobalState> for Handler {
                             .bearer_auth(&ctx.global_state.config.league_api_key)
                             .form(&form);
                         println!("reporting cancel to League website: {:?}", serde_urlencoded::to_string(&form));
-                        request.send().await?.detailed_error_for_status().await.to_racetime()?;
+                        request.send().await?.detailed_error_for_status().await?;
                     } else {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
                             organizer_channel.say(discord_ctx!(ctx.global_state), MessageBuilder::default()
@@ -5152,13 +5230,13 @@ impl RaceHandler<GlobalState> for Handler {
                                 .push(&ctx.data().await.url)
                                 .push('>')
                                 .build()
-                            ).await.to_racetime()?;
+                            ).await?;
                         }
                     }
                 }
                 self.unlock_spoiler_log(ctx, goal).await?;
                 if let Goal::Rsl = goal {
-                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await?;
                 }
                 self.cleaned_up.store(true, atomic::Ordering::SeqCst);
             }
@@ -5176,26 +5254,26 @@ impl RaceHandler<GlobalState> for Handler {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(Error::Server(errors))
+            Err(Error::Server(racetime::handler::ServerErrors(errors)))
         }
     }
 }
 
 pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String, Option<CreateAllowedMentions>)>, Error> {
-    let room_url = match cal_event.should_create_room(&mut *transaction, event).await.to_racetime()? {
+    let room_url = match cal_event.should_create_room(&mut *transaction, event).await? {
         RaceHandleMode::None => return Ok(None),
         RaceHandleMode::Notify => Err(Cow::Borrowed("please get your equipment and report to the tournament room")),
         RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, &global.config.racetime_bot.client_id, &global.config.racetime_bot.client_secret, &global.http_client).await {
             Ok((access_token, _)) => {
                 let info_user = if let French = event.language
                     && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
-                    && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?
+                    && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?
                     && cal_event.race.game.is_none()
                     && let Some(entrants) = match cal_event.race.entrants {
                         Entrants::Open | Entrants::Count { .. } => Some(None), // no text
                         Entrants::Named(ref entrants) => Some(Some(entrants.clone())),
                         Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
-                            cal::EventKind::Normal => if let (Some(team1), Some(team2)) = (team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?) {
+                            cal::EventKind::Normal => if let (Some(team1), Some(team2)) = (team1.name(&mut *transaction, discord_ctx!(global)).await?, team2.name(&mut *transaction, discord_ctx!(global)).await?) {
                                 Some(Some(format!("{team1} vs {team2}")))
                             } else {
                                 None // no French translation available
@@ -5203,7 +5281,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                             cal::EventKind::Async1 | cal::EventKind::Async2 | cal::EventKind::Async3 => None,
                         },
                         Entrants::Three([ref team1, ref team2, ref team3]) => match cal_event.kind {
-                            cal::EventKind::Normal => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?, team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?) {
+                            cal::EventKind::Normal => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx!(global)).await?, team2.name(&mut *transaction, discord_ctx!(global)).await?, team3.name(&mut *transaction, discord_ctx!(global)).await?) {
                                 Some(Some(format!("{team1} vs {team2} vs {team3}")))
                             } else {
                                 None // no French translation available
@@ -5231,20 +5309,20 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                             cal::EventKind::Normal => format!(
                                 "{}{} vs {}",
                                 info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async1 => format!(
                                 "{} (async): {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async2 => format!(
                                 "{} (async): {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async3 => unreachable!(),
                         },
@@ -5252,30 +5330,30 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                             cal::EventKind::Normal => format!(
                                 "{}{} vs {} vs {}",
                                 info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async1 => format!(
                                 "{} (async): {} vs {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async2 => format!(
                                 "{} (async): {} vs {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                             cal::EventKind::Async3 => format!(
                                 "{} (async): {} vs {} vs {}",
                                 info_prefix.clone().unwrap_or_default(),
-                                team3.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team1.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut *transaction, discord_ctx!(global)).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                         },
                     };
@@ -5297,12 +5375,12 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                 lock!(@read extra_room_tx = global.extra_room_tx; extra_room_tx.send(race_slug).await.allow_unreceived());
                 Ok(room_url)
             }
-            Err(Error::Reqwest(e)) if e.status().is_some_and(|status| status.is_server_error()) => {
+            Err(racetime::AuthError::ResponseStatus { inner, .. }) if inner.status().is_some_and(|status| status.is_server_error()) => {
                 // racetime.gg's auth endpoint has been known to return server errors intermittently.
                 // In that case, we simply try again in the next iteration of the sleep loop.
                 return Ok(None)
             }
-            Err(e) => return Err(e),
+            Err(e) => return Err(e.into()),
         },
         RaceHandleMode::AsyncForm => {
             struct AsyncSeedHandler {
@@ -5338,7 +5416,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
 
                 async fn advance_draft(&self, global: &Arc<GlobalState>, state: &RaceState) -> Result<Self::SeedResult, Error> {
                     let RaceState::Draft { kind, state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
-                    let step = draft.next_step(kind, self.race.game, &mut draft::MessageContext::RaceTime { high_seed_name: "Team A", low_seed_name: "Team B", reply_to: "friend" }).await.to_racetime()?;
+                    let step = draft.next_step(kind, self.race.game, &mut draft::MessageContext::RaceTime { high_seed_name: "Team A", low_seed_name: "Team B", reply_to: "friend" }).await?;
                     Ok(match step.kind {
                         draft::StepKind::Done(settings) => {
                             let (article, description) = if let French = self.goal.language() {
@@ -5387,13 +5465,13 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                         SeedRollUpdate::Queued(_) | SeedRollUpdate::MovedForward(_) | SeedRollUpdate::Started => {}
                         #[cfg(unix)] SeedRollUpdate::Message(_) => {}
                         SeedRollUpdate::Done { mut seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                            let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                            let extra = seed.extra(Utc::now()).await?;
                             seed.file_hash = extra.file_hash;
                             seed.password = extra.password;
                             // reload race data in case anything changed during seed rolling
                             if !cal_event.race.has_any_room() {
                                 cal_event.race.seed = seed;
-                                cal_event.race.save(&mut *transaction).await.to_racetime()?;
+                                cal_event.race.save(&mut *transaction).await?;
                             }
                             msg = MessageBuilder::default()
                                 .push("go to ")
@@ -5429,14 +5507,14 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
     let (msg, allowed_mentions) = if let French = event.language
         && let Ok(ref room_url_fr) = room_url
         && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
-        && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4 AND display_fr IS NOT NULL) AS "exists!""#, event.series as _, &event.event, phase, round).fetch_one(&mut **transaction).await.to_racetime()?
+        && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4 AND display_fr IS NOT NULL) AS "exists!""#, event.series as _, &event.event, phase, round).fetch_one(&mut **transaction).await?
         && cal_event.race.game.is_none()
     {
         let mut msg = MessageBuilder::default();
         msg.push("La race commence ");
         msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
         msg.push(" : ");
-        let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await.to_racetime()?;
+        let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await?;
         msg.push(" <");
         msg.push(room_url_fr.as_str());
         msg.push('>');
@@ -5457,7 +5535,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
         msg.push("race starting ");
         msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
         msg.push(": ");
-        let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await.to_racetime()?;
+        let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await?;
         match room_url {
             Ok(room_url) => {
                 msg.push(' ');
@@ -5723,7 +5801,8 @@ async fn create_rooms(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) 
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum HandleRoomsError {
-    #[error(transparent)] RaceTime(#[from] Error),
+    #[error(transparent)] Auth(#[from] racetime::AuthError),
+    #[error(transparent)] Run(#[from] racetime::bot::RunError<Error>),
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
