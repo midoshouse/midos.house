@@ -685,11 +685,15 @@ impl Handler {
                                     ).fetch_all(&mut *transaction).await?;
                                     if members.iter().all(|(member_id, _)| data.iter().any(|row| row.player == *member_id)) {
                                         team_times.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), data.iter().map(|row| Ok::<_, Error>(adjust_for_breaks(row.time.map(decode_pginterval).transpose()?, breaks, restreamed))).try_collect()?);
-                                        team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::AsyncForm(data.into_iter().map(|row| {
-                                            let (_, role) = *members.iter().find(|(member_id, _)| *member_id == row.player).expect("async submission from unexpected player");
-                                            let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
-                                            Ok::<_, Error>((role_name, row.vod.map(|vod| vod.parse()).transpose()?))
-                                        }).try_collect()?));
+                                        team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::AsyncForm({
+                                            let mut links = data.into_iter().map(|row| {
+                                                let (_, role) = *members.iter().find(|(member_id, _)| *member_id == row.player).expect("async submission from unexpected player");
+                                                let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
+                                                Ok::<_, Error>((role_name, row.vod.map(|vod| vod.parse()).transpose()?))
+                                            }).collect::<Result<Vec<_>, _>>()?;
+                                            links.sort_unstable();
+                                            links
+                                        }));
                                     }
                                 }
                             }
