@@ -703,34 +703,209 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p : "We encourage everyone who wants to restream a match to do so. If so, please get in touch with the tournament organizers for approval as well as notify and ask the runners for permission at least 24 hours before the match is scheduled to happen (an exception to this rule may be made if a match is scheduled less than 24 hours in advance, the runners are happy to be featured, and volunteers are readily available).";
                     h2(id = "complete-settings-list") : "Complete Settings List";
                     h3 : "Main Rules";
-                    p : "Randomize Main Rule Settings: Off Logic Rules: Glitchless";
+                    ul {
+                        li : "Randomize Main Rule Settings: Disabled";
+                        li : "Logic Rules: Glitchless";
+                    }
                     h4 : "Open";
-                    p : "Open Deku Tree Open Forest Closed Forest Requires Gohma: Off Kakariko Gate: Open Gate Open Door of Time Zora’s Fountain: Always open Gerudo’s Fortress: Open Gerudo’s Fortress Dungeon Boss Shortcuts Mode: Off Rainbow Bridge Requirement: Always open Random Number of Trials: Off Ganon’s Trials: 0";
-                    h4 : "Various";
-                    p : "Triforce Hunt: Off Add Bombchu Bag and Drops: Off";
+                    ul {
+                        li : "Open Deku Tree: Enabled";
+                        li : "Open Forest: Enabled";
+                        li : "Closed Forest Requires Gohma: Disabled";
+                        li : "Kakariko Gate: Open Gate";
+                        li : "Door of Time: Open";
+                        li : "Zora's Fountain: Always Open";
+                        li : "Gerudo's Fortress: Open Gerudo's Fortress";
+                        li : "Dungeon Boss Shortcuts Mode: Off";
+                        li : "Rainbow Bridge Requirement: Always Open";
+                        li : "Random Number of Ganon's Trials: Disabled";
+                        li : "Ganon's Trials Count: 0";
+                    }
                     h4 : "World";
-                    p : "Starting Age: Random MQ Dungeon Mode: Vanilla Pre-completed Dungeons Mode: Off Shuffle Interior Entrances: All interiors Shuffle Thieves’ Hideout Entrances: Off Shuffle Grotto Entrances: On Shuffle Dungeon Entrances: Dungeon and Ganon Shuffle Boss Entrances: Full Shuffle Ganon’s Tower Entrance: On Shuffle Overworld Entrances: On Mix Entrance Pools: All Decouple Entrances: Off Shuffle Gerudo Valley River Exit: Balanced Randomize Owl Drops: Balanced Randomize Warp Song Destinations: Balanced Randomize Child Overworld Spawn: Balanced Randomize Adult Overworld Spawn: Balanced Randomize Blue Warps: Dungeon Entrance Mutually Exclusive One-Ways: On [EXPERIMENTAL] Allow Access to Shadow and Spirit Temples From Boss Doors: Off";
+                    ul {
+                        li : "Starting Age: Random";
+                        li : "MQ Dungeon Mode: Vanilla";
+                        li : "Pre-completed Dungeons Mode: Off";
+                        li : "Shuffle Interior Entrances: All Interiors";
+                        li : "Shuffle Thieves' Hideout Entrances: Off";
+                        li : "Shuffle Grotto Entrances: Enabled";
+                        li : "Shuffle Dungeon Entrances: Dungeon and Ganon";
+                        li : "Shuffle Boss Entrances: Full";
+                        li : "Shuffle Ganon's Tower Entrance: Enabled";
+                        li : "Shuffle Overworld Entrances: Enabled";
+                        li : "Mix Entrance Pools: All";
+                        li : "Decouple Entrances: Disabled";
+                        li : "Shuffle Gerudo Valley River Exit: Balanced";
+                        li : "Randomize Owl Drops: Balanced";
+                        li : "Randomize Warp Song Destinations: Balanced";
+                        li : "Randomize Child Overworld Spawn: Balanced";
+                        li : "Randomize Adult Overworld Spawn: Balanced";
+                        li : "Randomize Blue Warps: Dungeon Entrance";
+                        li : "Mutually Exclusive One-Ways: Enabled";
+                        li : "[EXPERIMENTAL] Allow Access to Shadow and Spirit Temples From Boss Doors: Disabled";
+                    }
                     h4 : "Shuffle";
-                    p : "Shuffle Items: On Shuffle Songs: Song locations Shuffle Shops: 4 items per Shop Special Deal Prices: Weighted Minimum Special Deal Price: 0 Maximum Special Deal Price: 300 Shuffle Gold Skulltula Tokens: Off Scrub Shuffle: On (Affordable) Shuffle Child Trade Sequence Items: None Shuffle All Selected Adult Trade Items: Off Adult Trade Sequence Items: 4 (Prescription, Eyeball Frog, Eyedrops, Claim Check) Shuffle Rupees & Hearts: Off Shuffle Pots: Off Shuffle Crates: Off Shuffle Cows: On Shuffle Beehives: Off Shuffle Wonderitems: Off Shuffle Kokiri Sword: On Shuffle Ocarinas: Off Shuffle Gerudo Card: Off Shuffle Magic Beans: Off Shuffle Expensive Merchants: Off Shuffle Frog Song Rupees: Off Shuffle 100 Skulltula Reward: Off Shuffle Hyrule Loach Reward: Off Shuffle Individual Ocarina Notes: Off Shuffle Other items: On";
+                    ul {
+                        li : "Shuffle Items: Enabled";
+                        li : "Shuffle Songs: Song Locations";
+                        li : "Shuffle Shops: 4 Items Per Shop";
+                        li : "Special Deal Prices: Weighted";
+                        li : "Minimum Special Deal Price: 0";
+                        li : "Maximum Special Deal Price: 300";
+                        li : "Shuffle Gold Skulltula Tokens: Off";
+                        li : "Scrub Shuffle: On (Affordable)";
+                        li : "Shuffle Child Trade Sequence Items: None";
+                        li : "Shuffle All Selected Adult Trade Items: Disabled";
+                        li : "Shuffle Adult Trade Sequence Items: Prescription, Eyeball Frog, Eyedrops, Claim Check";
+                        li : "Shuffle Rupees & Hearts: Off";
+                        li : "Shuffle Pots: Off";
+                        li : "Shuffle Crates: Off";
+                        li : "Shuffle Cows: Enabled";
+                        li : "Shuffle Beehives: Disabled";
+                        li : "Shuffle Wonderitems: Disabled";
+                        li : "Shuffle Kokiri Sword: Enabled";
+                        li : "Shuffle Ocarinas: Disabled";
+                        li : "Shuffle Gerudo Card: Disabled";
+                        li : "Shuffle Magic Beans: Disabled";
+                        li : "Shuffle Expensive Merchants: Disabled";
+                        li : "Shuffle Frog Song Rupees: Disabled";
+                        li : "Shuffle 100 Skulltula Reward: Disabled";
+                        li : "Shuffle Hyrule Loach Reward: Off";
+                        li : "Shuffle Individual Ocarina Notes: Disabled";
+                        li : "Shuffle Other Items: Enabled";
+                    }
                     h4 : "Shuffle Dungeon Items";
-                    p : "Shuffle Dungeon Rewards: Dungeon Reward Locations Maps & Compasses: Start with Small Keys: Own Dungeon Thieves’ Hideout Keys: Vanilla Locations Treasure Chest Game Keys: Vanilla Locations Key Rings Mode: Off Boss Keys: Own Dungeon Ganon’s Boss Key: Dungeon Rewards Dungeon Rewards Required for Ganon’s BK: 9 Shuffle Silver Rupees: Vanilla Locations Maps & Compasses Give Information: On";
+                    ul {
+                        li : "Shuffle Dungeon Rewards: Dungeon Reward Locations";
+                        li : "Maps: Start With";
+                        li : "Compasses: Start With";
+                        li : "Small Keys: Own Dungeon";
+                        li : "Thieves' Hideout Keys: Vanilla Locations";
+                        li : "Treasure Chest Game Keys: Vanilla Locations";
+                        li : "Key Rings Mode: Off";
+                        li : "Boss Keys: Own Dungeon";
+                        li : "Ganon's Boss Key: Dungeon Rewards";
+                        li : "Dungeon Rewards Required for Ganon's BK: 9";
+                        li : "Shuffle Silver Rupees: Vanilla Locations";
+                        li : "Maps and Compasses Give Information: Map gives MQ info, Compass gives reward info";
+                    }
+                    h4 : "Various";
+                    ul {
+                        li : "Triforce Hunt: Disabled";
+                        li : "Add Bombchu Bag and Drops: Disabled";
+                    }
                     h3 : "Detailed Logic";
-                    p : "Guarantee Reachable Locations: Required Only Nighttime Skulltulas Expect Sun’s Song: Off Water Temple Disable Entry With Gold Scale: Off";
-                    h4 : "Exclude Location";
-                    p : "Kak 30 Gold Skulltula Reward Kak 40 Gold Skulltula Reward Kak 50 Gold Skulltula Reward";
+                    ul {
+                        li : "Guarantee Reachable Locations: Required Only";
+                        li : "Nighttime Skulltulas Expect Sun's Song: Disabled";
+                        li : "Water Temple Disable Entry With Gold Scale: Disabled";
+                    }
+                    h4 : "Exclude Locations";
+                    ul {
+                        li : "Kak 30 Gold Skulltula Reward";
+                        li : "Kak 40 Gold Skulltula Reward";
+                        li : "Kak 50 Gold Skulltula Reward";
+                    }
                     h4 : "Enable Tricks";
-                    p : "Fewer Tunic Requirements Hidden Grottos without Stone of Agony Child Dead Hand without Kokiri Sword Man on Roof without Hookshot Dodongo’s Cavern Spike Trap Room Jump without Hover Boots Hammer Rusted Switches and Boulders Through Walls Windmill Piece of Heart (PoH) as Adult with Nothing Crater’s Bean PoH with Hover Boots Forest Temple East Courtyard Vines with Hookshot Bottom of the Well without Lens of Truth Ganon’s Castle without Lens of Truth Gerudo Training Ground without Lens of Truth Shadow Temple Stationary Objects without Lens of Truth Shadow Temple Invisible Moving Platform without Lens of Truth Shadow Temple Bongo Bongo without Lens of Truth Spirit Temple without Lens of Truth Deku Tree Basement Web to Gohma with Bow Pass Through Visible One-Way Collisions";
+                    ul {
+                        li : "Pass Through Visible One-Way Collisions";
+                        li : "Hidden Grottos without Stone of Agony";
+                        li : "Fewer Tunic Requirements";
+                        li : "Hammer Rusted Switches and Boulders Through Walls";
+                        li : "Man on Roof without Hookshot";
+                        li : "Windmill PoH as Adult with Nothing";
+                        li : "Crater's Bean PoH with Hover Boots";
+                        li : "Deku Tree Basement Web to Gohma with Bow";
+                        li : "Dodongo's Cavern Spike Trap Room Jump without Hover Boots";
+                        li : "Bottom of the Well without Lens of Truth";
+                        li : "Child Dead Hand without Kokiri Sword";
+                        li : "Forest Temple East Courtyard Vines with Hookshot";
+                        li : "Shadow Temple Stationary Objects without Lens of Truth";
+                        li : "Shadow Temple Invisible Moving Platform without Lens of Truth";
+                        li : "Shadow Temple Bongo Bongo without Lens of Truth";
+                        li : "Spirit Temple without Lens of Truth";
+                        li : "Gerudo Training Ground without Lens of Truth";
+                        li : "Ganon's Castle without Lens of Truth";
+                    }
                     h3 : "Starting Inventory";
-                    p : "Starting Items: Ocarina, Farore’s Wind, Zelda’s Letter Additional Random Starting Items: Off Exclude Item Types: None Amount of Items: 0 Start with Consumables: On Start with Max Rupees: On Starting Hearts: 3";
+                    h4 : "Starting Equipment";
+                    ul {
+                        li : "Starting Equipment: None";
+                    }
+                    h4 : "Starting Items";
+                    ul {
+                        li : "Ocarina";
+                        li : "Farore's Wind";
+                        li : "Zelda's Letter";
+                    }
+                    h4 : "Starting Songs";
+                    ul {
+                        li : "Starting Songs: None";
+                    }
+                    h4 : "Other";
+                    ul {
+                        li : "Additional Random Starting Items: Disabled";
+                        li : "Exclude Item Types: None";
+                        li : "Amount of Items: 0";
+                        li : "Start with Consumables: Enabled";
+                        li : "Start with Max Rupees: Enabled";
+                        li : "Starting Hearts: 3";
+                    }
                     h3 : "Other";
                     h4 : "Timesavers";
-                    p : "Free Reward from Rauru: On Skip Tower Escape Sequence: On Skip Child Stealth: On Skip Epona Race: On Skip Some Minigame Phases: On Complete Mask Quest: Off Glitch-Useful Behaviours: Off Fast Chest Cutscenes: On Free Scarecrow’s Song: On Fast Bunny Hood: Off Maintain Mask Equips through Scene Changes: Off Plant Magic Beans: Off Easier Fire Arrow Entry: Off Ruto Already at F1: On Fast Shadow Boat: On Random Cucco Count: Off Cucco Count: 3 Random Big Poe Target Count: Off Big Poe Target Count: 1";
+                    ul {
+                        li : "Free Reward from Rauru: Yes";
+                        li : "Skip Tower Escape Sequence: Enabled";
+                        li : "Skip Child Stealth: Enabled";
+                        li : "Skip Epona Race: Enabled";
+                        li : "Skip Some Minigame Phases: Enabled";
+                        li : "Complete Mask Quest: Disabled";
+                        li : "Glitch-Useful Behaviors: Disabled";
+                        li : "Fast Chest Cutscenes: Enabled";
+                        li : "Scarecrow Behavior: Free";
+                        li : "Fast Bunny Hood: Disabled";
+                        li : "Maintain Mask Equips through Scene Changes: Disabled";
+                        li : "Plant Magic Beans: Disabled";
+                        li : "Easier Fire Arrow Entry: Disabled";
+                        li : "Ruto Already at F1: Enabled";
+                        li : "Fast Shadow Boat: Enabled";
+                        li : "Random Cucco Count: Disabled";
+                        li : "Cucco Count: 3";
+                        li : "Random Big Poe Target Count: Disabled";
+                        li : "Big Poe Target Count: 1";
+                    }
                     h4 : "Hints and Information";
-                    p : "Clearer Hints: On Gossip Stones: Hints; Need Nothing Hint Distribution: Mixed Pools Tournament Misc Hints: Temple of Time Altar, Ganondorf (Light Arrows), Warp Songs and Owls, House of Skulltula: 20 Chest Appearance Matches Contents: Box Size and Textures Chest Textures: All Minor Items in Big/Gold Chests: Deku & Hylian Shields Invisible Chests: Off Pot, Crate & Beehive Appearance Matches Contents: Off Distinct Item Models: None";
-                    h4 : "Item Pool";
-                    p : "Item Pool: Balanced Ice Traps: No Ice Traps Ice Traps Appearance: Junk Items Only";
+                    ul {
+                        li : "Clearer Hints: Enabled";
+                        li : "Gossip Stones: Hints; Need Nothing";
+                        li : "Hint Distribution: Mixed Pools Tournament";
+                        li : "Misc. Hints: Temple of Time Altar, Ganondorf (Light Arrows), Warp Songs and Owls, House of Skulltula: 20";
+                        li : "Chest Appearance Matches Contents: Both Size and Texture";
+                        li : "Chest Textures: All";
+                        li : "Minor Items in Big/Gold chests: Deku & Hylian Shields";
+                        li : "Invisible Chests: Disabled";
+                        li : "Pot, Crate, & Beehive Appearance Matches Contents: Off";
+                        li : "Distinct Item Models: None";
+                    }
                     h4 : "Gameplay Changes";
-                    p : "Randomize Ocarina Melodies: None Text Shuffle: No Text Shuffle Damage Multiplier: Normal Bonks Do Damage: No Damage Starting Time of Day: Default (10:00) Blue Fire Arrows: On Fix Broken Drops: Off Require Lens of Truth for Treasure Chest Game: On Hero Mode: Off Dungeons Have One Major Item: Off";
+                    ul {
+                        li : "Randomize Ocarina Melodies: None";
+                        li : "Text Shuffle: No Text Shuffled";
+                        li : "Damage Multiplier: Normal";
+                        li : "Bonks Do Damage: No Damage";
+                        li : "Starting Time of Day: Default (10:00)";
+                        li : "Blue Fire Arrows: Enabled";
+                        li : "Fix Broken Drops: Disabled";
+                        li : "Require Lens of Truth for Treasure Chest Game: Enabled";
+                        li : "Hero Mode: Disabled";
+                        li : "Dungeons Have One Major Item: Disabled";
+                    }
+                    h4 : "Item Pool";
+                    ul {
+                        li : "Item Pool: Balanced";
+                        li : "Ice Traps: No Ice Traps";
+                        li : "Ice Trap Appearance: Junk Items Only";
+                    }
                 }
                 div {
                     nav {
