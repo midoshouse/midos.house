@@ -2352,6 +2352,7 @@ pub(crate) enum RollError {
     UserDirs,
 }
 
+#[cfg(unix)]
 impl From<Error> for RollError {
     fn from(e: Error) -> Self {
         Self::RaceTime(Box::new(e))

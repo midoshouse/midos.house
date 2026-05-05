@@ -383,6 +383,7 @@ impl<'a> Data<'a> {
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, "2024onl" | "2024live") => from_file!("../../assets/event/sgl/chests-2024-ee4d35b.json"),
             (Series::SpeedGaming, "2025onl" | "2025live") => from_file!("../../assets/event/sgl/chests-2025-8.3.21.json"),
+            (Series::SpeedGaming, "2026ss" | "2026live") => from_file!("../../assets/event/sgl/chests-2026-9.0.42.json"),
             (Series::Standard, "w") => ChestAppearances::random(), //TODO pick random chest appearances from past settings
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
