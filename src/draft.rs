@@ -1166,6 +1166,19 @@ impl Draft {
                                 } else {
                                     builder.push(" in the settings draft.");
                                 }
+                                match kind {
+                                    Kind::MultiworldS4 | Kind::MultiworldS5 => {}
+                                    Kind::MultiworldS6 => if let Some(common_opt_ins) = English.join_str_opt(mw::get_custom_choices(mw::S6_SETTINGS).filter(|(key, _)| self.settings.contains_key(&*format!("{key}_ok"))).map(|(_, label)| label)) {
+                                        builder.push_line("");
+                                        builder.push("You have the following opt-ins in common: ");
+                                        builder.push(common_opt_ins);
+                                        builder.push('.');
+                                    } else {
+                                        builder.push_line("");
+                                        builder.push("You have no opt-ins in common.");
+                                    },
+                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                }
                                 if self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
                                     builder.push_line("");
                                     builder.push("Please note that for accessibility reasons, the Chest Appearance Matches Contents setting will default to Both Size and Texture for this match. It can be locked to Both Size and Texture using a ban or pick, or changed to Off using a pick. Texture Only is not available in this match.");
