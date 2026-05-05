@@ -1168,7 +1168,7 @@ impl Draft {
                                 }
                                 match kind {
                                     Kind::MultiworldS4 | Kind::MultiworldS5 => {}
-                                    Kind::MultiworldS6 => if let Some(common_opt_ins) = English.join_str_opt(mw::get_custom_choices(mw::S6_SETTINGS).filter(|(key, _)| self.settings.contains_key(&*format!("{key}_ok"))).map(|(_, label)| label)) {
+                                    Kind::MultiworldS6 => if let Some(common_opt_ins) = English.join_str_opt(mw::get_custom_choices(mw::S6_SETTINGS).filter(|(key, _)| self.settings.get(&*format!("{key}_ok")).map(|choice_ok| &**choice_ok).unwrap_or("no") == "ok").map(|(_, label)| label)) {
                                         builder.push_line("");
                                         builder.push("You have the following opt-ins in common: ");
                                         builder.push(common_opt_ins);
