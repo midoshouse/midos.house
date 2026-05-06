@@ -1945,6 +1945,7 @@ impl GlobalState {
             for attempt in 0.. {
                 if attempt >= outer_tries && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
                     return Err(RollError::Retries {
+                        ctx: "in RSL script",
                         num_retries: 3 * attempt,
                         last_error,
                     })
@@ -2123,6 +2124,7 @@ impl GlobalState {
                         tfb::SeedResponse::Ready { id, hash_icons, seed_password, seed_url: _ } => break (id, hash_icons, seed_password),
                         tfb::SeedResponse::Failed { .. } if attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until) => continue,
                         tfb::SeedResponse::Failed { generation_error } => return Err(RollError::Retries {
+                            ctx: "on triforceblitz.com",
                             num_retries: attempts,
                             last_error: Some(generation_error),
                         }),
@@ -2224,6 +2226,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
                 tempfile.close().at(temp_path)?;
             }
             return Err(RollError::Retries {
+                ctx: "rolling locally",
                 num_retries: attempt,
                 last_error,
             })
@@ -2332,6 +2335,7 @@ pub(crate) enum RollError {
     RomPath,
     #[error("max retries exceeded")]
     Retries {
+        ctx: &'static str,
         num_retries: u8,
         last_error: Option<String>,
     },
@@ -2569,11 +2573,11 @@ impl SeedRollUpdate {
                 ctx.say("Sorry @entrants, the Mido's House server's disk is almost full, so rolling practice seeds with settings not supported by ootrandomizer.com is temporarily disabled. Please try again later or roll the seed manually. If this error persists, please report it to Fenhl.").await?;
                 lock!(@write state = state; *state = RaceState::Init);
             }
-            Self::Error(RollError::Retries { num_retries, last_error }) | Self::Error(RollError::OotrWeb(ootr_web::Error::Retries { num_retries, last_error })) => {
+            Self::Error(RollError::Retries { ctx: error_ctx, num_retries, last_error }) | Self::Error(RollError::OotrWeb(ootr_web::Error::Retries { ctx: error_ctx, num_retries, last_error })) => {
                 if let Some(last_error) = last_error {
-                    eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                    eprintln!("seed rolling failed {num_retries} times {error_ctx}, sample error:\n{last_error}");
                 } else {
-                    eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                    eprintln!("seed rolling failed {num_retries} times {error_ctx}, no sample error recorded");
                 }
                 if official_data.is_some() {
                     ctx.say(format!("Sorry @entrants, the randomizer reported an error {num_retries} times and the deadline was reached, so I'm giving up on rolling the seed. Please roll it manually or ask an organizer to do so. If this error persists, please report it to Fenhl.")).await?;
@@ -5482,11 +5486,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                                 .into();
                             break
                         }
-                        SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) | SeedRollUpdate::Error(RollError::OotrWeb(ootr_web::Error::Retries { num_retries, last_error })) => {
+                        SeedRollUpdate::Error(RollError::Retries { ctx, num_retries, last_error }) | SeedRollUpdate::Error(RollError::OotrWeb(ootr_web::Error::Retries { ctx, num_retries, last_error })) => {
                             if let Some(last_error) = last_error {
-                                eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                                eprintln!("rolling form-based async failed {num_retries} times {ctx}, sample error:\n{last_error}");
                             } else {
-                                eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                                eprintln!("rolling form-based async failed {num_retries} times {ctx}, no sample error recorded");
                             }
                             msg = format!("the randomizer reported an error {num_retries} times and the deadline was reached, so I'm giving up on rolling the seed, please ask an organizer to roll it manually").into();
                             break
@@ -5625,11 +5629,11 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                                 transaction.commit().await?;
                                                 break 'seed
                                             }
-                                            SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
+                                            SeedRollUpdate::Error(RollError::Retries { ctx, num_retries, last_error }) => {
                                                 if let Some(last_error) = last_error {
-                                                    eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                                                    eprintln!("rolling prepared official seed failed {num_retries} times {ctx}, sample error:\n{last_error}");
                                                 } else {
-                                                    eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                                                    eprintln!("rolling prepared official seed failed {num_retries} times {ctx}, no sample error recorded");
                                                 }
                                                 continue 'seed
                                             }
@@ -5700,11 +5704,11 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                         eprintln!("not preparing practice seed for {} due to low disk space", goal.as_str());
                                         continue 'seed
                                     }
-                                    SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
+                                    SeedRollUpdate::Error(RollError::Retries { ctx, num_retries, last_error }) => {
                                         if let Some(last_error) = last_error {
-                                            eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                                            eprintln!("rolling prepared practice seed failed {num_retries} times {ctx}, sample error:\n{last_error}");
                                         } else {
-                                            eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                                            eprintln!("rolling prepared practice seed failed {num_retries} times {ctx}, no sample error recorded");
                                         }
                                         continue 'seed
                                     }

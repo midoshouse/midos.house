@@ -46,6 +46,7 @@ pub(crate) enum Error {
     RandomSettings,
     #[error("max retries exceeded")]
     Retries {
+        ctx: &'static str,
         num_retries: u8,
         last_error: Option<String>,
     },
@@ -380,6 +381,7 @@ impl ApiClient {
             if attempt >= 3 && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
                 drop(mw_permit);
                 return Err(Error::Retries {
+                    ctx: "on ootrandomizer.com",
                     num_retries: attempt,
                     last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
                 })
@@ -447,6 +449,7 @@ impl ApiClient {
             }
         }
         Err(Error::Retries {
+            ctx: "on ootrandomizer.com (u8 overflow)",
             num_retries: u8::MAX,
             last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
         })

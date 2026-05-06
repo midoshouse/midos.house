@@ -681,7 +681,7 @@ impl<'a> Data<'a> {
                 let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}
-                    Some(2) => return Err(racetime_bot::RollError::Retries { num_retries: 1, last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()) }),
+                    Some(2) => return Err(racetime_bot::RollError::Retries { ctx: "in RSL script for single_settings", num_retries: 1, last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()) }),
                     _ => return Err(racetime_bot::RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
                 }
                 let plando_filename = BufRead::lines(&*output.stdout)
@@ -2723,11 +2723,11 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                             transaction.commit().await?;
                             v
                         }
-                        Err(racetime_bot::RollError::Retries { num_retries, last_error }) => {
+                        Err(racetime_bot::RollError::Retries { ctx, num_retries, last_error }) => {
                             if let Some(last_error) = last_error {
-                                eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                                eprintln!("rolling practice seed failed {num_retries} times {ctx}, sample error:\n{last_error}");
                             } else {
-                                eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                                eprintln!("rolling practice seed failed {num_retries} times {ctx}, no sample error recorded");
                             }
                             let content = html! {
                                 : data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
@@ -2820,7 +2820,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                         let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
                         match output.status.code() {
                             Some(0) => {}
-                            Some(2) => return Err(racetime_bot::RollError::Retries { num_retries: 1, last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()) }.into()),
+                            Some(2) => return Err(racetime_bot::RollError::Retries { ctx: "in RSL script for practice_seed_post", num_retries: 1, last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()) }.into()),
                             _ => return Err(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output }.into()),
                         }
                         let plando_filename = BufRead::lines(&*output.stdout)
