@@ -4247,7 +4247,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "ootr-utils"
 version = "0.6.4"
-source = "git+https://github.com/midoshouse/rust-ootr-utils?branch=rocket-forms#1c97a2386212d034a432763e4bfb76459b336b7d"
+source = "git+https://github.com/midoshouse/rust-ootr-utils?branch=rocket-forms#50cdc02cef5f12126d7f75cdae1aa7d3b75a3040"
 dependencies = [
  "async-proto",
  "cargo_metadata 0.23.1",
