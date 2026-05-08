@@ -8,7 +8,7 @@ if (-not $?)
 
 "cargo build"
 
-ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/build-dev cargo build --release --features=dev
+ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/build-dev cargo build --jobs=-1 --release --features=dev
 if (-not $?)
 {
     throw 'Native Failure'
