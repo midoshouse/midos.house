@@ -93,7 +93,7 @@ impl Format {
             Self::Saws => "Standard Anti-Weekly Settings (Beginner)",
             Self::Bingo => "SDG Bingo Tournament 3",
             Self::Ice => "Ice%",
-            Self::Mixed => "4th Mixed Pools Tournament",
+            Self::Mixed => "5th Mixed Pools Tournament",
             Self::Franco => return Ok(None), // settings draft
             Self::Triforce => return Ok(Some((VersionedBranch::Latest { branch: ootr_utils::Branch::DevFenhl }, collect![
                 format!("password_lock") => json!(true),
