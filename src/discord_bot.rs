@@ -1811,7 +1811,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             _ => panic!("unexpected slash command option type"),
                                         };
                                         if let Some(start) = parse_timestamp(start) {
-                                            if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                            if let Some(sco::Format::Bingo) = sco::Format::for_race(&race) {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Sorry, Bingo races cannot be asynced.")
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                            } else if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
                                                     .content(if event.min_schedule_notice <= Duration::default() {
