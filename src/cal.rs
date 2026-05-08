@@ -479,7 +479,7 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, id: Id<Races>) -> Result<Self, Error> {
+    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, id: Id<Races>) -> Result<Self, Error> { //TODO Result<Option<Self>, Error>
         let row = sqlx::query!(r#"SELECT
             series AS "series: Series",
             event,

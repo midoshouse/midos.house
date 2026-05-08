@@ -675,8 +675,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Verrouille un setting à sa valeur par défaut."))
-                        .description_localized("en-GB", "Locks a setting for this race to its default value.")
-                        .description_localized("en-US", "Locks a setting for this race to its default value."),
+                        .description_localized("en-GB", description!("Locks a setting for this race to its default value."))
+                        .description_localized("en-US", description!("Locks a setting for this race to its default value.")),
                 });
                 idx
             });
@@ -700,7 +700,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
-                        "The last game number within the match that should be kept.",
+                        description!("The last game number within the match that should be kept."),
                     )
                         .min_int_value(1)
                         .max_int_value(255)
@@ -725,8 +725,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Choisit un setting pour la race (identique à /pick)."))
-                        .description_localized("en-GB", "Chooses a setting for this race (same as /pick).")
-                        .description_localized("en-US", "Chooses a setting for this race (same as /pick)."),
+                        .description_localized("en-GB", description!("Chooses a setting for this race (same as /pick)."))
+                        .description_localized("en-US", description!("Chooses a setting for this race (same as /pick).")),
                 });
                 Some(idx)
             });
@@ -744,7 +744,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Boolean,
                             "lite",
-                            "Use RSL-Lite weights",
+                            description!("Use RSL-Lite weights"),
                         )
                             .required(false)
                         ),
@@ -756,15 +756,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Partir premier dans la phase de pick&ban."))
-                        .description_localized("en-GB", "Go first in the settings draft.")
-                        .description_localized("en-US", "Go first in the settings draft.")
+                        .description_localized("en-GB", description!("Go first in the settings draft."))
+                        .description_localized("en-US", description!("Go first in the settings draft."))
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
-                            "Nombre de donjons MQ",
+                            description!("Nombre de donjons MQ"),
                         )
-                            .description_localized("en-GB", "Number of MQ dungeons")
-                            .description_localized("en-US", "Number of MQ dungeons")
+                            .description_localized("en-GB", description!("Number of MQ dungeons"))
+                            .description_localized("en-US", description!("Number of MQ dungeons"))
                             .min_int_value(0)
                             .max_int_value(12)
                             .required(false)
@@ -795,8 +795,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Répond à la négative dans une question fermée."))
-                        .description_localized("en-GB", "Answers no to a yes/no question in the settings draft.")
-                        .description_localized("en-US", "Answers no to a yes/no question in the settings draft."),
+                        .description_localized("en-GB", description!("Answers no to a yes/no question in the settings draft."))
+                        .description_localized("en-US", description!("Answers no to a yes/no question in the settings draft.")),
                 });
                 Some(idx)
             });
@@ -819,8 +819,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Choisit un setting pour la race."))
-                        .description_localized("en-GB", "Chooses a setting for this race.")
-                        .description_localized("en-US", "Chooses a setting for this race."),
+                        .description_localized("en-GB", description!("Chooses a setting for this race."))
+                        .description_localized("en-US", description!("Chooses a setting for this race.")),
                 });
                 idx
             });
@@ -853,7 +853,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Channel,
                         "race-planning-channel",
-                        "Will be linked to from the description message.",
+                        description!("Will be linked to from the description message."),
                     )
                         .required(true)
                         .channel_types(vec![ChannelType::Text, ChannelType::News])
@@ -868,9 +868,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .add_context(InteractionContext::Guild)
                     .description(description!("Deletes selected data from a race."))
                     .add_option(CreateCommandOption::new(
+                        CommandOptionType::String, // range for CommandOptionType::Integer is -2^53+1..2^53 which is does not cover Mido's House IDs (0..2^64)
+                        "race",
+                        description!("The race ID. Can be taken from the race edit page URL. Cannot be combined with the `game` option."),
+                    )
+                        .required(false)
+                    )
+                    .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
-                        "The game number within the match.",
+                        description!("The game number within the match."),
                     )
                         .min_int_value(1)
                         .max_int_value(255)
@@ -880,7 +887,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     command = command.add_option(CreateCommandOption::new(
                         CommandOptionType::Boolean,
                         "draft",
-                        "Reset the settings draft.",
+                        description!("Reset the settings draft."),
                     )
                         .required(false)
                     );
@@ -888,7 +895,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                 command = command.add_option(CreateCommandOption::new(
                     CommandOptionType::Boolean,
                     "schedule",
-                    "Reset the schedule, race room, and seed.",
+                    description!("Reset the schedule, race room, and seed."),
                 )
                     .required(false)
                 );
@@ -901,19 +908,19 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .kind(CommandType::ChatInput)
                     .add_context(InteractionContext::Guild)
                     .description(description!("Submits a starting time for this race."))
-                    .description_localized("fr", "Planifie une date/heure pour une race.")
+                    .description_localized("fr", description!("Planifie une date/heure pour une race."))
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::String,
                         "start",
-                        "The starting time as a Discord timestamp",
+                        description!("The starting time as a Discord timestamp"),
                     )
-                        .description_localized("fr", "La date de début comme timestamp de Discord")
+                        .description_localized("fr", description!("La date de début comme timestamp de Discord"))
                         .required(true)
                     )
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
-                        "The game number within the match. Defaults to the next upcoming game.",
+                        description!("The game number within the match. Defaults to the next upcoming game."),
                     )
                         .min_int_value(1)
                         .max_int_value(255)
@@ -928,19 +935,19 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .kind(CommandType::ChatInput)
                     .add_context(InteractionContext::Guild)
                     .description(description!("Submits a starting time for your half of this race."))
-                    .description_localized("fr", "Planifie votre partie de l'async.")
+                    .description_localized("fr", description!("Planifie votre partie de l'async."))
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::String,
                         "start",
-                        "The starting time as a Discord timestamp",
+                        description!("The starting time as a Discord timestamp"),
                     )
-                        .description_localized("fr", "La date de début comme timestamp de Discord")
+                        .description_localized("fr", description!("La date de début comme timestamp de Discord"))
                         .required(true)
                     )
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
-                        "The game number within the match. Defaults to the next upcoming game.",
+                        description!("The game number within the match. Defaults to the next upcoming game."),
                     )
                         .min_int_value(1)
                         .max_int_value(255)
@@ -955,11 +962,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .kind(CommandType::ChatInput)
                     .add_context(InteractionContext::Guild)
                     .description(description!("Removes the starting time(s) for this race from the schedule."))
-                    .description_localized("fr", "Supprime le(s) date(s) de début sur le document des races planifiées.")
+                    .description_localized("fr", description!("Supprime le(s) date(s) de début sur le document des races planifiées."))
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
-                        "The game number within the match. Defaults to the next upcoming game.",
+                        description!("The game number within the match. Defaults to the next upcoming game."),
                     )
                         .min_int_value(1)
                         .max_int_value(255)
@@ -982,7 +989,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Boolean,
                             "lite",
-                            "Use RSL-Lite weights",
+                            description!("Use RSL-Lite weights"),
                         )
                             .required(false)
                         ),
@@ -994,15 +1001,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Partir second dans la phase de pick&ban."))
-                        .description_localized("en-GB", "Go second in the settings draft.")
-                        .description_localized("en-US", "Go second in the settings draft.")
+                        .description_localized("en-GB", description!("Go second in the settings draft."))
+                        .description_localized("en-US", description!("Go second in the settings draft."))
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
-                            "Nombre de donjons MQ",
+                            description!("Nombre de donjons MQ"),
                         )
-                            .description_localized("en-GB", "Number of MQ dungeons")
-                            .description_localized("en-US", "Number of MQ dungeons")
+                            .description_localized("en-GB", description!("Number of MQ dungeons"))
+                            .description_localized("en-US", description!("Number of MQ dungeons"))
                             .min_int_value(0)
                             .max_int_value(12)
                             .required(false)
@@ -1029,8 +1036,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Skip le dernier pick du draft."))
-                        .description_localized("en-GB", "Skips the final pick of the settings draft.")
-                        .description_localized("en-US", "Skips the final pick of the settings draft."),
+                        .description_localized("en-GB", description!("Skips the final pick of the settings draft."))
+                        .description_localized("en-US", description!("Skips the final pick of the settings draft.")),
                 });
                 idx
             });
@@ -1040,7 +1047,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .kind(CommandType::ChatInput)
                     .add_context(InteractionContext::Guild)
                     .description(description!("Shows you this race's current scheduling and settings draft status."))
-                    .description_localized("fr", "Montre l'avancement de la planification de votre race, avec les détails.")
+                    .description_localized("fr", description!("Montre l'avancement de la planification de votre race, avec les détails."))
                 );
                 idx
             };
@@ -1054,7 +1061,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Channel,
                         "watch-party-channel",
-                        "Will be linked to from the description message.",
+                        description!("Will be linked to from the description message."),
                     )
                         .required(true)
                         .channel_types(vec![ChannelType::Voice, ChannelType::Stage])
@@ -1062,7 +1069,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Channel,
                         "race-rooms-channel",
-                        "Will be linked to from the description message.",
+                        description!("Will be linked to from the description message."),
                     )
                         .required(true)
                         .channel_types(vec![ChannelType::Text, ChannelType::News])
@@ -1082,8 +1089,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Répond à l'affirmative dans une question fermée."))
-                        .description_localized("en-GB", "Answers yes to a yes/no question in the settings draft.")
-                        .description_localized("en-US", "Answers yes to a yes/no question in the settings draft."),
+                        .description_localized("en-GB", description!("Answers yes to a yes/no question in the settings draft."))
+                        .description_localized("en-US", description!("Answers yes to a yes/no question in the settings draft.")),
                 });
                 Some(idx)
             });
@@ -1475,9 +1482,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         .ephemeral(true)
                                         .content("Sorry, only event organizers can use this command.")
                                     )).await?;
+                                    transaction.rollback().await?;
                                     return Ok(())
                                 }
                                 let mut game = None;
+                                let mut race = None;
                                 let mut reset_draft = false;
                                 let mut reset_schedule = false;
                                 for option in &interaction.data.options {
@@ -1488,6 +1497,20 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         },
                                         "game" => match option.value {
                                             CommandDataOptionValue::Integer(value) => game = Some(i16::try_from(value).expect("game number out of range")),
+                                            _ => panic!("unexpected slash command option type"),
+                                        },
+                                        "race" => match option.value {
+                                            CommandDataOptionValue::Integer(value) => race = Some(value.into()),
+                                            CommandDataOptionValue::String(ref value) => if let Ok(value) = value.parse() {
+                                                race = Some(value);
+                                            } else {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Could not parse race ID.")
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                                return Ok(())
+                                            },
                                             _ => panic!("unexpected slash command option type"),
                                         },
                                         "schedule" => match option.value {
@@ -1502,102 +1525,125 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         .ephemeral(true)
                                         .content("Please specify at least one thing to delete using the slash command's options.")
                                     )).await?;
+                                    transaction.rollback().await?;
                                     return Ok(())
                                 };
                                 let global = ctx.data.read().await.get::<GlobalState>().expect("global state missing from Discord context").clone();
-                                match Race::for_scheduling_channel(&mut transaction, &global.http_client, interaction.channel_id(), game, true).await?.into_iter().at_most_one() {
-                                    Ok(None) => {
+                                let race = if let Some(race) = race {
+                                    if game.is_some() {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content(if game.is_some() {
-                                                "Sorry, there don't seem to be any races with that game number associated with this thread."
-                                            } else {
-                                                "Sorry, this thread is not associated with any races."
-                                            })
+                                            .content("The `race` and `game` parameters cannot be combined.")
                                         )).await?;
                                         transaction.rollback().await?;
+                                        return Ok(())
                                     }
-                                    Ok(Some(race)) => {
-                                        let race = Race {
-                                            draft: if reset_draft {
-                                                if let Some(draft_kind) = race.draft_kind(&event) && let Some(draft) = race.draft {
-                                                    if let draft::Kind::SlugOpen = draft_kind {
-                                                        Some(Draft {
-                                                            high_seed: draft.high_seed,
-                                                            went_first: Some(true),
-                                                            skipped_bans: 0,
-                                                            settings: {
-                                                                let mut settings = draft.settings;
-                                                                settings.retain(|_, value| value == "wheel_ban" || value == "wheel_pick");
-                                                                settings
-                                                            },
-                                                        })
-                                                    } else if let Entrants::Two(entrants) = &race.entrants
-                                                        && let Ok(low_seed) = entrants.iter()
-                                                            .filter_map(as_variant!(Entrant::MidosHouseTeam))
-                                                            .filter(|team| team.id != draft.high_seed)
-                                                            .exactly_one()
-                                                    {
-                                                        Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
-                                                    } else {
-                                                        None
-                                                    }
+                                    let race = Race::from_id(&mut transaction, &global.http_client, race).await?;
+                                    if race.scheduling_thread.is_none_or(|scheduling_thread| scheduling_thread != interaction.channel_id()) {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("That race is not associated with this scheduling thread.")
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                        return Ok(())
+                                    }
+                                    race
+                                } else {
+                                    match Race::for_scheduling_channel(&mut transaction, &global.http_client, interaction.channel_id(), game, true).await?.into_iter().at_most_one() {
+                                        Ok(None) => {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(if game.is_some() {
+                                                    "Sorry, there don't seem to be any races with that game number associated with this thread."
                                                 } else {
-                                                    None
-                                                }
-                                            } else {
-                                                race.draft
-                                            },
-                                            source: if let cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } = race.source {
-                                                if reset_schedule { cal::Source::Manual } else { race.source }
-                                            } else {
-                                                race.source
-                                            },
-                                            schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
-                                            schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
-                                            fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
-                                            seed: if reset_schedule { seed::Data::default() } else { race.seed },
-                                            video_urls: if reset_schedule { HashMap::default() } else { race.video_urls },
-                                            restreamers: if reset_schedule { HashMap::default() } else { race.restreamers },
-                                            commentators: if reset_schedule { HashMap::default() } else { race.commentators },
-                                            trackers: if reset_schedule { HashMap::default() } else { race.trackers },
-                                            notified: race.notified && !reset_schedule,
-                                            // explicitly listing remaining fields here instead of using `..race` so if the fields change they're kept/reset correctly
-                                            id: race.id,
-                                            series: race.series,
-                                            event: race.event,
-                                            entrants: race.entrants,
-                                            phase: race.phase,
-                                            round: race.round,
-                                            game: race.game,
-                                            scheduling_thread: race.scheduling_thread,
-                                            last_edited_by: race.last_edited_by,
-                                            last_edited_at: race.last_edited_at,
-                                            ignored: race.ignored,
-                                            schedule_locked: race.schedule_locked,
-                                        };
-                                        race.save(&mut transaction).await?;
-                                        transaction.commit().await?;
-                                        let verb = if aspects_reset.len() == NonZero::<usize>::MIN { " has" } else { " have" };
-                                        let response_content = MessageBuilder::default()
-                                            .push(English.join_str(aspects_reset))
-                                            .push(verb)
-                                            .push(" been reset.")
-                                            .build();
-                                        //TODO post new status if draft was reset
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(false)
-                                            .content(response_content)
-                                        )).await?;
+                                                    "Sorry, this thread is not associated with any races."
+                                                })
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                            return Ok(())
+                                        }
+                                        Ok(Some(race)) => race,
+                                        Err(_) => {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content("Sorry, this thread is associated with multiple races. Please specify the game number.")
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                            return Ok(())
+                                        }
                                     }
-                                    Err(_) => {
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content("Sorry, this thread is associated with multiple races. Please specify the game number.")
-                                        )).await?;
-                                        transaction.rollback().await?;
-                                    }
-                                }
+                                };
+                                let race = Race {
+                                    draft: if reset_draft {
+                                        if let Some(draft_kind) = race.draft_kind(&event) && let Some(draft) = race.draft {
+                                            if let draft::Kind::SlugOpen = draft_kind {
+                                                Some(Draft {
+                                                    high_seed: draft.high_seed,
+                                                    went_first: Some(true),
+                                                    skipped_bans: 0,
+                                                    settings: {
+                                                        let mut settings = draft.settings;
+                                                        settings.retain(|_, value| value == "wheel_ban" || value == "wheel_pick");
+                                                        settings
+                                                    },
+                                                })
+                                            } else if let Entrants::Two(entrants) = &race.entrants
+                                                && let Ok(low_seed) = entrants.iter()
+                                                    .filter_map(as_variant!(Entrant::MidosHouseTeam))
+                                                    .filter(|team| team.id != draft.high_seed)
+                                                    .exactly_one()
+                                            {
+                                                Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        race.draft
+                                    },
+                                    source: if let cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } = race.source {
+                                        if reset_schedule { cal::Source::Manual } else { race.source }
+                                    } else {
+                                        race.source
+                                    },
+                                    schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
+                                    schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
+                                    fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
+                                    seed: if reset_schedule { seed::Data::default() } else { race.seed },
+                                    video_urls: if reset_schedule { HashMap::default() } else { race.video_urls },
+                                    restreamers: if reset_schedule { HashMap::default() } else { race.restreamers },
+                                    commentators: if reset_schedule { HashMap::default() } else { race.commentators },
+                                    trackers: if reset_schedule { HashMap::default() } else { race.trackers },
+                                    notified: race.notified && !reset_schedule,
+                                    // explicitly listing remaining fields here instead of using `..race` so if the fields change they're kept/reset correctly
+                                    id: race.id,
+                                    series: race.series,
+                                    event: race.event,
+                                    entrants: race.entrants,
+                                    phase: race.phase,
+                                    round: race.round,
+                                    game: race.game,
+                                    scheduling_thread: race.scheduling_thread,
+                                    last_edited_by: race.last_edited_by,
+                                    last_edited_at: race.last_edited_at,
+                                    ignored: race.ignored,
+                                    schedule_locked: race.schedule_locked,
+                                };
+                                race.save(&mut transaction).await?;
+                                transaction.commit().await?;
+                                let verb = if aspects_reset.len() == NonZero::<usize>::MIN { " has" } else { " have" };
+                                let response_content = MessageBuilder::default()
+                                    .push(English.join_str(aspects_reset))
+                                    .push(verb)
+                                    .push(" been reset.")
+                                    .build();
+                                //TODO post new status if draft was reset
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(false)
+                                    .content(response_content)
+                                )).await?;
                             } else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
