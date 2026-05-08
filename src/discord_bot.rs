@@ -1884,7 +1884,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             } else {
                                                 let was_scheduled = race.schedule.clone();
                                                 let kind = match race.entrants {
-                                                    Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
+                                                    Entrants::Two([Entrant::MidosHouseTeam(ref team1) | Entrant::MidosHouseTeamMember { team: ref team1, .. }, Entrant::MidosHouseTeam(ref team2) | Entrant::MidosHouseTeamMember { team: ref team2, .. }]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
                                                             race.schedule.set_async_start1(start);
                                                             race.schedule_updated_at = Some(Utc::now());
@@ -1902,7 +1902,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                             return Ok(())
                                                         }
                                                     }
-                                                    Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
+                                                    Entrants::Three([Entrant::MidosHouseTeam(ref team1) | Entrant::MidosHouseTeamMember { team: ref team1, .. }, Entrant::MidosHouseTeam(ref team2) | Entrant::MidosHouseTeamMember { team: ref team2, .. }, Entrant::MidosHouseTeam(ref team3) | Entrant::MidosHouseTeamMember { team: ref team3, .. }]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
                                                             race.schedule.set_async_start1(start);
                                                             race.schedule_updated_at = Some(Utc::now());
