@@ -1,10 +1,7 @@
 use {
     kuchiki::traits::TendrilSink as _,
-    rand::distr::{
-        Alphanumeric,
-        SampleString as _,
-    },
     crate::{
+        auth::random_password,
         prelude::*,
         racetime_bot::PrerollMode,
     },
@@ -130,7 +127,7 @@ impl Format {
                     .remove("value")
                     .ok_or(SingleSettingsError::BingoIndex)?
                     .value;
-                let passphrase = Alphanumeric.sample_string(&mut rng(), 8);
+                let passphrase = random_password(&mut rng(), 8);
                 let response = global.http_client.post("https://bingosync.com/")
                     .form(&BingoForm {
                         passphrase: passphrase.clone(),

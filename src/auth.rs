@@ -1,4 +1,5 @@
 use {
+    rand::distr::SampleString as _,
     rocket::{
         http::{
             Cookie,
@@ -605,4 +606,13 @@ pub(crate) fn logout(cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -
     cookies.remove_private(Cookie::from("racetime_refresh_token"));
     cookies.remove_private(Cookie::from("discord_refresh_token"));
     Redirect::to(redirect_to.map_or_else(|| uri!(crate::http::index), |uri| uri.0.into_owned()))
+}
+
+pub(crate) fn random_password(rng: &mut (impl Rng + ?Sized), len: usize) -> String {
+    // avoid ambiguous characters (0/O, 1/I/l)
+    rand::distr::slice::Choose::new(&[
+        '2', '3', '4', '5', '6', '7', '8', '9',
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+    ]).expect("static nonempty slice was empty").sample_string(rng, len)
 }

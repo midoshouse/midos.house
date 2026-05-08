@@ -9,10 +9,6 @@ use {
         },
         model::*,
     },
-    rand::distr::{
-        Alphanumeric,
-        SampleString as _,
-    },
     reqwest::StatusCode,
     serenity::all::CreateMessage,
     smart_default::SmartDefault,
@@ -22,6 +18,7 @@ use {
     },
     tokio::time::timeout,
     crate::{
+        auth::random_password,
         cal::Entrant,
         discord_bot::FENHL,
         prelude::*,
@@ -2565,7 +2562,7 @@ impl SeedRollUpdate {
                             }
                             if let Some(hash) = extra.file_hash {
                                 let mw_room_name = cal_event.race.mw_room_name(event, team.id);
-                                let tracker_room_name = restreams.values().any(|restream| restream.restreamer_racetime_id.is_some()).then(|| Alphanumeric.sample_string(&mut rng(), 32));
+                                let tracker_room_name = restreams.values().any(|restream| restream.restreamer_racetime_id.is_some()).then(|| random_password(&mut rng(), 32));
                                 crate::mw::create_room(&mw_room_name, hash, members.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).map(|(member, _)| member.id), tracker_room_name.as_deref()).await?;
                                 ctx.say(format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;
                                 if let Some(tracker_room_name) = tracker_room_name {
