@@ -1883,13 +1883,33 @@ impl GlobalState {
                 match roll_seed_locally(delay_until, version, match unlock_spoiler_log {
                     UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
                     UnlockSpoilerLog::Never => password_lock, // spoiler log needs to be generated so the backend can read the password
-                }, settings, plando).await {
+                }, settings.clone(), plando).await {
                     Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.map(|spoiler_log_path| spoiler_log_path.into_os_string().into_string()).transpose() {
                         Ok(locked_spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
                             Some((_, file_stem)) => SeedRollUpdate::Done {
                                 seed: seed::Data {
                                     file_hash: None, password: None, // will be read from spoiler log
-                                    bingo: None,
+                                    bingo: match (settings.remove("bingosync_url"), bingo_passphrase) {
+                                        (None, None) => None,
+                                        (None, Some(passphrase)) => {
+                                            eprintln!("rolled seed {file_stem:?} with no Bingosync URL but with Bingo passphrase {passphrase:?}"); //TODO warn race room and send Night report
+                                            None
+                                        }
+                                        (Some(url), None) => {
+                                            eprintln!("rolled seed {file_stem:?} with Bingosync URL {url} but with no Bingo passphrase"); //TODO warn race room and send Night report
+                                            None
+                                        }
+                                        (Some(url), Some(passphrase)) => Some(seed::BingoData {
+                                            url: match url.as_str().expect("settings with non-string Bingosync URL").parse() {
+                                                Ok(url) => url,
+                                                Err(e) => {
+                                                    update_tx.send(SeedRollUpdate::Error(e.into())).await?;
+                                                    return Ok(())
+                                                }
+                                            },
+                                            passphrase,
+                                        }),
+                                    },
                                     files: Some(seed::Files::MidosHouse {
                                         file_stem: Cow::Owned(file_stem.to_owned()),
                                         locked_spoiler_log_path,
@@ -2482,6 +2502,9 @@ impl SeedRollUpdate {
                     if let Some(password) = extra.password {
                         sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.into_iter().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await?;
                     }
+                    if let Some(seed::BingoData { url, passphrase }) = &extra.bingo {
+                        sqlx::query!("UPDATE races SET bingosync_url = $1, bingo_passphrase = $2 WHERE id = $3", url.as_str(), passphrase, cal_event.race.id as _).execute(db_pool).await?;
+                    }
                 }
                 let seed_url = match seed.files.as_ref().expect("received seed with no files") {
                     seed::Files::MidosHouse { file_stem, .. } => format!("{}/seed/{file_stem}", base_uri()),
@@ -2496,6 +2519,9 @@ impl SeedRollUpdate {
                 }).await?;
                 if let Some(file_hash) = extra.file_hash {
                     ctx.say(format_hash(file_hash)).await?;
+                }
+                if let Some(seed::BingoData { url, passphrase }) = &extra.bingo {
+                    ctx.say(format!("Bingo board: {url} — password: {passphrase}")).await?;
                 }
                 match unlock_spoiler_log {
                     UnlockSpoilerLog::Now => ctx.say("The spoiler log is also available on the seed page.").await?,
@@ -2659,7 +2685,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
 async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
     let extra = seed.extra(Utc::now()).await?;
     ctx.set_bot_raceinfo(&format!(
-        "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}",
+        "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}{bingo}",
         rsl_preset = rsl_preset.map(|preset| format!("{}\n", preset.race_info())).unwrap_or_default(),
         file_hash = extra.file_hash.map(|hash| format_hash(hash).to_string()).unwrap_or_default(),
         sep = if extra.file_hash.is_some() && extra.password.is_some() && show_password { " | " } else { "" },
@@ -2671,6 +2697,7 @@ async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl
             seed::Files::TriforceBlitz { is_dev: false, uuid, .. } => format!("https://triforceblitz.com/seed/{uuid}"),
             seed::Files::TriforceBlitz { is_dev: true, uuid, .. } => format!("https://dev.triforceblitz.com/seeds/{uuid}"),
         },
+        bingo = extra.bingo.map(|seed::BingoData { url, passphrase }| format!("\nBingo board: {url} — password: {passphrase}")).unwrap_or_default(),
     )).await?;
     Ok(())
 }
