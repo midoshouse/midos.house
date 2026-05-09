@@ -1711,7 +1711,7 @@ impl Event {
             Ok(Some(channels))
         }
 
-        Ok(if let RaceSchedule::Live { room: Some(_), .. } = self.race.schedule { //TODO also show for public async parts
+        Ok(if let RaceSchedule::Live { room: Some(_), .. } = self.race.schedule {
             match self.race.entrants {
                 Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => None,
                 Entrants::Two(ref entrants) => {
@@ -1752,6 +1752,25 @@ impl Event {
                     Some(url)
                 }
             }
+        } else if self.is_public_async_part() && self.room().is_some() && let Ok(team) = self.active_teams().exactly_one() {
+            let mut channels = Vec::default();
+            for (member, role) in team.members_roles(&mut *transaction).await? {
+                if event.team_config.role_is_racing(role) {
+                    if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                        channels.push(Cow::Owned(twitch_name));
+                    } else {
+                        return Ok(None)
+                    }
+                }
+            }
+            let mut url = Url::parse("https://multistre.am/").unwrap();
+            url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
+                0 | 1 => return Ok(None),
+                2 => "layout4",
+                3 => "layout7",
+                _ => unimplemented!(),
+            });
+            Some(url)
         } else {
             None
         })
