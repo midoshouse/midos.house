@@ -605,6 +605,29 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             })
         }
+        "2026ss" => {
+            Some(html! {
+                article {
+                    p {
+                        : "Welcome to the SpeedGaming Summer Series 2026 OoTR tournament, organized by ";
+                        : English.join_html_opt(data.organizers(&mut *transaction).await?);
+                        : ".";
+                        h2 : "See also";
+                        ul {
+                            li {
+                                a(href = "https://docs.google.com/document/d/16jSJ3h7KLMApNLpxxr-eYPzaugZkcFyiGRfcditmxwA/edit") : "Rules document";
+                            }
+                            li {
+                                a(href = "https://summer.speedgaming.org/") : "Main SG event page";
+                            }
+                            li {
+                                a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
+                            }
+                        }
+                    }
+                }
+            })
+        }
         _ => None,
     })
 }
