@@ -621,7 +621,11 @@ impl Handler {
                                             racetime_id: Some(rt_user.id.clone()),
                                             twitch_username: rt_user.twitch_name.clone(),
                                         }
-                                    }, tfb_scores.remove(&rt_user.id).expect("missing TFB score"), TeamLinks::Room(room.clone())));
+                                    }, tfb_scores.remove(&rt_user.id).ok_or_else(|| Error::MissingTfbScore {
+                                        room: room.clone(),
+                                        tfb_scores: tfb_scores.clone(),
+                                        user_or_team: rt_user.id.clone(),
+                                    })?, TeamLinks::Room(room.clone())));
                                 }
                             }
                             if let Ok(teams) = teams.try_into() {
@@ -721,7 +725,15 @@ impl Handler {
                                 if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await? {
                                     teams.push((
                                         Entrant::MidosHouseTeam(team),
-                                        tfb_scores.remove(team_slug).expect("missing TFB score"),
+                                        if let Some(tfb_score) = tfb_scores.remove(team_slug) {
+                                            tfb_score
+                                        } else {
+                                            return Err(Error::MissingTfbScore {
+                                                tfb_scores,
+                                                user_or_team: team_slug.clone(),
+                                                room: Url::parse(&format!("https://{}{}", racetime_host(), data.url))?,
+                                            })
+                                        },
                                         team_rooms.remove(team_slug).expect("each team should have a room"),
                                     ));
                                 } else {

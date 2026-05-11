@@ -63,6 +63,12 @@ pub(crate) enum Error {
     ExactlyOne,
     #[error("missing field in GraphQL query response for set {0}")]
     GraphQLQueryResponse(startgg::ID),
+    #[error("missing TFB score")]
+    MissingTfbScore {
+        room: Url,
+        tfb_scores: HashMap<String, tfb::Score>,
+        user_or_team: String,
+    },
     #[error("failed to determine settings for SlugCentral Open format")]
     NoSingleSettings,
 }
@@ -94,6 +100,7 @@ impl IsNetworkError for Error {
             Self::Wheel(e) => e.is_network_error(),
             Self::ExactlyOne => false,
             Self::GraphQLQueryResponse(_) => false,
+            Self::MissingTfbScore { .. } => false,
             Self::NoSingleSettings => false,
             Self::Server(_) => false,
         }
