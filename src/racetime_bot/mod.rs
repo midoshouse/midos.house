@@ -2315,19 +2315,19 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
     unreachable!()
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, IsNetworkError)]
 #[cfg_attr(unix, derive(Protocol))]
 #[cfg_attr(unix, async_proto(via = (String, String)))]
 pub(crate) enum RollError {
-    #[error(transparent)] Clone(#[from] rando::CloneError),
-    #[error(transparent)] Dir(#[from] rando::DirError),
-    #[error(transparent)] GitCheckout(#[from] gix::clone::checkout::main_worktree::Error),
-    #[error(transparent)] GitClone(#[from] gix::clone::Error),
-    #[error(transparent)] GitCloneFetch(#[from] gix::clone::fetch::Error),
-    #[error(transparent)] GitValidateRefName(#[from] gix::validate::reference::name::Error),
-    #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] #[is_network_error = false] Clone(#[from] rando::CloneError),
+    #[error(transparent)] #[is_network_error = false] Dir(#[from] rando::DirError),
+    #[error(transparent)] #[is_network_error = false] GitCheckout(#[from] gix::clone::checkout::main_worktree::Error),
+    #[error(transparent)] #[is_network_error = false] GitClone(#[from] gix::clone::Error),
+    #[error(transparent)] #[is_network_error = false] GitCloneFetch(#[from] gix::clone::fetch::Error),
+    #[error(transparent)] #[is_network_error = false] GitValidateRefName(#[from] gix::validate::reference::name::Error),
+    #[error(transparent)] #[is_network_error = false] Json(#[from] serde_json::Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
-    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+    #[error(transparent)] #[is_network_error = false] ParseInt(#[from] std::num::ParseIntError),
     #[cfg(unix)] #[error(transparent)] RaceTime(#[from] Box<Error>),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -2337,6 +2337,7 @@ pub(crate) enum RollError {
     #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("{display}")]
+    #[is_network_error = false]
     Cloned {
         debug: String,
         display: String,
@@ -2351,6 +2352,7 @@ pub(crate) enum RollError {
     #[error("randomizer settings must be a JSON object")]
     NonObjectSettings,
     #[error("non-UTF-8 filename")]
+    #[is_network_error = false]
     OsString(std::ffi::OsString),
     #[error("randomizer did not report patch location")]
     PatchPath,
@@ -2358,12 +2360,14 @@ pub(crate) enum RollError {
     #[error("base rom not found")]
     RomPath,
     #[error("max retries exceeded")]
+    #[is_network_error = false]
     Retries {
         ctx: &'static str,
         num_retries: u8,
         last_error: Option<String>,
     },
     #[error("failed to parse random settings script output")]
+    #[is_network_error = false]
     RslScriptOutput {
         regex: &'static str,
     },
@@ -2371,6 +2375,7 @@ pub(crate) enum RollError {
     #[error("failed to parse randomizer version from RSL script")]
     RslVersion,
     #[error("randomizer did not report spoiler log location")]
+    #[is_network_error = false]
     SpoilerLogPath {
         stdout: String,
         stderr: String,

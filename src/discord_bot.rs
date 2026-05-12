@@ -2643,15 +2643,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
         })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, IsNetworkError)]
 pub(crate) enum Error {
     #[error(transparent)] Draft(#[from] draft::Error),
     #[error(transparent)] EventData(#[from] event::DataError),
-    #[error(transparent)] Serenity(#[from] serenity::Error),
-    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] #[is_network_error = false] Serenity(#[from] serenity::Error),
+    #[error(transparent)] #[is_network_error = false] Sql(#[from] sqlx::Error),
     #[error("attempted to create scheduling thread in Discord guild that hasn't been initialized yet")]
+    #[is_network_error = false]
     UninitializedDiscordGuild(GuildId),
     #[error("attempted to create scheduling thread in Discord guild without command IDs")]
+    #[is_network_error = false]
     UnregisteredDiscordGuild(GuildId),
 }
 

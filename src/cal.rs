@@ -1936,24 +1936,24 @@ pub(crate) enum RaceHandleMode {
     AsyncForm,
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, rocket_util::Error, IsNetworkError)]
 pub(crate) enum Error {
-    #[error(transparent)] ChronoParse(#[from] chrono::format::ParseError),
+    #[error(transparent)] #[is_network_error = false] ChronoParse(#[from] chrono::format::ParseError),
     #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Draft(#[from] draft::Error),
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
-    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+    #[error(transparent)] #[is_network_error = false] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] ParseUser(#[from] racetime_bot::ParseUserError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Roll(#[from] racetime_bot::RollError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sheets(#[from] sheets::Error),
     #[error(transparent)] SlugOpenSingleSettings(#[from] sco::SingleSettingsError),
-    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] #[is_network_error = false] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
-    #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
-    #[error(transparent)] Url(#[from] url::ParseError),
+    #[error(transparent)] #[is_network_error = false] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
+    #[error(transparent)] #[is_network_error = false] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("anonymized entrant in race without hidden entrants")]
     AnonymizedEntrant,
@@ -1966,8 +1966,10 @@ pub(crate) enum Error {
     #[error("no team with this ID")]
     UnknownTeam,
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
+    #[is_network_error = false]
     UnknownTeamStartGG(startgg::ID),
     #[error("Unqualified entrant ({racetime_id}) in event ({}/{event}) with SGL-style qualifiers", series.slug())]
+    #[is_network_error = false]
     UnqualifiedEntrant {
         series: Series,
         event: String,
@@ -1984,37 +1986,6 @@ impl From<racetime::model::AnonymousError> for Error {
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     fn from(e: E) -> Self {
         Self::Err(e.into())
-    }
-}
-
-impl IsNetworkError for Error {
-    fn is_network_error(&self) -> bool {
-        match self {
-            Self::ChronoParse(_) => false,
-            Self::Discord(_) => false,
-            Self::Draft(e) => e.is_network_error(),
-            Self::Event(_) => false,
-            Self::OotrWeb(e) => e.is_network_error(),
-            Self::ParseInt(_) => false,
-            Self::ParseUser(e) => e.is_network_error(),
-            Self::Reqwest(e) => e.is_network_error(),
-            Self::Roll(_) => false, //TODO
-            Self::SeedData(e) => e.is_network_error(),
-            Self::Sheets(e) => e.is_network_error(),
-            Self::SlugOpenSingleSettings(e) => e.is_network_error(),
-            Self::Sql(_) => false,
-            Self::StartGG(e) => e.is_network_error(),
-            Self::TimeFromLocal(_) => false,
-            Self::Url(_) => false,
-            Self::Wheel(e) => e.is_network_error(),
-            Self::AnonymizedEntrant => false,
-            Self::DuplicateVolunteer => false,
-            Self::PoolPlaceholder => false,
-            Self::UnknownMember => false,
-            Self::UnknownTeam => false,
-            Self::UnknownTeamStartGG(_) => false,
-            Self::UnqualifiedEntrant { .. } => false,
-        }
     }
 }
 

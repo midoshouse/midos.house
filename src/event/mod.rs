@@ -199,11 +199,11 @@ pub(crate) struct Data<'a> {
     pub(crate) listed: bool,
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, rocket_util::Error, IsNetworkError)]
 pub(crate) enum DataError {
     #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
-    #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error(transparent)] Url(#[from] url::ParseError),
+    #[error(transparent)] #[is_network_error = false] Sql(#[from] sqlx::Error),
+    #[error(transparent)] #[is_network_error = false] Url(#[from] url::ParseError),
     #[error("no event with this series and identifier")]
     Missing,
     #[error("team with nonexistent user")]

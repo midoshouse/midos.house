@@ -33,9 +33,9 @@ impl TimeDeltaExt for TimeDelta {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, IsNetworkError)]
 pub(crate) enum PgIntervalDecodeError {
-    #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
+    #[error(transparent)] #[is_network_error = false] TryFromInt(#[from] std::num::TryFromIntError),
     #[error("found PgInterval with nonzero months in database")]
     Months,
     #[error("PgInterval too long")]
