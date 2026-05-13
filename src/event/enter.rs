@@ -563,13 +563,18 @@ impl Requirement {
                             : format_datetime(async_end, DateTimeFormat { long: true, running_text: true });
                             : ".";
                             @match series {
-                                Series::TriforceBlitz => : tfb::qualifier_async_rules();
-                                _ => @unimplemented
+                                Series::TriforceBlitz => {
+                                    : tfb::qualifier_async_rules();
+                                    : form_field("confirm", errors, html! {
+                                        input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
+                                        label(for = "confirm") : "I have read the above and am ready to play the seed";
+                                    });
+                                }
+                                _ => : form_field("confirm", errors, html! {
+                                    input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
+                                    label(for = "confirm") : "I am ready to play the seed";
+                                });
                             }
-                            : form_field("confirm", errors, html! {
-                                input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
-                                label(for = "confirm") : "I have read the above and am ready to play the seed";
-                            });
                         } else {
                             : "Play the qualifier seed, either live on ";
                             : format_datetime(live_start, DateTimeFormat { long: true, running_text: true });
@@ -616,13 +621,18 @@ impl Requirement {
                         }
                         @if !is_checked.unwrap() && async_available {
                             @match series {
-                                Series::TriforceBlitz => : tfb::qualifier_async_rules();
-                                _ => @unimplemented
+                                Series::TriforceBlitz => {
+                                    : tfb::qualifier_async_rules();
+                                    : form_field("confirm", errors, html! {
+                                        input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
+                                        label(for = "confirm") : "I have read the above and am ready to play the seed";
+                                    });
+                                }
+                                _ => : form_field("confirm", errors, html! {
+                                    input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
+                                    label(for = "confirm") : "I am ready to play the seed";
+                                });
                             }
-                            : form_field("confirm", errors, html! {
-                                input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
-                                label(for = "confirm") : "I have read the above and am ready to play the seed";
-                            });
                         }
                     }),
                 }
