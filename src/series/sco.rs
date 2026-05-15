@@ -97,8 +97,8 @@ impl Format {
                 format!("triforce_hunt") => json!(true),
             ], None))), //TODO add this preset once settings are decided
         };
-        ootr_utils::Branch::DevFenhl.clone_repo(true, true).await?;
-        let mut presets = fs::read_json::<HashMap<String, seed::Settings>>(ootr_utils::Branch::DevFenhl.dir(true)?.join("data").join("presets_default.json")).await?;
+        ootr_utils::Branch::DevFenhl.clone_repo(ALLOW_RIIR, true).await?;
+        let mut presets = fs::read_json::<HashMap<String, seed::Settings>>(ootr_utils::Branch::DevFenhl.dir(ALLOW_RIIR)?.join("data").join("presets_default.json")).await?;
         let mut settings = presets.remove(preset).ok_or(SingleSettingsError::MissingPreset(*self, preset))?;
         settings.insert(format!("password_lock"), json!(true));
         let bingo_passphrase = if let Self::Bingo = self {

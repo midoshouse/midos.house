@@ -16,6 +16,9 @@ use {
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
 
+/// Whether to roll seeds on the `riir` branch instead of `dev-fenhl`. Can be disabled in case of bugs on `riir`.
+pub(crate) const ALLOW_RIIR: bool = false; //TODO investigate bug with weird camera in graveyard and missing shops
+
 /// ootrandomizer.com seeds are deleted after 60 days (https://discord.com/channels/274180765816848384/1248210891636342846/1257367685658837126)
 const WEB_TIMEOUT: TimeDelta = TimeDelta::days(60);
 

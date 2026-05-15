@@ -286,7 +286,10 @@ pub(crate) use {
         },
         racetime_host,
         racetime_host_info,
-        seed,
+        seed::{
+            self,
+            ALLOW_RIIR,
+        },
         series::*,
         startgg,
         team::{

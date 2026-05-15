@@ -2202,7 +2202,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
             return Err(RollError::InsufficientStorage)
         }
     }
-    let allow_riir = match version {
+    let allow_riir = ALLOW_RIIR && match version {
         VersionedBranch::Pinned { ref version } => version.branch() == rando::Branch::DevFenhl && (version.base(), version.supplementary()) >= (&Version::new(8, 3, 25), Some(1)), // some versions older than this generate corrupted patch files
         VersionedBranch::Latest { branch } => branch == rando::Branch::DevFenhl,
         VersionedBranch::Custom { .. } => false,
