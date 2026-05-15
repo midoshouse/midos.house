@@ -256,7 +256,7 @@
       {
         "ordinal": 10,
         "name": "seed_password",
-        "type_info": "Bpchar"
+        "type_info": "Varchar"
       },
       {
         "ordinal": 11,

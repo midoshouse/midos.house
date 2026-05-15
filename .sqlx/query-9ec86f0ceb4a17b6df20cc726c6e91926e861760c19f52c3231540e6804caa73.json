@@ -267,7 +267,7 @@
         "Text",
         "Timestamptz",
         "Text",
-        "Bpchar",
+        "Varchar",
         "Int8",
         "Bool",
         "Bool",

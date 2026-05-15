@@ -1006,7 +1006,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
                                             div : html_content(&mut errors);
                                         }
                                     }
-                                }, errors, if request_qualifier { "Enter and Request Seed" } else { "Enter" })
+                                }, errors, if request_qualifier { "Enter and Request Seed Now" } else { "Enter" })
                             } else {
                                 html! {
                                     article {
