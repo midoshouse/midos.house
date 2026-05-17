@@ -202,8 +202,7 @@ impl Requirement {
             Self::Rules { .. } => Some(false),
             Self::BooleanChoice { .. } => Some(false),
             Self::RestreamConsent { .. } => Some(false),
-            Self::Qualifier { .. } => Some(false),
-            Self::TripleQualifier { .. } => Some('checked: {
+            Self::Qualifier { .. } | Self::TripleQualifier { .. } => Some('checked: {
                 if let Some(racetime) = &me.racetime {
                     for race in Race::for_event(transaction, &global.http_client, data).await? {
                         if race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") {
