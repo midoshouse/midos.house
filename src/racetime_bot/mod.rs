@@ -4592,7 +4592,12 @@ impl RaceHandler<GlobalState> for Handler {
                                         } else {
                                             format!(
                                                 "he {player_team} that did not call FPA can continue playing; t",
-                                                player_team = if let TeamConfig::Solo = event.team_config { "player" } else { "team" },
+                                                player_team = match (matches!(event.team_config, TeamConfig::Solo), cal_event.active_teams().count() == 1) {
+                                                    (false, false) => "teams",
+                                                    (false, true) => "team",
+                                                    (true, false) => "players",
+                                                    (true, true) => "player",
+                                                },
                                             )
                                         },
                                     )
