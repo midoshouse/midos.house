@@ -286,7 +286,7 @@ pub(crate) enum Goal {
     Sgl2023,
     Sgl2024,
     Sgl2025,
-    Sgl2026,
+    Sgss2026,
     SlugOpen2026,
     SongsOfHope,
     StandardRuleset,
@@ -353,7 +353,7 @@ impl Goal {
             Self::Sgl2023 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2023")),
             Self::Sgl2024 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2024")),
             Self::Sgl2025 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2025")),
-            Self::Sgl2026 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2026")),
+            Self::Sgss2026 => Ok((Series::SpeedGaming, "2026ss")),
             Self::SlugOpen2026 => Ok((Series::SlugOpen, "2026")),
             Self::SongsOfHope => Ok((Series::SongsOfHope, "1")),
             Self::StandardRuleset => Err(|series, event| series == Series::Standard && matches!(event, "w" | "9" | "9cc")),
@@ -414,7 +414,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
-            | Self::Sgl2026
+            | Self::Sgss2026
             | Self::SlugOpen2026
             | Self::SongsOfHope
             | Self::TournamentOfTruthS2
@@ -467,7 +467,7 @@ impl Goal {
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
             Self::Sgl2025 => "SGL 2025",
-            Self::Sgl2026 => "SGL 2026",
+            Self::Sgss2026 => "SpeedGaming Summer Series 2026",
             Self::SlugOpen2026 => "SlugCentral Open 2026",
             Self::SongsOfHope => "Songs of Hope",
             Self::StandardRuleset => "Standard Ruleset",
@@ -519,7 +519,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
-            | Self::Sgl2026
+            | Self::Sgss2026
             | Self::SlugOpen2026
             | Self::SongsOfHope
             | Self::StandardRuleset
@@ -576,7 +576,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
-            | Self::Sgl2026
+            | Self::Sgss2026
             | Self::SlugOpen2026 // should be overridden by Handler::draft_kind
             | Self::SongsOfHope
             | Self::StandardRuleset
@@ -595,7 +595,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
-            | Self::Sgl2026
+            | Self::Sgss2026
             | Self::TriforceBlitz
                 => PrerollMode::None,
             | Self::Cc7
@@ -699,7 +699,7 @@ impl Goal {
                 | Self::S7
                 | Self::S8
                 | Self::Sgl2025
-                | Self::Sgl2026
+                | Self::Sgss2026
                 | Self::StandardRuleset
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
             }
@@ -740,7 +740,7 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
-            Self::Sgl2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) }, //TODO(OoTR 9.1) update to 9.1
+            Self::Sgss2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) }, //TODO(OoTR 9.1) update to 9.1
             Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, //TODO different branch for Franco format
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::StandardRuleset => unreachable!("official seeds should use the event's rando version"),
@@ -794,7 +794,7 @@ impl Goal {
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::Sgl2025 => Some(sgl::settings_2025()),
-            Self::Sgl2026 => Some(sgl::settings_2026()),
+            Self::Sgss2026 => Some(sgl::settings_2026()),
             Self::SlugOpen2026 => None, // multiple formats; settings draft
             Self::SongsOfHope => Some(soh::settings()),
             Self::StandardRuleset => None, // per-event settings
@@ -840,7 +840,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
-            | Self::Sgl2026
+            | Self::Sgss2026
             | Self::SongsOfHope
             | Self::TournamentOfTruthS2
                 => ctx.say("!seed: The settings used for the tournament").await?,
@@ -1033,7 +1033,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
-            | Self::Sgl2026
+            | Self::Sgss2026
             | Self::SongsOfHope
             | Self::TournamentOfTruthS2
             | Self::TriforceBlitzProgressionSpoiler
@@ -2822,7 +2822,7 @@ trait SeedHandler {
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
-                    | Goal::Sgl2026
+                    | Goal::Sgss2026
                     | Goal::SongsOfHope
                     | Goal::TournamentOfTruthS2
                     | Goal::TriforceBlitzProgressionSpoiler
@@ -3864,7 +3864,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
-                            Goal::Sgl2026 => ctx.send_message(
+                            Goal::Sgss2026 => ctx.send_message(
                                 "Welcome! This is a practice room for the SpeedGaming Summer Series 2026. Learn more about the tournament at https://docs.google.com/document/d/16jSJ3h7KLMApNLpxxr-eYPzaugZkcFyiGRfcditmxwA/edit?tab=t.0#heading=h.elub1v2vj3qs",
                                 true,
                                 vec![
@@ -5196,7 +5196,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
-                    | Goal::Sgl2026
+                    | Goal::Sgss2026
                     | Goal::SlugOpen2026
                     | Goal::SongsOfHope
                     | Goal::StandardRuleset
