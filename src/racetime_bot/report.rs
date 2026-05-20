@@ -217,7 +217,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 msg.push(" and ");
                 losing_room.format_discord(&mut msg, false);
             }
-            if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
+            if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
                 msg.push(" — please manually ");
                 if let Some(results_channel) = event.discord_race_results_channel {
                     msg.push("post the announcement in ");
@@ -366,7 +366,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 }
                 None
             }
-            cal::Source::StartGG { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
+            cal::Source::StartGG { ref set, .. } | cal::Source::StartGGSpeedGamingOnline { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
                 if let Some(game) = cal_event.race.game {
                     let startgg::set_scores_query::ResponseData {
                         set: Some(startgg::set_scores_query::SetScoresQuerySet {
@@ -556,7 +556,7 @@ impl Handler {
                 msg.push(racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');
-                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
+                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
                     msg.push(" — please manually ");
                     if let Some(results_channel) = event.discord_race_results_channel {
                         msg.push("post the announcement in ");
@@ -580,7 +580,7 @@ impl Handler {
                 msg.push(racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');
-                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
+                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
                     msg.push(" — please manually ");
                     if let Some(results_channel) = event.discord_race_results_channel {
                         msg.push("post the announcement in ");

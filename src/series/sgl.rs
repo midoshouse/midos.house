@@ -125,7 +125,11 @@ impl Restream {
             && !cal_event.race.has_any_room() // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
             && self.timezone.is_empty() // timezone is a freeform text field. When non-empty, the when_countdown timestamp is essentially meaningless (it is the timestamp entered by the user, reinterpreted as America/New_York and then converted to UTC). A tournament organizer will later fix the timestamp and clear the timezone field
         {
-            assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGamingOnline { id }), cal::Source::Manual | cal::Source::SpeedGamingOnline { id: _ }));
+            cal_event.race.source = match mem::replace(&mut cal_event.race.source, cal::Source::Manual) {
+                cal::Source::Manual | cal::Source::SpeedGamingOnline { id: _ } => cal::Source::SpeedGamingOnline { id },
+                cal::Source::StartGG { event, set } | cal::Source::StartGGSpeedGamingOnline { event, set, id: _ } => cal::Source::StartGGSpeedGamingOnline { event, set, id },
+                source => panic!("unexpected race source: {source:?}"),
+            };
             let schedule_changed = match cal_event.race.schedule {
                 RaceSchedule::Live { start, .. } => (start != self.when_countdown).then_some(true),
                 _ => Some(false),

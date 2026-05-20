@@ -1603,10 +1603,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     } else {
                                         race.draft
                                     },
-                                    source: if let cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } = race.source {
-                                        if reset_schedule { cal::Source::Manual } else { race.source }
-                                    } else {
-                                        race.source
+                                    source: match race.source {
+                                        cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } => if reset_schedule { cal::Source::Manual } else { race.source },
+                                        cal::Source::StartGGSpeedGamingOnline { event, set, id } => if reset_schedule { cal::Source::StartGG { event, set } } else { cal::Source::StartGGSpeedGamingOnline { event, set, id } },
+                                        _ => race.source,
                                     },
                                     schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
                                     schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
