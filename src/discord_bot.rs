@@ -751,7 +751,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Go first in the settings draft for the Franco format.")),
+                        .description(description!("Go first in the settings draft for the Franco format."))
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Integer,
+                            "mq",
+                            description!("Number of MQ dungeons"),
+                        )
+                            .min_int_value(0)
+                            .max_int_value(12)
+                            .required(false)
+                        ),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -996,7 +1005,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Go second in the settings draft for the Franco format.")),
+                        .description(description!("Go second in the settings draft for the Franco format."))
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Integer,
+                            "mq",
+                            description!("Number of MQ dungeons"),
+                        )
+                            .min_int_value(0)
+                            .max_int_value(12)
+                            .required(false)
+                        ),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
