@@ -14,7 +14,6 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     serenity::all::{
-        CreateMessage,
         CreateSelectMenu,
         CreateSelectMenuKind,
         CreateSelectMenuOption,

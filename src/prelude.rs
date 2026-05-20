@@ -152,6 +152,7 @@ pub(crate) use {
     serenity::{
         all::{
             CreateAllowedMentions,
+            CreateMessage,
             Context as DiscordCtx,
             MessageBuilder,
         },

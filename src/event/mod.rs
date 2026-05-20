@@ -2,7 +2,6 @@ use {
     std::io::BufRead,
     rocket::http::impl_from_uri_param_identity,
     serenity::all::{
-        CreateMessage,
         EditMember,
         EditRole,
     },
@@ -1033,6 +1032,8 @@ pub(crate) enum Error {
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("attempted to update non-SpeedGaming race with data from SpeedGaming backend")]
+    NonSpeedGamingRace,
     #[error("missing user data for an organizer")]
     OrganizerUserData,
     #[error("missing user data for a restream coordinator")]
@@ -1064,6 +1065,7 @@ impl IsNetworkError for Error {
             Self::TimeFromLocal(_) => false,
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
+            Self::NonSpeedGamingRace => false,
             Self::OrganizerUserData => false,
             Self::RestreamCoordinatorUserData => false,
         }

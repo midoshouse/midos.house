@@ -2,6 +2,7 @@ use crate::{
     event::{
         Data,
         InfoError,
+        SchedulingBackend,
     },
     prelude::*,
 };
@@ -136,10 +137,7 @@ impl Restream {
             };
             cal_event.race.schedule.set_live_start(self.when_countdown);
             if let Some(was_scheduled) = schedule_changed {
-                use {
-                    serenity::all::CreateMessage,
-                    crate::discord_bot::*,
-                };
+                use crate::discord_bot::*;
 
                 if self.when_countdown - Utc::now() < TimeDelta::minutes(30) {
                     let (global, racetime_host) = {
@@ -249,7 +247,23 @@ impl Restream {
             for language in all() {
                 if let Some(channel) = self.channels.iter().find(|channel| channel.language == language) {
                     if channel.slug != "norestream" {
-                        video_urls.insert(language, Url::parse(&format!("https://twitch.tv/{}", channel.slug))?);
+                        let video_url = format!("https://twitch.tv/{}", channel.slug);
+                        video_urls.insert(language, Url::parse(&video_url)?);
+                        if (event.event.ends_with("onl") || event.event.ends_with("ss")) && !cal_event.race.video_urls.contains_key(&language) {
+                            let volunteer_role = RoleId::new(1089372484836524122);
+                            let mut msg = MessageBuilder::default();
+                            msg.mention(&volunteer_role);
+                            cal_event.format_discord(&mut transaction, Some(GuildId::new(1088872810719486143)), English, &mut msg).await?;
+                            msg.push(" (scheduled for ");
+                            msg.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            msg.push(") has been confirmed for restream on <");
+                            msg.push_safe(video_url);
+                            msg.push(">, please sign up at <https://speedgaming.org/");
+                            let SchedulingBackend::SpeedGamingOnline(speedgaming_slug) = event.scheduling_backend(&mut transaction).await? else { return Err(event::Error::NonSpeedGamingRace) };
+                            msg.push(speedgaming_slug);
+                            msg.push("/crew> to volunteer.");
+                            ChannelId::new(1088885894666256414).send_message(discord_ctx, CreateMessage::default().content(&msg.build()).allowed_mentions(CreateAllowedMentions::default().roles(iter::once(volunteer_role)))).await?;
+                        }
                         //TODO register restreamer, if any
                     }
                 }

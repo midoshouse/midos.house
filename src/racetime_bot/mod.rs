@@ -11,7 +11,6 @@ use {
         model::*,
     },
     reqwest::StatusCode,
-    serenity::all::CreateMessage,
     smart_default::SmartDefault,
     systemstat::{
         ByteSize,

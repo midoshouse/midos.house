@@ -8,7 +8,6 @@ use {
         CreateForumPost,
         CreateInteractionResponse,
         CreateInteractionResponseMessage,
-        CreateMessage,
         CreateThread,
         EditRole,
     },
