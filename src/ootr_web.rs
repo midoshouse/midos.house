@@ -86,7 +86,7 @@ pub(crate) struct SeedInfo {
     pub(crate) gen_time: DateTime<Utc>,
     pub(crate) file_hash: [HashIcon; 5],
     pub(crate) file_stem: String,
-    pub(crate) password: Option<[OcarinaNote; 6]>,
+    pub(crate) password: Option<NEVec<Button>>,
 }
 
 #[serde_as]
@@ -364,7 +364,7 @@ impl ApiClient {
 
         #[derive(Deserialize)]
         struct PasswordResponse {
-            pw: [OcarinaNote; 6],
+            pw: NEVec<Button>,
         }
 
         let encrypt = version.is_release() && unlock_spoiler_log == UnlockSpoilerLog::Never;

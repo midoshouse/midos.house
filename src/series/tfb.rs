@@ -35,7 +35,7 @@ pub(crate) enum SeedResponse {
     Ready {
         id: Uuid,
         hash_icons: [HashIcon; 5],
-        seed_password: Option<[OcarinaNote; 6]>,
+        seed_password: Option<NEVec<Button>>,
         seed_url: Url,
     },
     Failed {

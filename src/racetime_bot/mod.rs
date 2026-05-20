@@ -1,6 +1,7 @@
 use {
     std::io::prelude::*,
     mhstatus::OpenRoom,
+    nonempty_collections::NESlice,
     ootr_utils as rando,
     racetime::{
         handler::{
@@ -2515,8 +2516,8 @@ impl SeedRollUpdate {
                             }
                         }
                     }
-                    if let Some(password) = extra.password {
-                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.into_iter().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await?;
+                    if let Some(password) = &extra.password {
+                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.iter().copied().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await?;
                     }
                     if let Some(seed::BingoData { url, passphrase }) = &extra.bingo {
                         sqlx::query!("UPDATE races SET bingosync_url = $1, bingo_passphrase = $2 WHERE id = $3", url.as_str(), passphrase, cal_event.race.id as _).execute(db_pool).await?;
@@ -2649,26 +2650,32 @@ fn format_hash(file_hash: [HashIcon; 5]) -> impl fmt::Display {
     file_hash.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
-fn format_password(password: [OcarinaNote; 6]) -> impl fmt::Display {
-    password.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
+fn format_password(password: NESlice<'_, Button>) -> String {
+    password.iter().map(|icon| icon.to_racetime_emoji()).join(" ")
 }
 
-fn ocarina_note_to_ootr_discord_emoji(note: OcarinaNote) -> ReactionType {
+fn button_to_discord_emoji(button: Button) -> ReactionType {
     ReactionType::Custom {
         animated: false,
-        id: EmojiId::new(match note {
-            OcarinaNote::A => 658692216373379072,
-            OcarinaNote::CDown => 658692230479085570,
-            OcarinaNote::CRight => 658692260002791425,
-            OcarinaNote::CLeft => 658692245771517962,
-            OcarinaNote::CUp => 658692275152355349,
+        id: EmojiId::new(match button {
+            Button::A => 1309343414042628196,
+            Button::CDown => 1309343430626775090,
+            Button::CRight => 1309343447257190450,
+            Button::CLeft => 1309343462650548265,
+            Button::CUp => 1309343477020229712,
+            Button::L => 1503727331355791361,
+            Button::R => 1503727353946312858,
+            Button::Z => 1503727371323314276,
         }),
-        name: Some(match note {
-            OcarinaNote::A => format!("staffA"),
-            OcarinaNote::CDown => format!("staffDown"),
-            OcarinaNote::CRight => format!("staffRight"),
-            OcarinaNote::CLeft => format!("staffLeft"),
-            OcarinaNote::CUp => format!("staffUp"),
+        name: Some(match button {
+            Button::A => format!("a_"),
+            Button::CDown => format!("c_down"),
+            Button::CRight => format!("c_right"),
+            Button::CLeft => format!("c_left"),
+            Button::CUp => format!("c_up"),
+            Button::L => format!("l_"),
+            Button::R => format!("r_"),
+            Button::Z => format!("z_"),
         }),
     }
 }
@@ -2705,7 +2712,7 @@ async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl
         rsl_preset = rsl_preset.map(|preset| format!("{}\n", preset.race_info())).unwrap_or_default(),
         file_hash = extra.file_hash.map(|hash| format_hash(hash).to_string()).unwrap_or_default(),
         sep = if extra.file_hash.is_some() && extra.password.is_some() && show_password { " | " } else { "" },
-        password = extra.password.filter(|_| show_password).map(|password| format_password(password).to_string()).unwrap_or_default(),
+        password = extra.password.as_ref().filter(|_| show_password).map(|password| format_password(password.as_nonempty_slice())).unwrap_or_default(),
         newline = if extra.file_hash.is_some() || extra.password.is_some() && show_password { "\n" } else { "" },
         seed_url = match seed.files.as_ref().expect("received seed with no files") {
             seed::Files::MidosHouse { file_stem, .. } => format!("{}/seed/{file_stem}", base_uri()),
@@ -5026,7 +5033,7 @@ impl RaceHandler<GlobalState> for Handler {
                 lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
                     let extra = seed.extra(Utc::now()).await?;
                     if let Some(password) = extra.password {
-                        ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
+                        ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password.as_nonempty_slice()))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
                         if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
                             if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(discord_bot::OOTR_GUILD) {
@@ -5047,7 +5054,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     msg.push("Seed password: ");
                                     msg.push_emoji(&ReactionType::Custom { animated: false, id: EmojiId::new(658692193338392614), name: Some(format!("staffClef")) });
                                     for note in password {
-                                        msg.push_emoji(&ocarina_note_to_ootr_discord_emoji(note));
+                                        msg.push_emoji(&button_to_discord_emoji(note));
                                     }
                                     channel.say(discord_ctx!(ctx.global_state), msg.build()).await?;
                                 }
@@ -5273,7 +5280,7 @@ impl RaceHandler<GlobalState> for Handler {
                     lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
                         let extra = seed.extra(Utc::now()).await?;
                         if let Some(password) = extra.password {
-                            ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password))).await?;
+                            ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password.as_nonempty_slice()))).await?;
                             set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
                         }
                     });

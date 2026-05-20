@@ -92,8 +92,8 @@ pub(crate) use {
     ootr_utils::{
         camc::ChestTexture,
         spoiler::{
+            Button,
             HashIcon,
-            OcarinaNote,
             SpoilerLog,
         },
     },

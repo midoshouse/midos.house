@@ -69,11 +69,11 @@ impl HashIconExt for HashIcon {
     }
 }
 
-trait OcarinaNoteExt {
+trait ButtonExt {
     fn to_html(&self) -> RawHtml<String>;
 }
 
-impl OcarinaNoteExt for OcarinaNote {
+impl ButtonExt for Button {
     fn to_html(&self) -> RawHtml<String> {
         html! {
             @match self {
@@ -83,6 +83,9 @@ impl OcarinaNoteExt for OcarinaNote {
                 Self::CRight => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-right.png"));
                 Self::CLeft => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-left.png"));
                 Self::CUp => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/c-up.png"));
+                Self::L => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/l.png"));
+                Self::R => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/r.png"));
+                Self::Z => img(class = "password-icon", alt = char::from(*self), src = static_url!("button/z.png"));
             }
         }
     }
@@ -92,7 +95,7 @@ impl OcarinaNoteExt for OcarinaNote {
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) struct Data {
     pub(crate) file_hash: Option<[HashIcon; 5]>,
-    pub(crate) password: Option<[OcarinaNote; 6]>,
+    pub(crate) password: Option<NEVec<Button>>,
     pub(crate) bingo: Option<BingoData>,
     pub(crate) files: Option<Files>,
     pub(crate) progression_spoiler: bool,
@@ -188,7 +191,7 @@ impl Data {
         #[derive(Deserialize)]
         struct SparseSpoilerLog {
             file_hash: [HashIcon; 5],
-            password: Option<[OcarinaNote; 6]>,
+            password: Option<NEVec<Button>>,
         }
 
         if (self.file_hash.is_none() || self.password.is_none() || match self.files {
@@ -210,18 +213,18 @@ impl Data {
             let (file_hash, password, world_count, chests) = if spoiler_path_exists {
                 let log = fs::read_to_string(&spoiler_path).await?;
                 if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                    (Some(log.file_hash), log.password, Some(log.settings[0].world_count), if spoiler_file_name.is_some() {
+                    (Some(log.file_hash), log.password.clone(), Some(log.settings[0].world_count), if spoiler_file_name.is_some() {
                         ChestAppearances::from(log)
                     } else {
                         ChestAppearances::random() // keeping chests random for locked spoilers to avoid leaking seed info
                     })
                 } else if let Ok(log) = serde_json::from_str::<SparseSpoilerLog>(&log) {
-                    (Some(log.file_hash), self.password.or(log.password), None, ChestAppearances::random())
+                    (Some(log.file_hash), self.password.clone().or(log.password), None, ChestAppearances::random())
                 } else {
-                    (self.file_hash, self.password, None, ChestAppearances::random())
+                    (self.file_hash, self.password.clone(), None, ChestAppearances::random())
                 }
             } else {
-                (self.file_hash, self.password, None, ChestAppearances::random())
+                (self.file_hash, self.password.clone(), None, ChestAppearances::random())
             };
             //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
             let bingo = if let Some(bingo) = &self.bingo {
@@ -250,7 +253,7 @@ impl Data {
         Ok(ExtraData {
             spoiler_status: SpoilerStatus::NotFound,
             file_hash: self.file_hash,
-            password: self.password,
+            password: self.password.clone(),
             bingo: self.bingo.clone(),
             world_count: None,
             chests: ChestAppearances::random(),
@@ -276,7 +279,7 @@ impl IsNetworkError for ExtraDataError {
 pub(crate) struct ExtraData {
     spoiler_status: SpoilerStatus,
     pub(crate) file_hash: Option<[HashIcon; 5]>,
-    pub(crate) password: Option<[OcarinaNote; 6]>,
+    pub(crate) password: Option<NEVec<Button>>,
     pub(crate) bingo: Option<BingoData>,
     pub(crate) world_count: Option<NonZero<u8>>,
     chests: ChestAppearances,
@@ -348,7 +351,7 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
             code : passphrase;
         });
     }
-    Ok(match (extra.file_hash, show_password, extra.password, seed_links) {
+    Ok(match (extra.file_hash, show_password, &extra.password, seed_links) {
         (None, false, _, None) | (None, _, None, None) => html! {},
         (None, false, _, Some(seed_links)) | (None, _, None, Some(seed_links)) => seed_links,
         (_, _, _, None) => html! {

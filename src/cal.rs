@@ -1359,7 +1359,7 @@ impl Race {
             async_room3.map(|url| url.to_string()),
             async_end3,
             challonge_match,
-            self.seed.password.map(|password| password.into_iter().map(char::from).collect::<String>()),
+            self.seed.password.as_ref().map(|password| password.iter().copied().map(char::from).collect::<String>()),
             speedgaming_id,
             self.notified,
             is_tfb_dev,
@@ -4639,24 +4639,26 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
                     Ok(response) => match response.detailed_error_for_status().await {
                         Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
                             Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
-                                if let Some((_, hash1, hash2, hash3, hash4, hash5, pw1, pw2, pw3, pw4, pw5, pw6, info_file_stem)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+))?\nhttps://midos\\.house/seed/([0-9A-Za-z_-]+)(?:\\.zpfz?)?$", &info_bot) {
+                                if let Some((_, hash1, hash2, hash3, hash4, hash5, pw, info_file_stem)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?(Note[^ ]+(?: Note[^ ]+)+))?\nhttps://midos\\.house/seed/([0-9A-Za-z_-]+)(?:\\.zpfz?)?$", &info_bot) {
                                     let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
                                     let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
                                     let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
                                     let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
                                     let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
                                     file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
-                                    password = [pw1, pw2, pw3, pw4, pw5, pw6].into_iter().filter_map(|emoji| OcarinaNote::from_racetime_emoji(emoji)).collect_vec().try_into().ok();
+                                    let Some(parsed_password) = pw.split(' ').map(Button::from_racetime_emoji).collect::<Option<Vec<_>>>() else { continue };
+                                    password = NEVec::try_from_vec(parsed_password);
                                     file_stem = Some(info_file_stem.to_owned());
                                     break
-                                } else if let Some((_, hash1, hash2, hash3, hash4, hash5, pw1, pw2, pw3, pw4, pw5, pw6, web_id_str)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+))?\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
+                                } else if let Some((_, hash1, hash2, hash3, hash4, hash5, pw, web_id_str)) = regex_captures!("^(?:.+\n)?([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)(?: \\| (?:Password: )?(Note[^ ]+(?: Note[^ ]+)+))?\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
                                     let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
                                     let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
                                     let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
                                     let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
                                     let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
                                     file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
-                                    password = [pw1, pw2, pw3, pw4, pw5, pw6].into_iter().filter_map(|emoji| OcarinaNote::from_racetime_emoji(emoji)).collect_vec().try_into().ok();
+                                    let Some(parsed_password) = pw.split(' ').map(Button::from_racetime_emoji).collect::<Option<Vec<_>>>() else { continue };
+                                    password = NEVec::try_from_vec(parsed_password);
                                     web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
                                     match global.http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
                                         Ok(patch_response) => match patch_response.detailed_error_for_status().await {

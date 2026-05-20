@@ -40,7 +40,7 @@ impl Format {
             Self::Saws => "SAWS Beginner",
             Self::Bingo => "Bingo SDG Settings",
             Self::Ice => "Ice%",
-            Self::Mixed => "Mixed Pools 2025",
+            Self::Mixed => "Mixed Pools 2026",
             Self::Franco => "Franco",
             Self::Triforce => "Triforce Hunt",
         }
