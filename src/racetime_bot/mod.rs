@@ -706,8 +706,8 @@ impl Goal {
         }
     }
 
-    pub(crate) fn rando_version(&self) -> VersionedBranch {
-        match self {
+    pub(crate) fn rando_version(&self) -> Result<VersionedBranch, &'static str> {
+        Ok(match self {
             Self::BattleRoyaleS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::BattleRoyaleS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::Cc7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
@@ -743,7 +743,7 @@ impl Goal {
             Self::Sgss2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) }, //TODO(OoTR 9.1) update to 9.1
             Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, //TODO different branch for Franco format
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
-            Self::StandardRuleset => unreachable!("official seeds should use the event's rando version"),
+            Self::StandardRuleset => return Err("official seeds should use the event's rando version"),
             Self::TournamentOfTruthS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
             Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105) },
@@ -752,8 +752,8 @@ impl Goal {
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::WeTryToBeBetterS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 0, 11) },
             Self::WeTryToBeBetterS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
-            Self::PicRs2 | Self::PotsOfTime | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
-        }
+            Self::PicRs2 | Self::PotsOfTime | Self::Rsl => return Err("randomizer version for this goal must be parsed from RSL script"),
+        })
     }
 
     /// Only returns a value for goals that only have one possible set of settings.
@@ -2690,7 +2690,10 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
         hide_entrants: event.series == Series::BattleRoyale && cal_event.race.entrants == Entrants::Open,
         ranked: cal_event.is_private_async_part() || event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }), //HACK: private async parts must be marked as ranked so they don't immediately get published on finish/cancel
         require_even_teams: true,
-        start_delay: if cal_event.race.entrants == Entrants::Open { 30 } else { 15 },
+        start_delay: if
+            cal_event.race.entrants == Entrants::Open
+            || goal.unlock_spoiler_log(true, false) == UnlockSpoilerLog::Never && goal.rando_version().is_ok_and(|rando_version| matches!(rando_version, VersionedBranch::Pinned { version } if version.is_release() && (version.base().major, version.base().minor) >= (9, 1))) // longer countdowns for 10-button passwords
+        { 30 } else { 15 },
         time_limit: 24,
         time_limit_auto_complete: false,
         streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
@@ -2832,10 +2835,10 @@ trait SeedHandler {
                     | Goal::SongsOfHope
                     | Goal::TournamentOfTruthS2
                     | Goal::TriforceBlitzProgressionSpoiler
-                        => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                        => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                     | Goal::WeTryToBeBetterS1
                     | Goal::WeTryToBeBetterS2
-                        => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
+                        => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                     | Goal::Cc7
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
@@ -2849,15 +2852,15 @@ trait SeedHandler {
                         => unreachable!("should have draft state set"),
                     Goal::BattleRoyaleS1 => {
                         let (settings, plando) = ohko::s1_settings();
-                        self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                        self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::BattleRoyaleS2 => {
                         let (settings, plando) = ohko::s2_settings();
-                        self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                        self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::CopaLatinoamerica2025 => {
                         let (settings, plando) = latam::settings_2025();
-                        self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                        self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                     Goal::PicRs2 => self.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
@@ -3240,7 +3243,7 @@ impl SeedHandler for Handler {
                 } else {
                     ("a", format!("seed with {}", step.message))
                 };
-                self.roll_seed(ctx, goal.preroll_seeds(), kind.rando_version().unwrap_or_else(|| goal.rando_version()), settings, serde_json::Map::default(), None, unlock_spoiler_log, goal.language(), article, description).await;
+                self.roll_seed(ctx, goal.preroll_seeds(), kind.rando_version().unwrap_or_else(|| goal.rando_version().unwrap()), settings, serde_json::Map::default(), None, unlock_spoiler_log, goal.language(), article, description).await;
             }
             draft::StepKind::DoneRsl { preset, world_count } => {
                 let (article, description) = if let French = goal.language() {
@@ -4908,7 +4911,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         let mut transaction = ctx.global_state.db_pool.begin().await?;
                         match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.eq_ignore_ascii_case("spoilerseed"), false, &args).await? {
-                            SeedCommandParseResult::Regular { rando_version_override, settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), rando_version_override.unwrap_or_else(|| goal.rando_version()), settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::Regular { rando_version_override, settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), rando_version_override.unwrap_or_else(|| goal.rando_version().unwrap()), settings, plando, bingo_passphrase, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Tfb { display_name, preset, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, display_name, preset, true, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::QueueExisting { data, language, article, description } => self.queue_existing_seed(ctx, data, language, article, description).await,
@@ -5497,7 +5500,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                             } else {
                                 ("a", format!("seed with {}", step.message))
                             };
-                            self.roll_seed(global, self.goal.preroll_seeds(), kind.rando_version().unwrap_or_else(|| self.goal.rando_version()), settings, serde_json::Map::default(), None, unlock_spoiler_log, self.goal.language(), article, description).await
+                            self.roll_seed(global, self.goal.preroll_seeds(), kind.rando_version().unwrap_or_else(|| self.goal.rando_version().unwrap()), settings, serde_json::Map::default(), None, unlock_spoiler_log, self.goal.language(), article, description).await
                         }
                         draft::StepKind::DoneRsl { preset, world_count } => {
                             let (article, description) = if let French = self.goal.language() {
@@ -5726,7 +5729,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                             PrerollMode::Long,
                             false,
                             None,
-                            goal.rando_version(),
+                            goal.rando_version().unwrap(),
                             settings.clone(),
                             serde_json::Map::default(),
                             None,
