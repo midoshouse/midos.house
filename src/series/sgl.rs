@@ -1,10 +1,13 @@
-use crate::{
-    event::{
-        Data,
-        InfoError,
-        SchedulingBackend,
+use {
+    serde_with::NoneAsEmptyString,
+    crate::{
+        event::{
+            Data,
+            InfoError,
+            SchedulingBackend,
+        },
+        prelude::*,
     },
-    prelude::*,
 };
 
 /// Rate limit once per minute according to DMs with tsigma6
@@ -76,32 +79,40 @@ struct RestreamChannel {
     slug: String,
 }
 
+#[serde_as]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OnlinePlayer {
+    #[serde_as(as = "NoneAsEmptyString")]
+    discord_id: Option<UserId>,
     streaming_from: String,
 }
 
 impl OnlinePlayer {
     async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, entrant: &Entrant) -> Result<bool, cal::Error> {
         Ok(match entrant {
-            Entrant::MidosHouseTeam(team) => if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one()
-                && let Some(Some(user_data)) = member.racetime_user_data(http_client).await?
-                && let Some(twitch_name) = user_data.twitch_name
-            {
+            Entrant::MidosHouseTeam(team) => if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one() {
+                if let Some(ref discord) = member.discord {
+                    self.discord_id == Some(discord.id)
+                } else if let Some(Some(user_data)) = member.racetime_user_data(http_client).await? && let Some(twitch_name) = user_data.twitch_name {
+                    twitch_name.eq_ignore_ascii_case(&self.streaming_from)
+                } else {
+                    false
+                }
+            } else {
+                false
+            },
+            Entrant::MidosHouseTeamMember { member, .. } => if let Some(ref discord) = member.discord {
+                self.discord_id == Some(discord.id)
+            } else if let Some(Some(user_data)) = member.racetime_user_data(http_client).await? && let Some(twitch_name) = user_data.twitch_name {
                 twitch_name.eq_ignore_ascii_case(&self.streaming_from)
             } else {
                 false
             },
-            Entrant::MidosHouseTeamMember { member, .. } => if let Some(Some(user_data)) = member.racetime_user_data(http_client).await?
-                && let Some(twitch_name) = user_data.twitch_name
-            {
-                twitch_name.eq_ignore_ascii_case(&self.streaming_from)
-            } else {
-                false
-            },
-            Entrant::Discord { twitch_username: None, .. } | Entrant::Named { twitch_username: None, .. } => false,
-            Entrant::Discord { twitch_username: Some(username), .. } | Entrant::Named { twitch_username: Some(username), .. } => username.eq_ignore_ascii_case(&self.streaming_from),
+            Entrant::Discord { id, twitch_username: None, .. } => self.discord_id == Some(*id),
+            Entrant::Discord { id, twitch_username: Some(username), .. } => self.discord_id == Some(*id) || username.eq_ignore_ascii_case(&self.streaming_from),
+            Entrant::Named { twitch_username: None, .. } => false,
+            Entrant::Named { twitch_username: Some(username), .. } => username.eq_ignore_ascii_case(&self.streaming_from),
         })
     }
 }
