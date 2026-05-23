@@ -302,7 +302,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await?;
                 builder.push(" (");
                 builder.push(winning_time.format(English));
-                if breaks_used {
+                if breaks_used && !winning_time.is_dnf() {
                     builder.push(if restreamed { " including breaks" } else { " adjusted for breaks" });
                 }
                 builder.push(')');
@@ -315,7 +315,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &loser).await?;
                 builder.push(" (");
                 builder.push(losing_time.format(English));
-                if breaks_used {
+                if breaks_used && !losing_time.is_dnf() {
                     builder.push(if restreamed { " including breaks" } else { " adjusted for breaks" });
                 }
                 builder.push(if winning_room == losing_room { ") " } else { ") [" });
