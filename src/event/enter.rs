@@ -1357,8 +1357,10 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
                                 msg.mention_user(&me);
                                 msg.push(" signed up for ");
                                 msg.push_safe(&data.display_name);
-                                let response = startgg::query_cached::<startgg::UserSlugQuery>(&global.http_client, &global.config.startgg, startgg::user_slug_query::Variables { id: startgg_id.clone() }).await?;
-                                if let startgg::user_slug_query::ResponseData { user: Some(startgg::user_slug_query::UserSlugQueryUser { discriminator: Some(slug) }) } = response {
+                                if let Some(access_token) = &global.config.startgg
+                                    && let response = startgg::query_cached::<startgg::UserSlugQuery>(&global.http_client, access_token, startgg::user_slug_query::Variables { id: startgg_id.clone() }).await?
+                                    && let startgg::user_slug_query::ResponseData { user: Some(startgg::user_slug_query::UserSlugQueryUser { discriminator: Some(slug) }) } = response
+                                {
                                     msg.push(" with start.gg user slug ");
                                     msg.push_mono_safe(slug);
                                     msg.push(". Please go to the start.gg tournament settings › Attendees › Add Attendee, paste the user slug into the search field, and select the first result.");

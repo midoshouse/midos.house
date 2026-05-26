@@ -368,54 +368,78 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
             }
             cal::Source::StartGG { ref set, .. } | cal::Source::StartGGSpeedGamingOnline { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
                 if let Some(game) = cal_event.race.game {
-                    let startgg::set_scores_query::ResponseData {
-                        set: Some(startgg::set_scores_query::SetScoresQuerySet {
-                            games,
-                            set_games_type: Some(set_games_type),
-                        }),
-                    } = startgg::query_uncached::<startgg::SetScoresQuery>(&ctx.global_state.http_client, &ctx.global_state.config.startgg, startgg::set_scores_query::Variables {
-                        set_id: set.clone(),
-                    }).await? else {
-                        return Err(Error::GraphQLQueryResponse(set.clone()))
-                    };
-                    let mut game_data = games.into_iter().flatten().map(|game| {
-                        let Some(startgg::set_scores_query::SetScoresQuerySetGames { order_num: Some(game_num), winner_id: Some(winner_id) }) = game else { return Err(Error::GraphQLQueryResponse(set.clone())) };
-                        Ok(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
-                            winner_id: Some(startgg::ID(winner_id.to_string())),
+                    if let Some(access_token) = &ctx.global_state.config.startgg {
+                        let startgg::set_scores_query::ResponseData {
+                            set: Some(startgg::set_scores_query::SetScoresQuerySet {
+                                games,
+                                set_games_type: Some(set_games_type),
+                            }),
+                        } = startgg::query_uncached::<startgg::SetScoresQuery>(&ctx.global_state.http_client, access_token, startgg::set_scores_query::Variables {
+                            set_id: set.clone(),
+                        }).await? else {
+                            return Err(Error::GraphQLQueryResponse(set.clone()))
+                        };
+                        let mut game_data = games.into_iter().flatten().map(|game| {
+                            let Some(startgg::set_scores_query::SetScoresQuerySetGames { order_num: Some(game_num), winner_id: Some(winner_id) }) = game else { return Err(Error::GraphQLQueryResponse(set.clone())) };
+                            Ok(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
+                                winner_id: Some(startgg::ID(winner_id.to_string())),
+                                entrant1_score: None,
+                                entrant2_score: None,
+                                stage_id: None,
+                                selections: None,
+                                game_num,
+                            })
+                        }).try_collect::<_, Vec<_>, _>()?;
+                        game_data.push(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
+                            winner_id: Some(winner_entrant_id.clone()),
+                            game_num: game.into(),
                             entrant1_score: None,
                             entrant2_score: None,
                             stage_id: None,
                             selections: None,
-                            game_num,
-                        })
-                    }).try_collect::<_, Vec<_>, _>()?;
-                    game_data.push(startgg::report_multi_game_result_mutation::BracketSetGameDataInput {
-                        winner_id: Some(winner_entrant_id.clone()),
-                        game_num: game.into(),
-                        entrant1_score: None,
-                        entrant2_score: None,
-                        stage_id: None,
-                        selections: None,
-                    });
-                    let game_count = cal_event.race.game_count(&mut transaction).await?;
-                    let (overall_winner, overall_won_games) = game_data.iter().map(|game| game.winner_id.as_ref().expect("missing game winner ID")).counts().into_iter().max_by_key(|(_, count)| *count).expect("no game winners");
-                    let match_decided = match set_games_type {
-                        1 => i16::try_from(overall_won_games).ok().is_none_or(|overall_won_games| overall_won_games > game_count / 2), // best of
-                        2 => i16::try_from(game_data.len()).ok().is_none_or(|overall_games| overall_games >= game_count), // total games
-                        _ => return Err(Error::GraphQLQueryResponse(set.clone())),
-                    };
-                    startgg::query_uncached::<startgg::ReportMultiGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.config.startgg, startgg::report_multi_game_result_mutation::Variables {
-                        set_id: set.clone(),
-                        winner_entrant_id: match_decided.then(|| overall_winner.clone()),
-                        game_data,
-                    }).await?;
-                    Some(match_decided)
+                        });
+                        let game_count = cal_event.race.game_count(&mut transaction).await?;
+                        let (overall_winner, overall_won_games) = game_data.iter().map(|game| game.winner_id.as_ref().expect("missing game winner ID")).counts().into_iter().max_by_key(|(_, count)| *count).expect("no game winners");
+                        let match_decided = match set_games_type {
+                            1 => i16::try_from(overall_won_games).ok().is_none_or(|overall_won_games| overall_won_games > game_count / 2), // best of
+                            2 => i16::try_from(game_data.len()).ok().is_none_or(|overall_games| overall_games >= game_count), // total games
+                            _ => return Err(Error::GraphQLQueryResponse(set.clone())),
+                        };
+                        startgg::query_uncached::<startgg::ReportMultiGameResultMutation>(&ctx.global_state.http_client, access_token, startgg::report_multi_game_result_mutation::Variables {
+                            set_id: set.clone(),
+                            winner_entrant_id: match_decided.then(|| overall_winner.clone()),
+                            game_data,
+                        }).await?;
+                        Some(match_decided)
+                    } else {
+                        if let Some(organizer_channel) = event.discord_organizer_channel {
+                            let mut msg = MessageBuilder::default();
+                            msg.push("failed to report race result to start.gg: <https://");
+                            msg.push(racetime_host());
+                            msg.push(&ctx.data().await.url);
+                            msg.push("> (start.gg integration is down)");
+                            organizer_channel.say(discord_ctx!(ctx.global_state), msg.build()).await?;
+                        }
+                        None
+                    }
                 } else {
-                    startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.config.startgg, startgg::report_one_game_result_mutation::Variables {
-                        set_id: set.clone(),
-                        winner_entrant_id: winner_entrant_id.clone(),
-                    }).await?;
-                    Some(true)
+                    if let Some(access_token) = &ctx.global_state.config.startgg {
+                        startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, access_token, startgg::report_one_game_result_mutation::Variables {
+                            set_id: set.clone(),
+                            winner_entrant_id: winner_entrant_id.clone(),
+                        }).await?;
+                        Some(true)
+                    } else {
+                        if let Some(organizer_channel) = event.discord_organizer_channel {
+                            let mut msg = MessageBuilder::default();
+                            msg.push("failed to report race result to start.gg: <https://");
+                            msg.push(racetime_host());
+                            msg.push(&ctx.data().await.url);
+                            msg.push("> (start.gg integration is down)");
+                            organizer_channel.say(discord_ctx!(ctx.global_state), msg.build()).await?;
+                        }
+                        None
+                    }
                 }
             } else {
                 if let Some(organizer_channel) = event.discord_organizer_channel {

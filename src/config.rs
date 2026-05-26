@@ -26,7 +26,7 @@ pub(crate) struct Config {
     #[serde(rename = "racetimeOAuth")]
     pub(crate) racetime_oauth: ConfigRaceTime,
     pub(crate) secret_key: String,
-    pub(crate) startgg: String,
+    pub(crate) startgg: Option<String>,
     #[serde(rename = "startggOAuth")]
     pub(crate) startgg_oauth: ConfigOAuth,
     pub(crate) tfb_api_key: String,
@@ -76,7 +76,7 @@ impl Config {
                 client_secret: String::default(),
             },
             secret_key: format!("SY6LI8modMlaLp6dq6Bm/aWkr4OZ+Y73NzGN2/EoKp21gR3Cphlyl8sdGltKPEPDfvIeT35a3FHfm7wLboU17A=="),
-            startgg: String::default(),
+            startgg: None,
             startgg_oauth: ConfigOAuth {
                 client_id: String::default(),
                 client_secret: String::default(),
