@@ -3383,7 +3383,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                             } else {
                                 let mut matching_races = Vec::default();
                                 for (idx, cal_event) in unassigned_races.iter().enumerate() {
-                                    if restream_match.matches(&mut transaction, &global.http_client, &cal_event.race).await? {
+                                    if restream_match.mismatch_reason(&mut transaction, &global.http_client, &cal_event.race).await?.is_none() {
                                         matching_races.push((idx, cal_event));
                                     }
                                 }

@@ -209,6 +209,10 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 println!("{} Mido's House: done checking end-of-season multiworld access", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 return Ok(authorized)
             }
+            #[cfg(unix)] Subcommand::DebugSpeedGamingMatch { .. } => {
+                println!("{} Mido's House: debugging SpeedGaming match", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), String::read(&mut sock).await?);
+            }
         }
     } else {
         let config = Config::load().await?;

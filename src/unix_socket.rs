@@ -78,6 +78,10 @@ pub(crate) enum ClientMessage {
     CheckEosmwAccess {
         user_id: Id<Users>,
     },
+    DebugSpeedGamingMatch {
+        race_id: Id<Races>,
+        speedgaming_id: i64,
+    },
 }
 
 pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalState>) -> wheel::Result<()> {
@@ -347,6 +351,30 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalSta
                                 }.write(&mut sock).await.expect("error writing to UNIX socket");
                                 break
                             }
+                            Ok(ClientMessage::DebugSpeedGamingMatch { race_id, speedgaming_id }) => match global.db_pool.begin().await {
+                                Ok(mut transaction) => match Race::from_id(&mut transaction, &global.http_client, race_id).await {
+                                    Ok(race) => match race.event(&mut transaction).await {
+                                        Ok(event) => if let Some(speedgaming_slug) = event.speedgaming_slug {
+                                            match sgl::online_schedule(&global.http_client, &speedgaming_slug).await {
+                                                Ok(schedule) => match schedule.into_iter().flat_map(|restream| restream.into_matches()).filter(|restream_match| restream_match.id == speedgaming_id).exactly_one() {
+                                                    Ok(restream_match) => match restream_match.mismatch_reason(&mut transaction, &global.http_client, &race).await {
+                                                        Ok(None) => format!("matches"),
+                                                        Ok(Some(reason)) => reason,
+                                                        Err(e) => e.to_string(),
+                                                    },
+                                                    Err(e) => e.to_string(),
+                                                },
+                                                Err(e) => e.to_string(),
+                                            }
+                                        } else {
+                                            format!("event has no SpeedGaming slug")
+                                        },
+                                        Err(e) => e.to_string(),
+                                    },
+                                    Err(e) => e.to_string(),
+                                },
+                                Err(e) => e.to_string(),
+                            }.write(&mut sock).await.expect("error writing to UNIX socket"),
                             Err(ReadError { kind: ReadErrorKind::Io(e), .. }) if e.kind() == io::ErrorKind::UnexpectedEof => break,
                             Err(e) => panic!("error reading from UNIX socket: {e} ({e:?})"),
                         }

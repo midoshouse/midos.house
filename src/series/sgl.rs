@@ -24,39 +24,50 @@ pub(crate) struct RestreamMatch {
 }
 
 impl RestreamMatch {
-    pub(crate) async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, race: &Race) -> Result<bool, cal::Error> {
+    /// Returns `None` if `self` matches `race`, or the reason for mismatch.
+    pub(crate) async fn mismatch_reason(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, race: &Race) -> Result<Option<String>, cal::Error> {
         Ok(if race.phase.as_ref().is_some_and(|phase| phase == "Qualifier") {
-            let Some((_, match_round)) = regex_captures!("^Qualifier #([0-9]+)$", &self.title) else { return Ok(false) };
-            race.round.as_ref().is_some_and(|race_round| race_round == match_round)
+            let Some((_, match_round)) = regex_captures!("^Qualifier #([0-9]+)$", &self.title) else { return Ok(Some(format!("non-qualifier title: {:?}", self.title))) };
+            if let Some(race_round) = &race.round {
+                (race_round != match_round).then(|| format!("qualifier number mismatch (MH: {race_round}, SG: {match_round})"))
+            } else {
+                Some(format!("MH qualifier without round"))
+            }
         } else {
             match &race.entrants {
-                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => false,
-                Entrants::Two(entrants) => {
-                    if self.players.len() == 2 {
-                        'permutations: for players in self.players.iter().permutations(2) {
-                            for (entrant, player) in entrants.iter().zip_eq(players) {
-                                if !player.matches(&mut *transaction, http_client, entrant).await? {
-                                    continue 'permutations
-                                }
+                Entrants::Open => Some(format!("unsupported MH entrants kind: Open")),
+                Entrants::Count { .. } => Some(format!("unsupported MH entrants kind: Count")),
+                Entrants::Named(_) => Some(format!("unsupported MH entrants kind: Named")),
+                Entrants::Two(entrants) => if self.players.len() == 2 {
+                    let mut permutation_errors = Vec::default();
+                    'permutations: for players in self.players.iter().permutations(2) {
+                        for (entrant, player) in entrants.iter().zip_eq(players) {
+                            if let Some(reason) = player.mismatch_reason(&mut *transaction, http_client, entrant).await? {
+                                permutation_errors.push(reason);
+                                continue 'permutations
                             }
-                            return Ok(true)
                         }
+                        return Ok(None)
                     }
-                    false
-                }
-                Entrants::Three(entrants) => {
-                    if self.players.len() == 3 {
-                        'permutations: for players in self.players.iter().permutations(3) {
-                            for (entrant, player) in entrants.iter().zip_eq(players) {
-                                if !player.matches(&mut *transaction, http_client, entrant).await? {
-                                    continue 'permutations
-                                }
+                    Some(format!("no match on entrants, permutations:{}", permutation_errors.into_iter().map(|e| format!("\n• {e}")).collect::<String>()))
+                } else {
+                    Some(format!("entrant count mismatch (MH: 2, SG: {}", self.players.len()))
+                },
+                Entrants::Three(entrants) => if self.players.len() == 3 {
+                    let mut permutation_errors = Vec::default();
+                    'permutations: for players in self.players.iter().permutations(3) {
+                        for (entrant, player) in entrants.iter().zip_eq(players) {
+                            if let Some(reason) = player.mismatch_reason(&mut *transaction, http_client, entrant).await? {
+                                permutation_errors.push(reason);
+                                continue 'permutations
                             }
-                            return Ok(true)
                         }
+                        return Ok(None)
                     }
-                    false
-                }
+                    Some(format!("no match on entrants, permutations:{}", permutation_errors.into_iter().map(|e| format!("\n• {e}")).collect::<String>()))
+                } else {
+                    Some(format!("entrant count mismatch (MH: 3, SG: {}", self.players.len()))
+                },
             }
         })
     }
@@ -89,30 +100,53 @@ struct OnlinePlayer {
 }
 
 impl OnlinePlayer {
-    async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, entrant: &Entrant) -> Result<bool, cal::Error> {
+    /// Returns `None` if `self` matches `entrant`, or the reason for mismatch.
+    async fn mismatch_reason(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, entrant: &Entrant) -> Result<Option<String>, cal::Error> {
         Ok(match entrant {
             Entrant::MidosHouseTeam(team) => if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one() {
-                if let Some(ref discord) = member.discord {
-                    self.discord_id == Some(discord.id)
-                } else if let Some(Some(user_data)) = member.racetime_user_data(http_client).await? && let Some(twitch_name) = user_data.twitch_name {
-                    twitch_name.eq_ignore_ascii_case(&self.streaming_from)
-                } else {
-                    false
+                match (&member.discord, member.racetime_user_data(http_client).await?) {
+                    (None, None) => Some(format!("MH entrant with no comparable user data")),
+                    (None, Some(None)) => Some(format!("racetime.gg user is not public or does not exist")),
+                    (None, Some(Some(user_data))) => if let Some(twitch_name) = user_data.twitch_name {
+                        (!twitch_name.eq_ignore_ascii_case(&self.streaming_from)).then(|| format!("no match on Twitch username (MH: {twitch_name}, SG: {})", self.streaming_from))
+                    } else {
+                        Some(format!("racetime.gg user has no Twitch channel"))
+                    },
+                    (Some(discord), None) => (self.discord_id != Some(discord.id)).then(|| format!("no match on Discord ID (MH: {:?}, SG: {:?}) and MH user is not linked to racetime.gg", discord.id, self.discord_id)),
+                    (Some(discord), Some(None)) => (self.discord_id != Some(discord.id)).then(|| format!("no match on Discord ID (MH: {:?}, SG: {:?}) and racetime.gg user is not public or does not exist", discord.id, self.discord_id)),
+                    (Some(discord), Some(Some(user_data))) => if self.discord_id == Some(discord.id) {
+                        None
+                    } else if let Some(twitch_name) = user_data.twitch_name {
+                        (!twitch_name.eq_ignore_ascii_case(&self.streaming_from)).then(|| format!("no match on Discord ID (MH: {:?}, SG: {:?}) or Twitch username (MH: {twitch_name}, SG: {})", discord.id, self.discord_id, self.streaming_from))
+                    } else {
+                        Some(format!("no match on Discord ID (MH: {:?}, SG: {:?}) and racetime.gg user has no Twitch channel", discord.id, self.discord_id))
+                    },
                 }
             } else {
-                false
+                Some(format!("MH team has multiple members"))
             },
-            Entrant::MidosHouseTeamMember { member, .. } => if let Some(ref discord) = member.discord {
-                self.discord_id == Some(discord.id)
-            } else if let Some(Some(user_data)) = member.racetime_user_data(http_client).await? && let Some(twitch_name) = user_data.twitch_name {
-                twitch_name.eq_ignore_ascii_case(&self.streaming_from)
-            } else {
-                false
+            Entrant::MidosHouseTeamMember { member, .. } => match (&member.discord, member.racetime_user_data(http_client).await?) {
+                (None, None) => Some(format!("MH entrant with no comparable user data")),
+                (None, Some(None)) => Some(format!("racetime.gg user is not public or does not exist")),
+                (None, Some(Some(user_data))) => if let Some(twitch_name) = user_data.twitch_name {
+                    (!twitch_name.eq_ignore_ascii_case(&self.streaming_from)).then(|| format!("no match on Twitch username (MH: {twitch_name}, SG: {})", self.streaming_from))
+                } else {
+                    Some(format!("racetime.gg user has no Twitch channel"))
+                },
+                (Some(discord), None) => (self.discord_id != Some(discord.id)).then(|| format!("no match on Discord ID (MH: {:?}, SG: {:?}) and MH user is not linked to racetime.gg", discord.id, self.discord_id)),
+                (Some(discord), Some(None)) => (self.discord_id != Some(discord.id)).then(|| format!("no match on Discord ID (MH: {:?}, SG: {:?}) and racetime.gg user is not public or does not exist", discord.id, self.discord_id)),
+                (Some(discord), Some(Some(user_data))) => if self.discord_id == Some(discord.id) {
+                    None
+                } else if let Some(twitch_name) = user_data.twitch_name {
+                    (!twitch_name.eq_ignore_ascii_case(&self.streaming_from)).then(|| format!("no match on Discord ID (MH: {:?}, SG: {:?}) or Twitch username (MH: {twitch_name}, SG: {})", discord.id, self.discord_id, self.streaming_from))
+                } else {
+                    Some(format!("no match on Discord ID (MH: {:?}, SG: {:?}) and racetime.gg user has no Twitch channel", discord.id, self.discord_id))
+                },
             },
-            Entrant::Discord { id, twitch_username: None, .. } => self.discord_id == Some(*id),
-            Entrant::Discord { id, twitch_username: Some(username), .. } => self.discord_id == Some(*id) || username.eq_ignore_ascii_case(&self.streaming_from),
-            Entrant::Named { twitch_username: None, .. } => false,
-            Entrant::Named { twitch_username: Some(username), .. } => username.eq_ignore_ascii_case(&self.streaming_from),
+            Entrant::Discord { id, twitch_username: None, .. } => (self.discord_id != Some(*id)).then(|| format!("no match on Discord ID (MH: {id:?}, SG: {:?})", self.discord_id)),
+            Entrant::Discord { id, twitch_username: Some(twitch_name), .. } => (self.discord_id != Some(*id) && !twitch_name.eq_ignore_ascii_case(&self.streaming_from)).then(|| format!("no match on Discord ID (MH: {id:?}, SG: {:?}) or Twitch username (MH: {twitch_name}, SG: {})", self.discord_id, self.streaming_from)),
+            Entrant::Named { twitch_username: None, .. } => Some(format!("MH entrant with no comparable user data")),
+            Entrant::Named { twitch_username: Some(twitch_name), .. } => (!twitch_name.eq_ignore_ascii_case(&self.streaming_from)).then(|| format!("no match on Twitch username (MH: {twitch_name}, SG: {})", self.streaming_from)),
         })
     }
 }
@@ -128,6 +162,10 @@ pub(crate) struct Restream {
 }
 
 impl Restream {
+    pub(crate) fn into_matches(self) -> impl Iterator<Item = RestreamMatch> {
+        self.match1.into_iter().chain(self.match2)
+    }
+
     pub(crate) fn matches(&self) -> impl Iterator<Item = &RestreamMatch> {
         self.match1.iter().chain(&self.match2)
     }
