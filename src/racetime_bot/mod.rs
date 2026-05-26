@@ -5444,7 +5444,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                     goal, event, cal_event,
                     info_user,
                     String::default(),
-                    cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty(),
+                    cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty() || cal_event.race.stream_delay(event) >= Duration::from_mins(5),
                 ).await.start_with_host(host_info, &access_token, &global.http_client, CATEGORY).await?;
                 let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", host_info.hostname))?;
                 *cal_event.room_mut().expect("opening room for official race without start time") = Some(room_url.clone());
