@@ -305,9 +305,17 @@ impl Restream {
                             cal_event.format_discord(&mut transaction, Some(GuildId::new(1088872810719486143)), English, &mut msg).await?;
                             msg.push(" (scheduled for ");
                             msg.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
-                            msg.push(") has been confirmed for restream on <");
+                            msg.push(") has been confirmed for ");
+                            msg.push(language.english_indefinite_article());
+                            msg.push(' ');
+                            msg.push(language.to_string());
+                            msg.push(" restream on <");
                             msg.push_safe(video_url);
                             msg.push(">, please sign up at <https://speedgaming.org/");
+                            if language != English {
+                                msg.push(language.short_code());
+                                msg.push('/');
+                            }
                             let SchedulingBackend::SpeedGamingOnline(speedgaming_slug) = event.scheduling_backend(&mut transaction).await? else { return Err(event::Error::NonSpeedGamingRace) };
                             msg.push(speedgaming_slug);
                             msg.push("/crew> to volunteer.");

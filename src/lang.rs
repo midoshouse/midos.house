@@ -38,6 +38,13 @@ impl Language {
         }
     }
 
+    pub(crate) fn english_indefinite_article(&self) -> &'static str {
+        match self {
+            French | German | Portuguese | Spanish => "a",
+            English => "an",
+        }
+    }
+
     pub(crate) fn format_duration(&self, duration: Duration, running_text: bool) -> String {
         let secs = duration.as_secs();
         let hours = secs / 3600;
