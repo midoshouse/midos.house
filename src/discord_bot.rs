@@ -670,7 +670,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Bans a format in the format draft, or a setting in the Franco format's settings draft.")),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("ban")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Verrouille un setting à sa valeur par défaut."))
@@ -720,7 +720,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Chooses a format in the format draft or a setting in Franco format's settings draft (same as /pick).")),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("draft")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Choisit un setting pour la race (identique à /pick)."))
@@ -760,7 +760,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                             .max_int_value(12)
                             .required(false)
                         ),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("first")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Partir premier dans la phase de pick&ban."))
@@ -799,7 +799,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Answers no to a yes/no question in the settings draft for the Franco format.")),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("no")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Répond à la négative dans une question fermée."))
@@ -823,7 +823,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Chooses a format in the format draft, or a setting in the Franco format's settings draft.")),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("pick")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("pick")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Choisit un setting pour la race."))
@@ -1014,7 +1014,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                             .max_int_value(12)
                             .required(false)
                         ),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("second")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Partir second dans la phase de pick&ban."))
@@ -1049,7 +1049,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Skips the final pick of the settings draft for the Franco format.")),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("skip")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Skip le dernier pick du draft."))
@@ -1102,7 +1102,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Answers yes to a yes/no question in the settings draft for the Franco format.")),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("yes")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Répond à l'affirmative dans une question fermée."))
@@ -1239,7 +1239,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         )).await?;
                                         return Ok(())
                                     }
-                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
+                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
                                         let mq = interaction.data.options.get(0).map(|option| match option.value {
                                             CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
@@ -2292,7 +2292,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         )).await?;
                                         return Ok(())
                                     }
-                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
+                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
                                         let mq = interaction.data.options.get(0).map(|option| match option.value {
                                             CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),

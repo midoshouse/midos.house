@@ -1011,7 +1011,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Some(draft::Kind::RslS7) => column_headers.push(html! {
             th : "RSL-Lite OK";
         }),
-        Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5) => {
+        Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6) => {
             column_headers.push(html! {
                 th : "Advanced Settings OK";
             });
@@ -1292,7 +1292,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                         : "✓";
                                     }
                                 }
-                                Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5) => {
+                                Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6) => {
                                     td {
                                         @if custom_choices.contains("hard_settings") {
                                             : "✓";

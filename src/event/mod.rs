@@ -516,6 +516,7 @@ impl<'a> Data<'a> {
             (Series::TournoiFrancophone, "3") => Some(draft::Kind::TournoiFrancoS3),
             (Series::TournoiFrancophone, "4") => Some(draft::Kind::TournoiFrancoS4),
             (Series::TournoiFrancophone, "5") => Some(draft::Kind::TournoiFrancoS5),
+            (Series::TournoiFrancophone, "6") => Some(draft::Kind::TournoiFrancoS6),
             (_, _) => None,
         }
     }
@@ -843,7 +844,7 @@ impl<'a> Data<'a> {
     async fn practice_buttons(&self, global: &GlobalState, csrf: Option<&CsrfToken>, errors: &mut RawHtml<String>, ctx: PracticeButtonsContext) -> Result<PracticeButtons, Error> {
         let practice_seed_urls = if let Some(draft_kind) = self.draft_kind() {
             match draft_kind {
-                draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => vec![
+                draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => vec![
                     (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(global, self, None).await?, format!("Roll Seed (Base Settings)")),
                     (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(global, self, None).await?, format!("Roll Seed (Random Settings)")),
                     (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), _)).to_html(), practice_seed_favicon_url(global, self, None).await?, format!("Roll Seed (Random Settings, Advanced)")),
@@ -869,7 +870,7 @@ impl<'a> Data<'a> {
                                 (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), Some(format))).to_html(), practice_seed_favicon_url(global, self, Some(format)).await?, format!("Roll Seed ({}, Base Settings)", format.display_name())),
                                 (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), Some(format))).to_html(), practice_seed_favicon_url(global, self, Some(format)).await?, format!("Roll Seed ({}, Random Settings)", format.display_name())),
                             ]);
-                            if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 = draft_kind {
+                            if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 = draft_kind {
                                 urls.push((true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::RandomAdvanced), Some(format))).to_html(), practice_seed_favicon_url(global, self, Some(format)).await?, format!("Roll Seed ({}, Random Settings, Advanced)", format.display_name())));
                             }
                         } else {

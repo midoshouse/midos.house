@@ -75,6 +75,7 @@ pub(crate) enum Kind {
     TournoiFrancoS3,
     TournoiFrancoS4,
     TournoiFrancoS5,
+    TournoiFrancoS6,
 }
 
 impl Kind {
@@ -89,6 +90,7 @@ impl Kind {
             | Self::SlugOpen
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
+            | Self::TournoiFrancoS6
                 => English,
             | Self::TournoiFrancoS3
                 => French,
@@ -107,6 +109,7 @@ impl Kind {
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 143, 1) },
             Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevRob, 8, 1, 45, 105) },
             Self::TournoiFrancoS5 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevRob, 8, 2, 64, 135) },
+            Self::TournoiFrancoS6 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevRob, 9, 0, 2, 17) },
         })
     }
 }
@@ -361,7 +364,7 @@ impl Draft {
                 ]
             },
             Kind::SlugOpen => panic!("SlugOpen draft must be initialized manually"),
-            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 => {
                 let mut team_ids = [team1.id, team2.id];
                 team_ids.shuffle(&mut rng());
                 team_ids
@@ -396,7 +399,7 @@ impl Draft {
                     ]
                 }
                 Kind::SlugOpen => panic!("SlugOpen draft must be initialized manually"),
-                Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
+                Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 => {
                     let team_rows = sqlx::query!(r#"SELECT custom_choices ? 'hard_settings' AS "hard_settings_ok!", custom_choices ? 'mq' AS "mq_ok!" FROM teams WHERE id = $1 OR id = $2"#, loser as _, winner as _).fetch_all(&mut **transaction).await?;
                     let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                     let mq_ok = team_rows.iter().all(|row| row.mq_ok);
@@ -423,6 +426,7 @@ impl Draft {
             Kind::TournoiFrancoS3 => u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS4 => u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS5 => u8::try_from(fr::S5_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::TournoiFrancoS6 => u8::try_from(fr::S6_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
         }
     }
 
@@ -962,7 +966,7 @@ impl Draft {
                     Kind::MultiworldS4 => mw::S4_SETTINGS,
                     Kind::MultiworldS5 => mw::S5_SETTINGS,
                     Kind::MultiworldS6 => mw::S6_SETTINGS,
-                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
                     match self.pick_count(kind) {
@@ -1124,14 +1128,14 @@ impl Draft {
                                 Kind::MultiworldS4 => mw::display_s4_draft_picks(&self.settings),
                                 Kind::MultiworldS5 => mw::display_s5_draft_picks(&self.settings),
                                 Kind::MultiworldS6 => mw::display_s6_draft_picks(&self.settings),
-                                Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                             };
                             Step {
                                 kind: StepKind::Done(match kind {
                                     Kind::MultiworldS4 => mw::resolve_s4_draft_settings(&self.settings),
                                     Kind::MultiworldS5 => mw::resolve_s5_draft_settings(&self.settings),
                                     Kind::MultiworldS6 => mw::resolve_s6_draft_settings(&self.settings),
-                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 }),
                                 message: match msg_ctx {
                                     MessageContext::None => String::default(),
@@ -1177,7 +1181,7 @@ impl Draft {
                                         builder.push_line("");
                                         builder.push("You have no opt-ins in common.");
                                     },
-                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 }
                                 if self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
                                     builder.push_line("");
@@ -1419,11 +1423,12 @@ impl Draft {
                     }
                 }
             },
-            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 => {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
                     Kind::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
+                    Kind::TournoiFrancoS6 => &fr::S6_SETTINGS[..],
                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
@@ -1436,11 +1441,12 @@ impl Draft {
                     let team = match (kind, pick_count, went_first) {
                         (_, 0, true) | (_, 1, false) | (_, 2, true) | (_, 3, false) | (_, 4, false) | (_, 5, true) | (_, 6, true) | (_, 7, false) | (Kind::TournoiFrancoS3, 8, true) | (Kind::TournoiFrancoS3, 9, false) => Team::HighSeed,
                         (_, 0, false) | (_, 1, true) | (_, 2, false) | (_, 3, true) | (_, 4, true) | (_, 5, false) | (_, 6, false) | (_, 7, true) | (Kind::TournoiFrancoS3, 8, false) | (Kind::TournoiFrancoS3, 9, true) => Team::LowSeed,
-                        (Kind::TournoiFrancoS3, 10.., _) | (Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5, 8.., _) => return Ok(Step {
+                        (Kind::TournoiFrancoS3, 10.., _) | (Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6, 8.., _) => return Ok(Step {
                             kind: StepKind::Done(match kind {
                                 Kind::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&self.settings),
+                                Kind::TournoiFrancoS6 => fr::resolve_s6_draft_settings(&self.settings),
                                 Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                             }),
                             message: match msg_ctx {
@@ -1497,9 +1503,9 @@ impl Draft {
                                 let (hard_settings, classic_settings) = all_settings.iter()
                                     .filter(|&&fr::Setting { name, .. }| !self.settings.contains_key(name) && match name {
                                         "keysy" => self.settings.get("keysanity").is_none_or(|keysanity| keysanity == "off"),
-                                        "1major" if kind == Kind::TournoiFrancoS5 => self.settings.get("th").is_none_or(|th| th == "off") && self.settings.get("souls").is_none_or(|souls| souls == "off"),
-                                        "souls" if kind == Kind::TournoiFrancoS5 => self.settings.get("1major").is_none_or(|one_major| one_major == "off"),
-                                        "th" if kind == Kind::TournoiFrancoS5 => self.settings.get("1major").is_none_or(|one_major| one_major == "off"),
+                                        "1major" if matches!(kind, Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6) => self.settings.get("th").is_none_or(|th| th == "off") && self.settings.get("souls").is_none_or(|souls| souls == "off"),
+                                        "souls" if matches!(kind, Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6) => self.settings.get("1major").is_none_or(|one_major| one_major == "off"),
+                                        "th" if matches!(kind, Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6) => self.settings.get("1major").is_none_or(|one_major| one_major == "off"),
                                         "keysanity" => self.settings.get("keysy").is_none_or(|keysy| keysy == "off"),
                                         _ => true,
                                     })
@@ -1567,12 +1573,13 @@ impl Draft {
                                     Kind::TournoiFrancoS3 => 10,
                                     Kind::TournoiFrancoS4 => 8,
                                     Kind::TournoiFrancoS5 => 8,
+                                    Kind::TournoiFrancoS6 => 8,
                                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 };
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let can_ban = match kind {
                                     Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => n < round_count - 2 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes",
-                                    Kind::TournoiFrancoS5 => n == 4 || n == 5,
+                                    Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 => n == 4 || n == 5,
                                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 };
                                 let skippable = n == round_count - 1 && can_ban;
@@ -1613,7 +1620,7 @@ impl Draft {
                                             let high_seed = high_seed.remove(0);
                                             let low_seed = low_seed.remove(0);
                                             match (kind, n) {
-                                                (_, 9) | (Kind::TournoiFrancoS4, 7) => if let French = kind.language() {
+                                                (_, 9) | (Kind::TournoiFrancoS4, 7) => if let French = kind.language() && !can_ban {
                                                     let mut builder = MessageBuilder::default();
                                                     builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
                                                     builder.push(" : Choisissez un setting avec ");
@@ -1630,6 +1637,10 @@ impl Draft {
                                                     builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
                                                     builder.push(": pick a setting using ");
                                                     builder.mention_command(command_ids.pick.unwrap(), "pick");
+                                                    if can_ban {
+                                                        builder.push(" or ban a setting using ");
+                                                        builder.mention_command(command_ids.ban.unwrap(), "ban");
+                                                    }
                                                     builder.push('.');
                                                     if skippable {
                                                         builder.push(" You can also use ");
@@ -1638,7 +1649,7 @@ impl Draft {
                                                     }
                                                     builder.build()
                                                 },
-                                                (_, 2 | 7 | 8) => if let French = kind.language() {
+                                                (_, 2 | 7 | 8) => if let French = kind.language() && !can_ban {
                                                     MessageBuilder::default()
                                                         .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(" : Choisissez un setting en utilisant ")
@@ -1646,14 +1657,18 @@ impl Draft {
                                                         .push('.')
                                                         .build()
                                                 } else {
-                                                    MessageBuilder::default()
-                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                        .push(": pick a setting using ")
-                                                        .mention_command(command_ids.pick.unwrap(), "pick")
-                                                        .push('.')
-                                                        .build()
+                                                    let mut builder = MessageBuilder::default();
+                                                    builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
+                                                    builder.push(": pick a setting using ");
+                                                    builder.mention_command(command_ids.pick.unwrap(), "pick");
+                                                    if can_ban {
+                                                        builder.push(" or ban a setting using ");
+                                                        builder.mention_command(command_ids.ban.unwrap(), "ban");
+                                                    }
+                                                    builder.push('.');
+                                                    builder.build()
                                                 },
-                                                (_, 3 | 5) => if let French = kind.language() {
+                                                (_, 3 | 5) => if let French = kind.language() && !can_ban {
                                                     MessageBuilder::default()
                                                         .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(" : Choisissez un setting avec ")
@@ -1661,14 +1676,18 @@ impl Draft {
                                                         .push(". Vous aurez un autre pick après celui-ci.")
                                                         .build()
                                                 } else {
-                                                    MessageBuilder::default()
-                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                        .push(": pick a setting using ")
-                                                        .mention_command(command_ids.pick.unwrap(), "pick")
-                                                        .push(". You will have another pick after this.")
-                                                        .build()
+                                                    let mut builder = MessageBuilder::default();
+                                                    builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
+                                                    builder.push(": pick a setting using ");
+                                                    builder.mention_command(command_ids.pick.unwrap(), "pick");
+                                                    if can_ban {
+                                                        builder.push(" or ban a setting using ");
+                                                        builder.mention_command(command_ids.ban.unwrap(), "ban");
+                                                    }
+                                                    builder.push(". You will have another pick after this.");
+                                                    builder.build()
                                                 },
-                                                (_, 4 | 6) => if let French = kind.language() {
+                                                (_, 4 | 6) => if let French = kind.language() && !can_ban {
                                                     MessageBuilder::default()
                                                         .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
                                                         .push(" : Choisissez votre second setting avec ")
@@ -1676,12 +1695,16 @@ impl Draft {
                                                         .push('.')
                                                         .build()
                                                 } else {
-                                                    MessageBuilder::default()
-                                                        .mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                        .push(": pick your second setting using ")
-                                                        .mention_command(command_ids.pick.unwrap(), "pick")
-                                                        .push('.')
-                                                        .build()
+                                                    let mut builder = MessageBuilder::default();
+                                                    builder.mention_entrant_short(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
+                                                    builder.push(": pick your second setting using ");
+                                                    builder.mention_command(command_ids.pick.unwrap(), "pick");
+                                                    if can_ban {
+                                                        builder.push(" or ban a setting using ");
+                                                        builder.mention_command(command_ids.ban.unwrap(), "ban");
+                                                    }
+                                                    builder.push('.');
+                                                    builder.build()
                                                 },
                                                 (_, 0..=1 | 10..) => unreachable!(),
                                             }
@@ -2302,7 +2325,7 @@ impl Draft {
                     Kind::MultiworldS4 => mw::S4_SETTINGS,
                     Kind::MultiworldS5 => mw::S5_SETTINGS,
                     Kind::MultiworldS6 => mw::S6_SETTINGS,
-                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 let resolved_action = match action {
                     Action::Ban { setting } => if let Some(setting) = all_settings.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
@@ -2909,11 +2932,12 @@ impl Draft {
                     }
                 }
             },
-            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 => {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
                     Kind::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
+                    Kind::TournoiFrancoS6 => &fr::S6_SETTINGS[..],
                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 let resolved_action = match action {

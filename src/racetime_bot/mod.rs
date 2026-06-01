@@ -294,6 +294,7 @@ pub(crate) enum Goal {
     TournoiFrancoS3,
     TournoiFrancoS4,
     TournoiFrancoS5,
+    TournoiFrancoS6,
     TriforceBlitz,
     TriforceBlitzProgressionSpoiler,
     WeTryToBeBetterS1,
@@ -361,6 +362,7 @@ impl Goal {
             Self::TournoiFrancoS3 => Ok((Series::TournoiFrancophone, "3")),
             Self::TournoiFrancoS4 => Ok((Series::TournoiFrancophone, "4")),
             Self::TournoiFrancoS5 => Ok((Series::TournoiFrancophone, "5")),
+            Self::TournoiFrancoS6 => Ok((Series::TournoiFrancophone, "6")),
             Self::TriforceBlitz => Err(|series, _| series == Series::TriforceBlitz),
             Self::TriforceBlitzProgressionSpoiler => Err(|_, _| false), // possible future tournament but no concrete plans
             Self::WeTryToBeBetterS1 => Ok((Series::WeTryToBeBetter, "1")),
@@ -421,6 +423,7 @@ impl Goal {
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
+            | Self::TournoiFrancoS6
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
@@ -475,6 +478,7 @@ impl Goal {
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TournoiFrancoS5 => "Tournoi Francophone Saison 5",
+            Self::TournoiFrancoS6 => "Tournoi Francophone Saison 6",
             Self::TriforceBlitz => "Triforce Blitz",
             Self::TriforceBlitzProgressionSpoiler => "Triforce Blitz Progression Spoiler",
             Self::WeTryToBeBetterS1 => "WeTryToBeBetter",
@@ -529,6 +533,7 @@ impl Goal {
             | Self::TournamentOfTruthS2
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
+            | Self::TournoiFrancoS6
                 => English, //TODO change to bilingual English/French
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetterS1
@@ -548,6 +553,7 @@ impl Goal {
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
             Self::TournoiFrancoS5 => Some(draft::Kind::TournoiFrancoS5),
+            Self::TournoiFrancoS6 => Some(draft::Kind::TournoiFrancoS6),
             | Self::BattleRoyaleS1
             | Self::BattleRoyaleS2
             | Self::CoOpS3
@@ -633,6 +639,7 @@ impl Goal {
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TournoiFrancoS5
+            | Self::TournoiFrancoS6
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
@@ -688,6 +695,7 @@ impl Goal {
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
                 | Self::TournoiFrancoS5
+                | Self::TournoiFrancoS6
                 | Self::TriforceBlitz
                 | Self::WeTryToBeBetterS1
                 | Self::WeTryToBeBetterS2
@@ -748,6 +756,7 @@ impl Goal {
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
             Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105) },
             Self::TournoiFrancoS5 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 2, 64, 135) },
+            Self::TournoiFrancoS6 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 9, 0, 2, 17) },
             Self::TriforceBlitz => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::WeTryToBeBetterS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 0, 11) },
@@ -802,6 +811,7 @@ impl Goal {
             Self::TournoiFrancoS3 => None, // settings draft
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TournoiFrancoS5 => None, // settings draft
+            Self::TournoiFrancoS6 => None, // settings draft
             Self::TriforceBlitz => None, // per-event settings
             Self::TriforceBlitzProgressionSpoiler => Some(tfb::progression_spoiler_settings()),
             Self::WeTryToBeBetterS1 => Some(wttbb::s1_settings()),
@@ -927,7 +937,7 @@ impl Goal {
                 ctx.say("Utilisez “!seed random advanced” ou “!seed draft advanced” pour autoriser les settings difficiles.").await?;
                 ctx.say("Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
-            Self::TournoiFrancoS4 | Self::TournoiFrancoS5 => {
+            Self::TournoiFrancoS4 | Self::TournoiFrancoS5 | Self::TournoiFrancoS6 => {
                 ctx.say("!seed base: The tournament's base settings / Settings de base.").await?;
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed. / Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
                 ctx.say("!seed draft: Pick the settings here in the chat. / Vous fait effectuer un draft dans le chat.").await?;
@@ -1553,6 +1563,7 @@ impl Goal {
                                 Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
                                 Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
                                 Self::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&settings),
+                                Self::TournoiFrancoS6 => fr::resolve_s6_draft_settings(&settings),
                                 _ => unreachable!(),
                             },
                             plando: serde_json::Map::default(),
@@ -1584,11 +1595,12 @@ impl Goal {
                 }
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
-            Self::TournoiFrancoS3 | Self::TournoiFrancoS4 | Self::TournoiFrancoS5 => {
+            Self::TournoiFrancoS3 | Self::TournoiFrancoS4 | Self::TournoiFrancoS5 | Self::TournoiFrancoS6 => {
                 let all_settings = match self {
                     Self::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Self::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
                     Self::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
+                    Self::TournoiFrancoS6 => &fr::S6_SETTINGS[..],
                     _ => unreachable!(),
                 };
                 let mut args = args.to_owned();
@@ -1666,6 +1678,7 @@ impl Goal {
                         Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
                         Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
                         Self::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&settings),
+                        Self::TournoiFrancoS6 => fr::resolve_s6_draft_settings(&settings),
                         _ => unreachable!(),
                     },
                     plando: serde_json::Map::default(),
@@ -2849,6 +2862,7 @@ trait SeedHandler {
                     | Goal::TournoiFrancoS3
                     | Goal::TournoiFrancoS4
                     | Goal::TournoiFrancoS5
+                    | Goal::TournoiFrancoS6
                         => unreachable!("should have draft state set"),
                     Goal::BattleRoyaleS1 => {
                         let (settings, plando) = ohko::s1_settings();
@@ -3031,6 +3045,7 @@ impl Handler {
                 draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::TournoiFrancoS4 => fr::S4_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::TournoiFrancoS5 => fr::S5_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
+                draft::Kind::TournoiFrancoS6 => fr::S6_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
             });
             if available_settings.is_empty() {
                 ctx.say(if let French = goal.language() {
@@ -3061,7 +3076,7 @@ impl Handler {
                         draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::SlugOpen => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed franco draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
-                        draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets / le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
+                        draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets / le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => {
                         let is_active_team = if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
@@ -3101,7 +3116,7 @@ impl Handler {
                                 draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the weights draft.")).await?,
                                 draft::Kind::SlugOpen => unimplemented!("SlugCentral Open format draft in race room"),
                                 draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
-                                draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft. / mais ce n'est pas votre tour.")).await?,
+                                draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft. / mais ce n'est pas votre tour.")).await?,
                             }
                         }
                     }
@@ -4298,6 +4313,103 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::TournoiFrancoS6 => ctx.send_message( //TODO post welcome message in both English and French
+                                "Welcome! This is a practice room for the Tournoi Francophone Saison 6. Learn more about the tournament at https://midos.house/event/fr/6",
+                                true,
+                                vec![
+                                    ("Roll seed (base settings)", ActionButton::Message {
+                                        message: format!("!seed base ${{mq}}mq"),
+                                        help_text: Some(format!("Create a seed with the base settings.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Master Quest Dungeons"),
+                                                default: Some(json!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (random settings)", ActionButton::Message {
+                                        message: format!("!seed random ${{advanced}} ${{mq}}mq"),
+                                        help_text: Some(format!("Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("advanced"),
+                                                label: format!("Allow advanced settings"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Bool,
+                                                placeholder: None,
+                                                options: Vec::default(),
+                                            },
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Master Quest Dungeons"),
+                                                default: Some(json!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (custom settings)", ActionButton::Message {
+                                        message: format!("!seed {} ${{mq}}mq", fr::S5_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                        help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                        survey: Some(fr::S5_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                            name: setting.name.to_owned(),
+                                            label: setting.display.to_owned(),
+                                            default: Some(json!(setting.default)),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Radio,
+                                            placeholder: None,
+                                            options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
+                                                .chain(setting.other.iter().map(|(name, _, display)| (name.to_string(), display.to_string())))
+                                                .chain((setting.name == "dungeon-er").then(|| (format!("mixed"), format!("dungeon ER (mixed)"))))
+                                                .collect(),
+                                        }).chain(iter::once(SurveyQuestion {
+                                            name: format!("mq"),
+                                            label: format!("Master Quest Dungeons"),
+                                            default: Some(json!("0")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                        })).collect()),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Start settings draft", ActionButton::Message {
+                                        message: format!("!seed draft ${{advanced}} ${{mq}}mq"),
+                                        help_text: Some(format!("Pick the settings here in the chat.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("advanced"),
+                                                label: format!("Allow advanced settings"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Bool,
+                                                placeholder: None,
+                                                options: Vec::default(),
+                                            },
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Master Quest Dungeons"),
+                                                default: Some(json!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Start Draft")),
+                                    }),
+                                ],
+                            ).await?,
                             Goal::TriforceBlitz => ctx.send_message(
                                 "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
                                 true,
@@ -5218,6 +5330,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::TournoiFrancoS3
                     | Goal::TournoiFrancoS4
                     | Goal::TournoiFrancoS5
+                    | Goal::TournoiFrancoS6
                     | Goal::WeTryToBeBetterS1
                     | Goal::WeTryToBeBetterS2
                         => {}
