@@ -1946,6 +1946,7 @@ pub(crate) enum RaceHandleMode {
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[rocket_util(is_network_error)] //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
 pub(crate) enum Error {
     #[error(transparent)] ChronoParse(#[from] chrono::format::ParseError),
     #[error(transparent)] Discord(#[from] discord_bot::Error),

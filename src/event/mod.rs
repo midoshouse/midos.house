@@ -1014,7 +1014,8 @@ pub(crate) enum Tab {
     Configure,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[rocket_util(is_network_error)] //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
 pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
@@ -1069,20 +1070,6 @@ impl IsNetworkError for Error {
             Self::OrganizerUserData => false,
             Self::RestreamCoordinatorUserData => false,
         }
-    }
-}
-
-impl<'r> rocket::response::Responder<'r, 'static> for Error {
-    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'static> {
-        let status = if self.is_network_error() {
-            Status::BadGateway //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
-        } else {
-            Status::InternalServerError
-        };
-        eprintln!("responded with {status} to request to {}", request.uri());
-        eprintln!("display: {self}");
-        eprintln!("debug: {self:?}");
-        Err(status)
     }
 }
 
@@ -2647,7 +2634,8 @@ pub(crate) enum PracticeSeedKind {
     RandomAdvanced,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[rocket_util(is_network_error)] //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
 pub(crate) enum PracticeError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Draft(#[from] draft::Error),
@@ -2687,20 +2675,6 @@ impl IsNetworkError for PracticeError {
             Self::Utf8(_) => false,
             Self::Wheel(e) => e.is_network_error(),
         }
-    }
-}
-
-impl<'r> rocket::response::Responder<'r, 'static> for PracticeError {
-    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'static> {
-        let status = if self.is_network_error() {
-            Status::BadGateway //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
-        } else {
-            Status::InternalServerError
-        };
-        eprintln!("responded with {status} to request to {}", request.uri());
-        eprintln!("display: {self}");
-        eprintln!("debug: {self:?}");
-        Err(status)
     }
 }
 
