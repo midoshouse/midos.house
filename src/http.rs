@@ -55,13 +55,13 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
             img(class = "favicon", alt = "external link (challonge.com)", srcset = "https://assets.challonge.com/favicon-16x16.png 16w, https://assets.challonge.com/favicon-32x32.png 32w");
         },
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("document") => html! {
-            img(class = "favicon", alt = "external link (docs.google.com/document)", src = "https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico");
+            img(class = "favicon", alt = "external link (docs.google.com/document)", src = "https://ssl.gstatic.com/images/branding/productlogos/docs_2026/v2/ico/docs_2026_256dp.ico");
         },
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("forms") => html! {
-            img(class = "favicon", alt = "external link (docs.google.com/forms)", srcset = "https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_qp2.png 16w, https://ssl.gstatic.com/docs/forms/device_home/android_192.png 192w");
+            img(class = "favicon", alt = "external link (docs.google.com/forms)", srcset = "https://www.gstatic.com/images/branding/productlogos/forms_2026/v2/web-16dp/logo_forms_2026_color_1x_web_16dp.png 16w, https://ssl.gstatic.com/docs/forms/device_home/android_192.png 192w");
         },
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
-            img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
+            img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/images/branding/productlogos/sheets_2026/v2/ico/sheets_2026_256dp.ico");
         },
         Some("drive.google.com") => html! {
             img(class = "favicon", alt = "external link (drive.google.com)", src = "https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png");

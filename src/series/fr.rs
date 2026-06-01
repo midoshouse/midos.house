@@ -66,6 +66,27 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             })
         }
+        "6" => {
+            let organizers = data.organizers(transaction).await?;
+            Some(html! {
+                article {
+                    p(lang = "en") {
+                        : "This is the 6th season of the Francophone tournament, organized by ";
+                        : English.join_html_opt(&organizers);
+                        : ". Join ";
+                        a(href = "https://discord.gg/wyhPVmquZC") : "the Discord server";
+                        : " for details.";
+                    }
+                    p(lang = "fr") {
+                        : "Voici la 6e saison du tournoi francophone, organisée par ";
+                        : French.join_html_opt(organizers);
+                        : ". Rejoignez ";
+                        a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
+                        : " pour plus de détails.";
+                    }
+                }
+            })
+        }
         _ => None,
     })
 }
