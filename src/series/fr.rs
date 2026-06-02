@@ -1487,11 +1487,12 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
         format!("hint_dist_user") => json!({
             "name":                  "tournoi_fr",
             "gui_name":              "Tournoi FR",
-            "description":           "Hint Distribution for the 5th season of the Francophone Tournament.",
+            "description":           "Hint Distribution for the 6th season of the Francophone Tournament.",
             "add_locations":         [
                 { "location": "Sheik in Kakariko", "types": ["always"] },
                 { "location": "Deku Tree GS Basement Back Room", "types": ["always"] },
                 { "location": "DMC Deku Scrub", "types": ["always"] },
+                { "location": "KF Links House Cow", "types": ["always"] },
             ],
             "remove_locations":      [
                 { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
