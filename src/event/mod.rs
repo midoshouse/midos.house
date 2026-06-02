@@ -1115,7 +1115,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::SlugOpen => None, //TODO
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
-        Series::SpoilerLog => None,
+        Series::SpoilerLog => sl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(&mut transaction, &data).await?,
         Series::TournamentOfTruth => tot::info(&mut transaction, &data).await?,
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
