@@ -432,6 +432,7 @@ impl<'a> Data<'a> {
             | Series::SlugOpen
             | Series::SongsOfHope
             | Series::SpeedGaming
+            | Series::SpoilerLog
             | Series::Standard
             | Series::TournamentOfTruth
             | Series::TournoiFrancophone
@@ -1113,6 +1114,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::SlugOpen => None, //TODO
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
+        Series::SpoilerLog => None,
         Series::Standard => s::info(&mut transaction, &data).await?,
         Series::TournamentOfTruth => tot::info(&mut transaction, &data).await?,
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
@@ -1529,6 +1531,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                             | Series::PotsOfTime
                             | Series::Rsl
                             | Series::SlugOpen
+                            | Series::SpoilerLog
                             | Series::Standard
                             | Series::TournamentOfTruth
                             | Series::TournoiFrancophone

@@ -61,6 +61,7 @@ pub(crate) enum Series {
     Scrubs,
     SongsOfHope,
     SpeedGaming,
+    SpoilerLog,
     Standard,
     TournamentOfTruth,
     TournoiFrancophone,
@@ -88,6 +89,7 @@ impl Series {
             Self::SlugOpen => "sco",
             Self::SongsOfHope => "soh",
             Self::SpeedGaming => "sgl",
+            Self::SpoilerLog => "sl",
             Self::Standard => "s",
             Self::TournamentOfTruth => "tot",
             Self::TournoiFrancophone => "fr",
@@ -115,6 +117,7 @@ impl Series {
             Self::SlugOpen => "SlugCentral Open",
             Self::SongsOfHope => "Songs of Hope",
             Self::SpeedGaming => "SpeedGaming Live",
+            Self::SpoilerLog => "Spoiler Log Tournaments",
             Self::Standard => "Standard Tournaments",
             Self::TournamentOfTruth => "Tournaments of Truth",
             Self::TournoiFrancophone => "Tournois Francophones",
@@ -129,10 +132,10 @@ impl Series {
             Self::TriforceBlitz => TimeDelta::hours(2),
             Self::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
-            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
-            Self::SlugOpen => all::<sco::Format>().map(|format| format.default_race_duration()).max().expect("no formats defined for SlugCentral Open"),
+            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::SpoilerLog | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
             Self::PotsOfTime | Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
+            Self::SlugOpen => all::<sco::Format>().map(|format| format.default_race_duration()).max().expect("no formats defined for SlugCentral Open"),
         }
     }
 }

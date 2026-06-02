@@ -856,6 +856,7 @@ impl Race {
             | Series::SlugOpen
             | Series::SongsOfHope
             | Series::SpeedGaming
+            | Series::SpoilerLog
             | Series::TournamentOfTruth //TODO add archive of season 1?
             | Series::TournoiFrancophone
             | Series::TriforceBlitz
