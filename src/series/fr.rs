@@ -1483,6 +1483,7 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
         },
         format!("fast_bunny_hood") => json!(true),
         format!("ruto_already_f1_jabu") => json!(true),
+        format!("fast_shadow_boat") => json!(true),
         format!("chicken_count") => json!(0),
         format!("big_poe_count") => json!(1),
         format!("hint_dist_user") => json!({
