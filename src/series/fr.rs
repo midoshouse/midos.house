@@ -1470,12 +1470,13 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
         },
         format!("starting_inventory") => json!(starting_inventory),
         format!("start_with_consumables") => json!(start_weirdegg != "vanilla-shuffle"),
+        format!("start_with_rupees") => json!(shops == "4"),
         format!("skip_reward_from_rauru") => json!(true),
         format!("no_escape_sequence") => json!(true),
         format!("no_guard_stealth") => json!(true),
         format!("no_epona_race") => json!(true),
         format!("skip_some_minigame_phases") => json!(true),
-        format!("free_scarecrow") => if ocarina == "shuffle" {
+        format!("scarecrow_behavior") => if ocarina == "shuffle" {
             json!("free")
         } else {
             json!("vanilla")
