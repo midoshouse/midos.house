@@ -130,8 +130,8 @@ impl Series {
     pub(crate) fn default_race_duration(&self) -> TimeDelta {
         match self {
             Self::EscapeFromKakariko => TimeDelta::minutes(40),
-            Self::TriforceBlitz => TimeDelta::hours(2),
-            Self::BattleRoyale | Self::SpoilerLog => TimeDelta::hours(2) + TimeDelta::minutes(30),
+            Self::SpoilerLog | Self::TriforceBlitz => TimeDelta::hours(2),
+            Self::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
             Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),

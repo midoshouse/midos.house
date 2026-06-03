@@ -289,6 +289,7 @@ pub(crate) enum Goal {
     Sgss2026,
     SlugOpen2026,
     SongsOfHope,
+    SpoilerLog2026,
     StandardRuleset,
     TournamentOfTruthS2,
     TournoiFrancoS3,
@@ -357,6 +358,7 @@ impl Goal {
             Self::Sgss2026 => Ok((Series::SpeedGaming, "2026ss")),
             Self::SlugOpen2026 => Ok((Series::SlugOpen, "2026")),
             Self::SongsOfHope => Ok((Series::SongsOfHope, "1")),
+            Self::SpoilerLog2026 => Ok((Series::SpoilerLog, "2026")),
             Self::StandardRuleset => Err(|series, event| series == Series::Standard && matches!(event, "w" | "9" | "9cc")),
             Self::TournamentOfTruthS2 => Ok((Series::TournamentOfTruth, "2")),
             Self::TournoiFrancoS3 => Ok((Series::TournoiFrancophone, "3")),
@@ -419,6 +421,7 @@ impl Goal {
             | Self::Sgss2026
             | Self::SlugOpen2026
             | Self::SongsOfHope
+            | Self::SpoilerLog2026
             | Self::TournamentOfTruthS2
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
@@ -473,6 +476,7 @@ impl Goal {
             Self::Sgss2026 => "SpeedGaming Summer Series 2026",
             Self::SlugOpen2026 => "SlugCentral Open 2026",
             Self::SongsOfHope => "Songs of Hope",
+            Self::SpoilerLog2026 => "Spoiler Log Tournament",
             Self::StandardRuleset => "Standard Ruleset",
             Self::TournamentOfTruthS2 => "Tournament of Truth Season 2",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
@@ -526,6 +530,7 @@ impl Goal {
             | Self::Sgss2026
             | Self::SlugOpen2026
             | Self::SongsOfHope
+            | Self::SpoilerLog2026
             | Self::StandardRuleset
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
@@ -585,6 +590,7 @@ impl Goal {
             | Self::Sgss2026
             | Self::SlugOpen2026 // should be overridden by Handler::draft_kind
             | Self::SongsOfHope
+            | Self::SpoilerLog2026
             | Self::StandardRuleset
             | Self::TournamentOfTruthS2
             | Self::TriforceBlitz
@@ -614,6 +620,7 @@ impl Goal {
             | Self::S6
             | Self::S7
             | Self::S8
+            | Self::SpoilerLog2026
             | Self::StandardRuleset
                 => PrerollMode::Short,
             | Self::BattleRoyaleS1
@@ -661,6 +668,7 @@ impl Goal {
                 | Self::Pic7
                 | Self::PicRs2
                     => UnlockSpoilerLog::Now,
+                | Self::SpoilerLog2026
                 | Self::TriforceBlitzProgressionSpoiler
                     => UnlockSpoilerLog::Progression,
                 | Self::BattleRoyaleS1
@@ -751,6 +759,7 @@ impl Goal {
             Self::Sgss2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) }, //TODO(OoTR 9.1) update to 9.1
             Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, //TODO different branch for Franco format
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
+            Self::SpoilerLog2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 0) },
             Self::StandardRuleset => return Err("official seeds should use the event's rando version"),
             Self::TournamentOfTruthS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
@@ -806,6 +815,7 @@ impl Goal {
             Self::Sgss2026 => Some(sgl::settings_2026()),
             Self::SlugOpen2026 => None, // multiple formats; settings draft
             Self::SongsOfHope => Some(soh::settings()),
+            Self::SpoilerLog2026 => Some(sl::settings_2026()),
             Self::StandardRuleset => None, // per-event settings
             Self::TournamentOfTruthS2 => Some(tot::s2_settings()),
             Self::TournoiFrancoS3 => None, // settings draft
@@ -852,6 +862,7 @@ impl Goal {
             | Self::Sgl2025
             | Self::Sgss2026
             | Self::SongsOfHope
+            | Self::SpoilerLog2026
             | Self::TournamentOfTruthS2
                 => ctx.say("!seed: The settings used for the tournament").await?,
             | Self::PotsOfTime
@@ -1045,6 +1056,7 @@ impl Goal {
             | Self::Sgl2025
             | Self::Sgss2026
             | Self::SongsOfHope
+            | Self::SpoilerLog2026
             | Self::TournamentOfTruthS2
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
@@ -2846,6 +2858,7 @@ trait SeedHandler {
                     | Goal::Sgl2025
                     | Goal::Sgss2026
                     | Goal::SongsOfHope
+                    | Goal::SpoilerLog2026
                     | Goal::TournamentOfTruthS2
                     | Goal::TriforceBlitzProgressionSpoiler
                         => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
@@ -3573,6 +3586,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Mq
                             | Goal::Pic7
                             | Goal::PicRs2
+                            | Goal::SpoilerLog2026
                                 => {
                                     let (series, event) = goal.single_event().expect("goal has no single event");
                                     ctx.send_message(
@@ -5234,6 +5248,23 @@ impl RaceHandler<GlobalState> for Handler {
                                         sleep(Duration::from_secs(5 * 60)),
                                     );
                                     let _ = ctx.say("@entrants You may now start drawing/playing.").await;
+                                }
+                            })
+                        });
+                    }
+                    Goal::SpoilerLog2026 => {
+                        self.goal_notifications.get_or_insert_with(|| {
+                            let ctx = ctx.clone();
+                            tokio::spawn(async move {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(15) - Utc::now();
+                                if let Ok(initial_wait) = initial_wait.to_std() {
+                                    sleep(initial_wait).await;
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
+                                    let (_, ()) = tokio::join!(
+                                        ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
+                                        sleep(Duration::from_secs(5 * 60)),
+                                    );
+                                    let _ = ctx.say("@entrants You may now start playing.").await;
                                 }
                             })
                         });
