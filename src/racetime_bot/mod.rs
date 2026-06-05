@@ -628,6 +628,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
             | Self::Efk2026
+            | Self::MixedPoolsS5
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -641,6 +642,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::SlugOpen2026 // will be overridden per format
             | Self::SongsOfHope
             | Self::TournamentOfTruthS2
             | Self::TournoiFrancoS3
@@ -654,8 +656,6 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
-            | Self::MixedPoolsS5
-            | Self::SlugOpen2026 // will be overridden per format
                 => PrerollMode::Long,
         }
     }
