@@ -77,10 +77,7 @@ impl Format {
     }
 
     pub(crate) fn preroll_seeds(&self) -> PrerollMode {
-        match self {
-            Self::League | Self::Sgl | Self::Saws | Self::Bingo | Self::Ice | Self::Franco | Self::Triforce => PrerollMode::Medium,
-            Self::Mixed => PrerollMode::Long,
-        }
+        PrerollMode::Medium
     }
 
     pub(crate) async fn single_settings(&self, global: &GlobalState, bingo_room_name: Option<&str>) -> Result<Option<(VersionedBranch, seed::Settings, Option<String>)>, SingleSettingsError> {
