@@ -386,9 +386,9 @@ struct CalEvent(cal::Event);
         self.0.start().map(UtcTimestamp::from)
     }
 
-    /// The race room URL. Null if no room has been opened yet or if this async part does not use racetime.gg.
+    /// The race room URL. Null if no room has been opened yet, if the room is still private, or if this async part does not use racetime.gg.
     async fn room(&self) -> Option<&str> {
-        self.0.room().map(Url::as_str)
+        self.0.room().filter(|_| !self.0.is_private_async_part() || self.0.race.cal_events().all(|event| event.end().is_some())).map(Url::as_str)
     }
 
     /// All teams participating in this async part. For solo events, these will be single-member teams.
