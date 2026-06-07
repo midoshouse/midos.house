@@ -318,6 +318,15 @@ struct Race(cal::Race);
     /// The race's internal ID. Unique across all series, but only for races (e.g. a user may have the same ID as a race).
     async fn id(&self) -> GqlId { self.0.id.into() }
 
+    /// The individual calendar events that make up this race, if at least one entrant has scheduled as async.
+    async fn async_parts(&self) -> Option<Vec<CalEvent>> {
+        if let RaceSchedule::Async { .. } = self.0.schedule {
+            Some(self.0.cal_events().map(CalEvent).collect())
+        } else {
+            None
+        }
+    }
+
     /// The scheduled starting time. Null if this race is asynced or not yet scheduled.
     async fn start(&self) -> Option<UtcTimestamp> {
         if let RaceSchedule::Live { start, .. } = self.0.schedule {
@@ -366,6 +375,28 @@ struct Race(cal::Race);
     #[graphql(guard = Scopes { entrants_read: true, ..Scopes::default() }.and(ShowRestreamConsent(&self.0)))]
     async fn restream_consent(&self) -> Option<bool> {
         self.0.teams_opt().map(|mut teams| teams.all(|team| team.restream_consent))
+    }
+}
+
+struct CalEvent(cal::Event);
+
+#[Object] impl CalEvent {
+    /// The scheduled starting time. Null if this async part is not yet scheduled.
+    async fn start(&self) -> Option<UtcTimestamp> {
+        self.0.start().map(UtcTimestamp::from)
+    }
+
+    /// The race room URL. Null if no room has been opened yet or if this async part does not use racetime.gg.
+    async fn room(&self) -> Option<&str> {
+        self.0.room().map(Url::as_str)
+    }
+
+    /// All teams participating in this async part. For solo events, these will be single-member teams.
+    /// Currently this will not be more than one team but Mido's House may gain support for 2 teams in a 3-way tiebreaker racing live with the 3rd asyncing.
+    /// Null if the event does not use Mido's House to manage entrants.
+    async fn active_teams(&self, ctx: &Context<'_>) -> Result<Option<Vec<Team>>, event::DataError> {
+        let event = db!(db = ctx; self.0.race.event(&mut *db).await?);
+        Ok(self.0.race.teams_opt().map(|_| self.0.active_teams().map(|team| Team { inner: team.clone(), event: event.clone() }).collect()))
     }
 }
 
