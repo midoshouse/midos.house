@@ -228,7 +228,7 @@ impl ApiClient {
         };
         Ok(lock!(versions_cache = self.versions_cache; if allow_cache
             && let Some((retrieved, response)) = versions_cache.get(web_branch)
-            && retrieved.elapsed() < Duration::from_secs(60 * 60)
+            && retrieved.elapsed() < Duration::from_hours(1)
         {
             response.clone()
         } else {

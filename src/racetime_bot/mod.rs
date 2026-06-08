@@ -1868,7 +1868,7 @@ impl GlobalState {
                     },
                     // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
                     PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
-                        let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
+                        let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_mins(5));
                         let sleep_duration = rng().random_range(min_sleep_duration..max_sleep_duration);
                         sleep(sleep_duration).await;
                     },
@@ -2177,7 +2177,7 @@ impl GlobalState {
                     .post("https://triforceblitz.com/api/v1/seeds")
                     .bearer_auth(&self.config.tfb_api_key)
                     .json(&seed_request)
-                    .timeout(Duration::from_secs(5 * 60))
+                    .timeout(Duration::from_mins(5))
                     .send().await?
                     .detailed_error_for_status().await;
                 match response {
@@ -3160,10 +3160,10 @@ impl Handler {
             let mut seed_state = None::<SeedRollUpdate>;
             if let Some(delay) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 or 60 minutes ahead of start
-                let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) {
-                    Duration::from_secs(15 * 60)
-                } else if delay > Duration::from_secs(44 * 60) && delay < Duration::from_secs(46 * 60) {
-                    Duration::from_secs(45 * 60)
+                let display_delay = if delay > Duration::from_mins(14) && delay < Duration::from_mins(16) {
+                    Duration::from_mins(15)
+                } else if delay > Duration::from_mins(44) && delay < Duration::from_mins(46) {
+                    Duration::from_mins(45)
                 } else {
                     delay
                 };
@@ -4665,19 +4665,19 @@ impl RaceHandler<GlobalState> for Handler {
                         }).await?;
                     },
                     _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
-                        if breaks.duration < Duration::from_secs(60) {
+                        if breaks.duration < Duration::from_mins(1) {
                             ctx.say(if let French = goal.language() {
                                 format!("Désolé {reply_to}, le temps minimum pour une pause (si active) est de 1 minute. Vous pouvez désactiver les pauses avec !breaks off")
                             } else {
                                 format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")
                             }).await?;
-                        } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
+                        } else if breaks.interval < breaks.duration + Duration::from_mins(5) {
                             ctx.say(if let French = goal.language() {
                                 format!("Désolé {reply_to}, il doit y avoir un minimum de 5 minutes entre les pauses.")
                             } else {
                                 format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")
                             }).await?;
-                        } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
+                        } else if breaks.duration + breaks.interval >= Duration::from_hours(24) {
                             ctx.say(if let French = goal.language() {
                                 format!("Désolé {reply_to}, vous ne pouvez pas faire de pauses si tard dans la race, vu que les race rooms se ferment au bout de 24 heures.")
                             } else {
@@ -5197,7 +5197,7 @@ impl RaceHandler<GlobalState> for Handler {
                     self.break_notifications.get_or_insert_with(|| {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
-                            sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
+                            sleep(breaks.interval - Duration::from_mins(5)).await;
                             while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await {
                                 let (_, ()) = tokio::join!(
                                     ctx.say(if let French = goal.language() {
@@ -5205,7 +5205,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     } else {
                                         "@entrants Reminder: Next break in 5 minutes."
                                     }),
-                                    sleep(Duration::from_secs(5 * 60)),
+                                    sleep(Duration::from_mins(5)),
                                 );
                                 if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { break }
                                 let msg = if let French = goal.language() {
@@ -5224,7 +5224,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     } else {
                                         "@entrants Break ended. You may resume playing."
                                     }),
-                                    sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
+                                    sleep(breaks.interval - breaks.duration - Duration::from_mins(5)),
                                 );
                             }
                         })
@@ -5245,7 +5245,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start drawing/playing."),
-                                        sleep(Duration::from_secs(5 * 60)),
+                                        sleep(Duration::from_mins(5)),
                                     );
                                     let _ = ctx.say("@entrants You may now start drawing/playing.").await;
                                 }
@@ -5262,14 +5262,14 @@ impl RaceHandler<GlobalState> for Handler {
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
-                                        sleep(Duration::from_secs(5 * 60)),
+                                        sleep(Duration::from_mins(5)),
                                     );
                                     let _ = ctx.say("@entrants You may now start playing.").await;
                                 }
                             })
                         });
                     }
-                    Goal::TriforceBlitz => if ctx.data().await.time_limit > Duration::from_secs(2 * 60 * 60) {
+                    Goal::TriforceBlitz => if ctx.data().await.time_limit > Duration::from_hours(2) {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
@@ -5300,11 +5300,11 @@ impl RaceHandler<GlobalState> for Handler {
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
-                                        sleep(Duration::from_secs(5 * 60)),
+                                        sleep(Duration::from_mins(5)),
                                     );
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants You may now start playing."),
-                                        sleep(Duration::from_secs((60 + 45) * 60)),
+                                        sleep(Duration::from_hours(1) + Duration::from_mins(45)),
                                     );
                                     let is_1v1 = {
                                         let data = ctx.data().await;
@@ -5376,7 +5376,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let official_data = self.official_data.as_ref().map(|OfficialRaceData { event, cal_event, .. }| (event.clone(), cal_event.clone()));
                         let ctx = ctx.clone();
                         self.cleanup_timeout = Some(tokio::spawn(async move {
-                            sleep(Duration::from_secs(60 * 60)).await;
+                            sleep(Duration::from_hours(1)).await;
                             if !cleaned_up.load(atomic::Ordering::SeqCst) {
                                 if let Some((event, cal_event)) = official_data {
                                     if let Some(organizer_channel) = event.discord_organizer_channel {
@@ -5938,7 +5938,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
         }
         select! {
             () = &mut shutdown => break,
-            res = timeout(Duration::from_secs(60 * 60), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
+            res = timeout(Duration::from_hours(1), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
                 let (Ok(()) | Err(_)) = res;
             }
         }
@@ -6043,7 +6043,7 @@ async fn handle_rooms(global: Arc<GlobalState>, shutdown: rocket::Shutdown) -> R
                 break Ok(())
             }
             Err(e) if e.is_network_error() => {
-                if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
+                if last_crash.elapsed() >= Duration::from_hours(24) {
                     wait_time = Duration::from_secs(1); // reset wait time after no crash for a day
                 } else {
                     wait_time *= 2; // exponential backoff

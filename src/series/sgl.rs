@@ -11,7 +11,7 @@ use {
 };
 
 /// Rate limit once per minute according to DMs with tsigma6
-const RATE_LIMIT: Duration = Duration::from_secs(60);
+const RATE_LIMIT: Duration = Duration::from_mins(1);
 
 static ONLINE_CACHE: LazyLock<Mutex<(Instant, OnlineSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, OnlineSchedule::default())));
 static IN_PERSON_CACHE: LazyLock<Mutex<(Instant, InPersonSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, InPersonSchedule::default())));

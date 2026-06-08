@@ -102,7 +102,7 @@ pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<D
                 name: format!("pieces"),
                 label: format!("Pieces found"),
                 default: Some(json!(if let Some(finish_time) = finish_time {
-                    if finish_time < Duration::from_secs(2 * 60 * 60) {
+                    if finish_time < Duration::from_hours(2) {
                         Cow::Owned(piece_count(team_config).to_string())
                     } else {
                         "1".into()

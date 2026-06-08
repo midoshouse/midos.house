@@ -44,7 +44,7 @@ pub(crate) enum PgIntervalDecodeError {
 
 pub(crate) fn decode_pginterval(PgInterval { months, days, microseconds }: PgInterval) -> Result<Duration, PgIntervalDecodeError> {
     if months == 0 {
-        Duration::from_secs(u64::try_from(days)? * 60 * 60 * 24)
+        Duration::from_hours(u64::try_from(days)? * 24)
             .checked_add(Duration::from_micros(microseconds.try_into()?))
             .ok_or(PgIntervalDecodeError::Range)
     } else {
@@ -61,19 +61,19 @@ pub(crate) enum DurationUnit {
 
 impl DurationUnit {
     fn with_magnitude(&self, magnitude: u64) -> Duration {
-        Duration::from_secs(match self {
-            Self::Hours => 60 * 60 * magnitude,
-            Self::Minutes => 60 * magnitude,
-            Self::Seconds => magnitude,
-        })
+        match self {
+            Self::Hours => Duration::from_hours(magnitude),
+            Self::Minutes => Duration::from_mins(magnitude),
+            Self::Seconds => Duration::from_secs(magnitude),
+        }
     }
 }
 
 pub(crate) fn parse_duration(mut s: &str, default_unit: Option<DurationUnit>) -> Option<Duration> {
     Some(if let Some((_, hours, minutes, seconds)) = regex_captures!("^ *([0-9]+):([0-9]+):([0-9]+) *$", s).filter(|_| default_unit.is_none()) {
-        Duration::from_secs(60 * 60 * hours.parse::<u64>().ok()? + 60 * minutes.parse::<u64>().ok()? + seconds.parse::<u64>().ok()?)
+        Duration::from_hours(hours.parse::<u64>().ok()?) + Duration::from_mins(minutes.parse::<u64>().ok()?) + Duration::from_secs(seconds.parse::<u64>().ok()?)
     } else if let Some((_, minutes, seconds)) = regex_captures!("^ *([0-9]+):([0-9]+) *$", s).filter(|_| default_unit.is_none()) {
-        Duration::from_secs(60 * minutes.parse::<u64>().ok()? + seconds.parse::<u64>().ok()?)
+        Duration::from_mins(minutes.parse::<u64>().ok()?) + Duration::from_secs(seconds.parse::<u64>().ok()?)
     } else {
         let mut duration = Duration::default();
         let mut default_unit = Some(default_unit.unwrap_or(DurationUnit::Hours));
@@ -101,13 +101,13 @@ pub(crate) fn parse_duration(mut s: &str, default_unit: Option<DurationUnit>) ->
                 }
                 Some('H' | 'h') => {
                     let magnitude = last_magnitude.take()?;
-                    duration += Duration::from_secs(60 * 60 * magnitude);
+                    duration += Duration::from_hours(magnitude);
                     default_unit = Some(DurationUnit::Minutes);
                     (_, s) = regex_captures!("^h(?:(?:ou)?r)?s?(.*)$"i, s)?;
                 }
                 Some('M' | 'm') => {
                     let magnitude = last_magnitude.take()?;
-                    duration += Duration::from_secs(60 * magnitude);
+                    duration += Duration::from_mins(magnitude);
                     default_unit = Some(DurationUnit::Seconds);
                     (_, s) = regex_captures!("^m(?:n|in(?:ute)?)?s?(.*)$"i, s)?;
                 }

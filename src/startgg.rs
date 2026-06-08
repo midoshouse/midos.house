@@ -183,7 +183,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
         Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
             hash_map::Entry::Occupied(mut entry) => {
                 let (retrieved, entry) = entry.get_mut();
-                if retrieved.elapsed() >= Duration::from_secs(5 * 60) {
+                if retrieved.elapsed() >= Duration::from_mins(5) {
                     *entry = query_inner::<T>(http_client, auth_token, variables, next_request).await?;
                     *retrieved = Instant::now();
                 }

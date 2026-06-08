@@ -2885,7 +2885,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                         password_lock: false,
                         display_name, settings_preset,
                     })
-                    .timeout(Duration::from_secs(5 * 60))
+                    .timeout(Duration::from_mins(5))
                     .send().await?
                     .detailed_error_for_status().await?
                     .json_with_text_in_error::<tfb::SeedResponse>().await?

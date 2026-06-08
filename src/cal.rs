@@ -3618,7 +3618,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
         });
         select! {
             () = &mut shutdown => break,
-            () = sleep(Duration::from_secs(60)) => {}
+            () = sleep(Duration::from_mins(1)) => {}
         }
     }
     Ok(())
@@ -3631,19 +3631,19 @@ pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket
         match auto_import_races_inner(&global, shutdown.clone()).await {
             Ok(()) => break Ok(()),
             Err(AutoImportError::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)) | AutoImportError::Event(event::Error::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)))) => {
-                let wait_time = Duration::from_secs(60);
+                let wait_time = Duration::from_mins(1);
                 eprintln!("failed to auto-import races for uninitialized Discord guild {guild_id} (retrying in {})", English.format_duration(wait_time, true));
                 sleep(wait_time).await;
             }
             Err(e) if e.is_network_error() => {
-                if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
+                if last_crash.elapsed() >= Duration::from_hours(24) {
                     wait_time = Duration::from_secs(1); // reset wait time after no crash for a day
                 } else {
                     wait_time *= 2; // exponential backoff
                 }
-                if wait_time >= Duration::from_secs(2 * 60) {
+                if wait_time >= Duration::from_mins(2) {
                     eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
-                    if wait_time >= Duration::from_secs(10 * 60) {
+                    if wait_time >= Duration::from_hours(1) {
                         if let Environment::Production = Environment::default() {
                             wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.map_err(AutoImportError::NightReport)?;
                         }

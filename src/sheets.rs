@@ -99,7 +99,7 @@ pub(crate) async fn values(http_client: reqwest::Client, sheet_id: &str, range: 
         Ok(match cache.entry(key) {
             hash_map::Entry::Occupied(mut entry) => {
                 let (retrieved, values) = entry.get();
-                if retrieved.elapsed() < Duration::from_secs(5 * 60) {
+                if retrieved.elapsed() < Duration::from_mins(5) {
                     values.clone()
                 } else {
                     match values_uncached(&http_client, sheet_id, range, next_request).await {
@@ -107,7 +107,7 @@ pub(crate) async fn values(http_client: reqwest::Client, sheet_id: &str, range: 
                             entry.insert((Instant::now(), values.clone()));
                             values
                         }
-                        Err(e) if e.is_network_error() && retrieved.elapsed() < Duration::from_secs(60 * 60) => values.clone(),
+                        Err(e) if e.is_network_error() && retrieved.elapsed() < Duration::from_hours(1) => values.clone(),
                         Err(source) => return Err(Error { cache: CacheMissReason::Elapsed, source }),
                     }
                 }
