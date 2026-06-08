@@ -1952,9 +1952,11 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p : "If any player on the team forfeits (or does not finish within the 24-hour time limit), it counts as a forfeit for the entire team.";
                     h2(id = "settings") : "Seed Settings";
                     p {
-                        : "All tournament matches will be played on ";
+                        : "Starting with Swiss round 5, all tournament matches will be played on ";
+                        a(href = "https://ootrandomizer.com/generator?version=9.1.0") : "version 9.1";
+                        : " of the randomizer. (The qualifier async and Swiss rounds 1–4 were played on ";
                         a(href = "https://ootrandomizer.com/generatorDev?version=dev_9.0.25") : "version 9.0.25";
-                        : " of the randomizer. Organizers may change this version between rounds at their discretion.";
+                        : ".) Organizers may change this version between rounds at their discretion.";
                     }
                     p {
                         : "The default settings for each race will be the same as last season. For players familiar with the ";

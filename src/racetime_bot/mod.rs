@@ -744,7 +744,7 @@ impl Goal {
             Self::MultiworldS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 2, 205) },
             Self::MultiworldS4 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 199) },
             Self::MultiworldS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
-            Self::MultiworldS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 25) },
+            Self::MultiworldS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 0) },
             Self::NineDaysOfSaws => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2) },
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
             Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
