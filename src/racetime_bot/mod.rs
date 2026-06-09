@@ -264,6 +264,7 @@ pub(crate) enum Goal {
     LeagueS7,
     LeagueS8,
     LeagueS9,
+    MixedPoolsS1,
     MixedPoolsS2,
     MixedPoolsS3,
     MixedPoolsS4,
@@ -335,6 +336,7 @@ impl Goal {
             Self::LeagueS7 => Ok((Series::League, "7")),
             Self::LeagueS8 => Ok((Series::League, "8")),
             Self::LeagueS9 => Ok((Series::League, "9")),
+            Self::MixedPoolsS1 => Ok((Series::MixedPools, "1")),
             Self::MixedPoolsS2 => Ok((Series::MixedPools, "2")),
             Self::MixedPoolsS3 => Ok((Series::MixedPools, "3")),
             Self::MixedPoolsS4 => Ok((Series::MixedPools, "4")),
@@ -401,6 +403,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -457,6 +460,7 @@ impl Goal {
             Self::LeagueS7 => "League Season 7",
             Self::LeagueS8 => "League Season 8",
             Self::LeagueS9 => "League Season 9",
+            Self::MixedPoolsS1 => "1st Mixed Pools Tournament",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MixedPoolsS3 => "3rd Mixed Pools Tournament",
             Self::MixedPoolsS4 => "4th Mixed Pools Tournament",
@@ -513,6 +517,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -581,6 +586,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -667,6 +673,7 @@ impl Goal {
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
                 => PrerollMode::Medium,
+            | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -696,6 +703,7 @@ impl Goal {
                 | Self::LeagueS6
                 | Self::LeagueS7
                 | Self::LeagueS8
+                | Self::MixedPoolsS1
                 | Self::MixedPoolsS2
                 | Self::MixedPoolsS3
                 | Self::MixedPoolsS4
@@ -753,6 +761,7 @@ impl Goal {
             Self::LeagueS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::LeagueS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 57) },
             Self::LeagueS9 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 41) },
+            Self::MixedPoolsS1 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 2, 163, 1) },
             Self::MixedPoolsS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17) },
             Self::MixedPoolsS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4) },
             Self::MixedPoolsS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 2, 76, 10) },
@@ -808,6 +817,7 @@ impl Goal {
             Self::LeagueS7 => Some(league::s7_settings()),
             Self::LeagueS8 => Some(league::s8_settings()),
             Self::LeagueS9 => Some(league::s9_settings()),
+            Self::MixedPoolsS1 => Some(mp::s1_settings()),
             Self::MixedPoolsS2 => Some(mp::s2_settings()),
             Self::MixedPoolsS3 => Some(mp::s3_settings()),
             Self::MixedPoolsS4 => Some(mp::s4_settings()),
@@ -869,6 +879,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
             | Self::Efk2026
+            | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -1063,6 +1074,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
@@ -2867,6 +2879,7 @@ trait SeedHandler {
                     | Goal::LeagueS7
                     | Goal::LeagueS8
                     | Goal::LeagueS9
+                    | Goal::MixedPoolsS1
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
                     | Goal::MixedPoolsS4
@@ -3606,6 +3619,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 }
                             | Goal::CopaDoBrasil
                             | Goal::CopaLatinoamerica2025
+                            | Goal::MixedPoolsS1
                             | Goal::MixedPoolsS2
                             | Goal::MixedPoolsS3
                             | Goal::MixedPoolsS4
@@ -5361,6 +5375,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::LeagueS7
                     | Goal::LeagueS8
                     | Goal::LeagueS9
+                    | Goal::MixedPoolsS1
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
                     | Goal::MixedPoolsS4
