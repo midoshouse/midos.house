@@ -2580,7 +2580,7 @@ async fn practice_seed_favicon_url(global: &GlobalState, data: &Data<'_>, sco_fo
             data.single_settings().await?.map(|(rando_version, settings)| (rando_version, settings, false))
         }) else { return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        if !is_bingo && global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.is_some() {
+        if !is_bingo && global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, if data.series == Series::SpoilerLog { UnlockSpoilerLog::Progression } else { UnlockSpoilerLog::Now }).await.is_some() {
             Ok(Some(Url::parse("https://ootrandomizer.com/")?))
         } else {
             Ok(None)
@@ -2911,7 +2911,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     data.single_settings().await?.map(|(rando_version, settings)| (rando_version, settings, None))
                 }) else { println!("no single settings"); return Ok(None) };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-                if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, if series == Series::SpoilerLog { UnlockSpoilerLog::Progression } else { UnlockSpoilerLog::Now }).await {
                     let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings.into_owned()).await?;
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
