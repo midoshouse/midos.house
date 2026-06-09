@@ -30,6 +30,20 @@ pub(crate) struct Setting {
     pub(crate) description: &'static str,
 }
 
+pub(crate) const S2_SETTINGS: &[Setting] = &[
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", None, "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", None, "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "skulls", display: "tokens", default: "off", default_display: "no tokens", other: &[("dungeons", None, "dungeon tokens")], description: "skulls: off (default) or dungeons" },
+    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", None, "dungeon ER")], description: "dungeon-er: off (default) or on" },
+    Setting { name: "forest", display: "forest", default: "open", default_display: "open forest", other: &[("closed_deku", None, "closed Deku")], description: "forest: open (default) or closed_deku" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", None, "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", None, "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", None, "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("dungeons", None, "Ganon bk on 8 dungeon rewards")], description: "gbk (Ganon boss key): meds (default: 6 medallions) or dungeons (8 rewards)" },
+    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("vanilla", None, "vanilla bridge")], description: "bridge: meds (default: 6 medallions) or vanilla" },
+    Setting { name: "csmc", display: "CSMC", default: "off", default_display: "vanilla chest sizes", other: &[("on", None, "chest size matches contents")], description: "csmc (Chest Size Matches Contents): off (default) or on" },
+];
+
 pub(crate) const S3_SETTINGS: &[Setting] = &[
     Setting { name: "wincon", display: "win conditions", default: "meds", default_display: "default wincons", other: &[("scrubs", None, "Scrubs wincons"), ("th", None, "Triforce Hunt")], description: "wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)" },
     Setting { name: "dungeons", display: "dungeons", default: "tournament", default_display: "tournament dungeons", other: &[("skulls", None, "dungeon tokens"), ("keyrings", None, "keyrings")], description: "dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)" },
@@ -126,6 +140,13 @@ pub(crate) fn get_custom_choices(settings: &[Setting]) -> impl Iterator<Item = (
         .unique_by(|(key, _)| *key)
 }
 
+pub(crate) fn display_s2_draft_picks(picks: &draft::Picks) -> String {
+    English.join_str_opt(
+        S2_SETTINGS.iter().copied()
+            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
+    ).unwrap_or_else(|| format!("base settings"))
+}
+
 pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
     English.join_str_opt(
         S3_SETTINGS.iter().copied()
@@ -158,6 +179,102 @@ pub(crate) fn display_s6_draft_picks(picks: &draft::Picks) -> String {
         S6_SETTINGS.iter().copied()
             .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
+}
+
+pub(crate) fn resolve_s2_draft_settings(picks: &draft::Picks) -> seed::Settings {
+    let shops = picks.get("shops").map(|shops| &**shops).unwrap_or("4");
+    let scrubs = picks.get("scrubs").map(|scrubs| &**scrubs).unwrap_or("affordable");
+    let skulls = picks.get("skulls").map(|skulls| &**skulls).unwrap_or("off");
+    let dungeon_er = picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off");
+    let forest = picks.get("forest").map(|forest| &**forest).unwrap_or("open");
+    let fountain = picks.get("fountain").map(|fountain| &**fountain).unwrap_or("closed");
+    let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
+    let spawn = picks.get("spawn").map(|spawn| &**spawn).unwrap_or("tot");
+    let gbk = picks.get("gbk").map(|gbk| &**gbk).unwrap_or("meds");
+    let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("meds");
+    let csmc = picks.get("csmc").map(|csmc| &**csmc).unwrap_or("off");
+    collect![
+        format!("world_count") => json!(3),
+        format!("open_forest") => json!(forest),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("zora_fountain") => json!(fountain),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("bridge") => match bridge {
+            "meds" => json!("medallions"),
+            "vanilla" => json!("vanilla"),
+            _ => unreachable!(),
+        },
+        format!("bridge_tokens") => json!(1),
+        format!("trials") => json!(0),
+        format!("skip_child_zelda") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("free_scarecrow") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("start_with_consumables") => json!(true),
+        format!("big_poe_count") => json!(1),
+        format!("shuffle_gerudo_card") => json!(card == "shuffle"),
+        format!("shuffle_dungeon_entrances") => json!(dungeon_er == "on"),
+        format!("spawn_positions") => json!(spawn == "random"),
+        format!("shuffle_scrubs") => match scrubs {
+            "affordable" => json!("low"),
+            "off" => json!("off"),
+            _ => unreachable!(),
+        },
+        format!("shopsanity") => json!(shops),
+        format!("tokensanity") => json!(skulls),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("shuffle_ganon_bosskey") => json!("on_lacs"),
+        format!("lacs_condition") => match gbk {
+            "meds" => json!("medallions"),
+            "dungeons" => json!("dungeons"),
+            _ => unreachable!(),
+        },
+        format!("lacs_rewards") => json!(8),
+        format!("enhance_map_compass") => json!(true),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_dc_scarecrow_gs",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_back",
+            "logic_lens_spirit",
+        ]),
+        format!("logic_earliest_adult_trade") => json!("claim_check"),
+        format!("starting_items") => json!([
+            "ocarina2",
+            "farores_wind",
+            "lens",
+        ]),
+        format!("correct_chest_sizes") => json!(csmc == "on"),
+        format!("hint_dist") => json!("mw2"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("junk_ice_traps") => json!("off"),
+        format!("starting_age") => match spawn {
+            "tot" => json!("adult"),
+            "random" => json!("random"),
+            _ => unreachable!(),
+        },
+    ]
 }
 
 pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> seed::Settings {

@@ -658,7 +658,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let ban = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("ban")
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Locks a setting for this race to its default value.")),
@@ -711,7 +711,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let draft = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("draft")
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Chooses a setting for this race (same as /pick).")),
@@ -732,7 +732,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let first = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("first")
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Go first in the settings draft.")),
@@ -794,7 +794,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let no = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 | draft::Kind::RslS7 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 | draft::Kind::RslS7 => return None,
                     draft::Kind::SlugOpen => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -811,7 +811,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let pick = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("pick")
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("pick")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Chooses a setting for this race.")),
@@ -986,7 +986,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let second = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("second")
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Go second in the settings draft.")),
@@ -1037,7 +1037,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let skip = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("skip")
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description(description!("Skips your current turn of the settings draft.")),
@@ -1097,7 +1097,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
             let yes = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 | draft::Kind::RslS7 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 | draft::Kind::RslS7 => return None,
                     draft::Kind::SlugOpen => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -1274,7 +1274,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             }
                                         }
                                     }
-                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => {}
+                                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?;
                             }
@@ -2327,7 +2327,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             }
                                         }
                                     }
-                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => {}
+                                    draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(false)).await?;
                             }

@@ -509,6 +509,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn draft_kind(&self) -> Option<draft::Kind> {
         match (self.series, &*self.event) {
+            (Series::Multiworld, "2") => Some(draft::Kind::MultiworldS2),
             (Series::Multiworld, "3") => Some(draft::Kind::MultiworldS3),
             (Series::Multiworld, "4") => Some(draft::Kind::MultiworldS4),
             (Series::Multiworld, "5") => Some(draft::Kind::MultiworldS5),
@@ -857,7 +858,7 @@ impl<'a> Data<'a> {
                     (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(global, self, None).await?, format!("Roll Seed (Random Settings, No Opt-ins)")),
                     //TODO support opt-in settings
                 ],
-                draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::S7 => vec![
+                draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::S7 => vec![
                     (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Base), _)).to_html(), practice_seed_favicon_url(global, self, None).await?, format!("Roll Seed (Base Settings)")),
                     (true, uri!(practice_seed_post(self.series, &*self.event, Some(PracticeSeedKind::Random), _)).to_html(), practice_seed_favicon_url(global, self, None).await?, format!("Roll Seed (Random Settings)")),
                 ],

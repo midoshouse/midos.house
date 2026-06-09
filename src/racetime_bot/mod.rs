@@ -270,6 +270,7 @@ pub(crate) enum Goal {
     MixedPoolsS4,
     MixedPoolsS5,
     Mq,
+    MultiworldS2,
     MultiworldS3,
     MultiworldS4,
     MultiworldS5,
@@ -344,6 +345,7 @@ impl Goal {
             Self::MixedPoolsS4 => Ok((Series::MixedPools, "4")),
             Self::MixedPoolsS5 => Ok((Series::MixedPools, "5")),
             Self::Mq => Ok((Series::Mq, "1")),
+            Self::MultiworldS2 => Ok((Series::Multiworld, "2")),
             Self::MultiworldS3 => Ok((Series::Multiworld, "3")),
             Self::MultiworldS4 => Ok((Series::Multiworld, "4")),
             Self::MultiworldS5 => Ok((Series::Multiworld, "5")),
@@ -413,6 +415,7 @@ impl Goal {
             | Self::MixedPoolsS4
             | Self::MixedPoolsS5
             | Self::Mq
+            | Self::MultiworldS2
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
@@ -472,6 +475,7 @@ impl Goal {
             Self::MixedPoolsS4 => "4th Mixed Pools Tournament",
             Self::MixedPoolsS5 => "5th Mixed Pools Tournament",
             Self::Mq => "12 MQ Tournament",
+            Self::MultiworldS2 => "2nd Multiworld Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::MultiworldS4 => "4th Multiworld Tournament",
             Self::MultiworldS5 => "5th Multiworld Tournament",
@@ -531,6 +535,7 @@ impl Goal {
             | Self::MixedPoolsS4
             | Self::MixedPoolsS5
             | Self::Mq
+            | Self::MultiworldS2
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
@@ -575,6 +580,7 @@ impl Goal {
     fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
             Self::S7 | Self::Cc7 => Some(draft::Kind::S7),
+            Self::MultiworldS2 => Some(draft::Kind::MultiworldS2),
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::MultiworldS5 => Some(draft::Kind::MultiworldS5),
@@ -661,6 +667,7 @@ impl Goal {
             | Self::Efk2026
             | Self::MixedPoolsS5
             | Self::Mq
+            | Self::MultiworldS2
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
@@ -725,6 +732,7 @@ impl Goal {
                 | Self::MixedPoolsS4
                 | Self::MixedPoolsS5
                 | Self::Mq
+                | Self::MultiworldS2
                 | Self::MultiworldS3
                 | Self::MultiworldS4
                 | Self::MultiworldS5
@@ -783,6 +791,7 @@ impl Goal {
             Self::MixedPoolsS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 2, 76, 10) },
             Self::MixedPoolsS5 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 9, 0, 42, 2) },
             Self::Mq => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
+            Self::MultiworldS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 0, 41) },
             Self::MultiworldS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 2, 205) },
             Self::MultiworldS4 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 199) },
             Self::MultiworldS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
@@ -840,6 +849,7 @@ impl Goal {
             Self::MixedPoolsS4 => Some(mp::s4_settings()),
             Self::MixedPoolsS5 => Some(mp::s5_settings()),
             Self::Mq => Some(mq::s1_settings()),
+            Self::MultiworldS2 => None, // settings draft
             Self::MultiworldS3 => None, // settings draft
             Self::MultiworldS4 => None, // settings draft
             Self::MultiworldS5 => None, // settings draft
@@ -929,6 +939,12 @@ impl Goal {
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
                 ctx.say("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed deku open camc off): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+            }
+            Self::MultiworldS2 => {
+                ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
+                ctx.say("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
+                ctx.say("!seed draft: Pick the settings here in the chat.").await?;
+                ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed bridge vanilla fountain open): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
             }
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -1270,8 +1286,9 @@ impl Goal {
                     settings, plando, unlock_spoiler_log,
                 }
             }
-            Self::MultiworldS3 | Self::MultiworldS4 | Self::MultiworldS5 | Self::MultiworldS6 => {
+            Self::MultiworldS2 | Self::MultiworldS3 | Self::MultiworldS4 | Self::MultiworldS5 | Self::MultiworldS6 => {
                 let available_settings = match self {
+                    Self::MultiworldS2 => mw::S2_SETTINGS,
                     Self::MultiworldS3 => mw::S3_SETTINGS,
                     Self::MultiworldS4 => mw::S4_SETTINGS,
                     Self::MultiworldS5 => mw::S5_SETTINGS,
@@ -1327,6 +1344,7 @@ impl Goal {
                     }
                 };
                 let (settings, display) = match self {
+                    Self::MultiworldS2 => (mw::resolve_s2_draft_settings(&settings), mw::display_s2_draft_picks(&settings)),
                     Self::MultiworldS3 => (mw::resolve_s3_draft_settings(&settings), mw::display_s3_draft_picks(&settings)),
                     Self::MultiworldS4 => (mw::resolve_s4_draft_settings(&settings), mw::display_s4_draft_picks(&settings)),
                     Self::MultiworldS5 => (mw::resolve_s5_draft_settings(&settings), mw::display_s5_draft_picks(&settings)),
@@ -2932,6 +2950,7 @@ trait SeedHandler {
                     | Goal::WeTryToBeBetterS2
                         => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), goal.single_settings().expect("goal has no single settings"), serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                     | Goal::Cc7
+                    | Goal::MultiworldS2
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
                     | Goal::MultiworldS5
@@ -3117,6 +3136,7 @@ impl Handler {
             });
             let available_settings = available_settings.unwrap_or_else(|| match draft_kind {
                 draft::Kind::S7 => s::S7_SETTINGS.into_iter().map(|setting| Cow::Owned(setting.description())).collect(),
+                draft::Kind::MultiworldS2 => mw::S2_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::MultiworldS3 => mw::S3_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::MultiworldS4 => mw::S4_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::MultiworldS5 => mw::S5_SETTINGS.iter().copied().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
@@ -3155,7 +3175,7 @@ impl Handler {
             if let Some(draft_kind) = self.draft_kind(goal).await {
                 lock!(@write state = self.race_state; match *state {
                     RaceState::Init => match draft_kind {
-                        draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::SlugOpen => ctx.say(format!("Sorry {reply_to}, no draft has been started. Use “!seed franco draft” to start one. For more info about these options, use !presets")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
@@ -3195,7 +3215,7 @@ impl Handler {
                             }
                         } else {
                             match draft_kind {
-                                draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
+                                draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::MultiworldS6 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
                                 draft::Kind::RslS7 => ctx.say(format!("Sorry {reply_to}, it's not your turn in the weights draft.")).await?,
                                 draft::Kind::SlugOpen => unimplemented!("SlugCentral Open format draft in race room"),
                                 draft::Kind::TournoiFrancoS3 => ctx.say(format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
@@ -3729,8 +3749,9 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
-                            Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::MultiworldS5 | Goal::MultiworldS6 => {
+                            Goal::MultiworldS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::MultiworldS5 | Goal::MultiworldS6 => {
                                 let (ordinal, event, available_settings) = match goal {
+                                    Goal::MultiworldS2 => ("2nd", "2", mw::S2_SETTINGS),
                                     Goal::MultiworldS3 => ("3rd", "3", mw::S3_SETTINGS),
                                     Goal::MultiworldS4 => ("4th", "4", mw::S4_SETTINGS),
                                     Goal::MultiworldS5 => ("5th", "5", mw::S5_SETTINGS),
@@ -5414,6 +5435,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::MixedPoolsS4
                     | Goal::MixedPoolsS5
                     | Goal::Mq
+                    | Goal::MultiworldS2
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
                     | Goal::MultiworldS5

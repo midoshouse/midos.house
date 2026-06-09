@@ -1004,7 +1004,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         ShowStatus::None => {}
     }
     match data.draft_kind() {
-        None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
+        None | Some(draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
         Some(draft::Kind::MultiworldS6) => column_headers.push(html! {
             th : "Opt-ins";
         }),
@@ -1283,7 +1283,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                 ShowStatus::None => {}
                             }
                             @match data.draft_kind() {
-                                None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
+                                None | Some(draft::Kind::S7 | draft::Kind::MultiworldS2 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::SlugOpen) => {}
                                 Some(draft::Kind::MultiworldS6) => td {
                                     : mw::get_custom_choices(mw::S6_SETTINGS).filter(|(key, _)| custom_choices.contains(*key)).map(|(_, label)| label).join(", ");
                                 }

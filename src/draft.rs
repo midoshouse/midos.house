@@ -66,6 +66,7 @@ impl fmt::Display for Team {
 pub(crate) enum Kind {
     // when defining a new variant, make sure to add it to event::Data::draft_kind and racetime_bot::Goal::draft_kind
     S7,
+    MultiworldS2,
     MultiworldS3,
     MultiworldS4,
     MultiworldS5,
@@ -82,6 +83,7 @@ impl Kind {
     pub(crate) fn language(&self) -> Language {
         match self {
             | Self::S7
+            | Self::MultiworldS2
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::MultiworldS5
@@ -100,6 +102,7 @@ impl Kind {
     pub(crate) fn rando_version(&self) -> Option<VersionedBranch> {
         Some(match self {
             Self::S7 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 1, 0) },
+            Self::MultiworldS2 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(6, 0, 41) },
             Self::MultiworldS3 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(6, 2, 205) },
             Self::MultiworldS4 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(7, 1, 199) },
             Self::MultiworldS5 => VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 3, 0) },
@@ -282,8 +285,9 @@ impl Draft {
                 min_by_key(team1, team2, |team| team.qualifier_rank).id,
                 max_by_key(team1, team2, |team| team.qualifier_rank).id,
             ],
-            Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 => if phase.is_some_and(|phase| phase == "Top 8") {
+            Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 => if phase.is_some_and(|phase| phase == "Top 8") {
                 let seeding = match kind {
+                    Kind::MultiworldS2 => unimplemented!("Mido's House didn't manage official races for this event"),
                     Kind::MultiworldS3 => [
                         Id::from(5834711445123920517_u64), // DAD
                         Id::from(167966029947875858_u64), // Snack Pack
@@ -379,7 +383,7 @@ impl Draft {
             went_first: None,
             skipped_bans: 0,
             settings: match kind {
-                Kind::S7 | Kind::MultiworldS3 | Kind::MultiworldS5 => HashMap::default(),
+                Kind::S7 | Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS5 => HashMap::default(),
                 // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
                 Kind::MultiworldS4 => HashMap::from_iter(
                     (loser == Id::from(17814073240662869290_u64) || winner == Id::from(17814073240662869290_u64))
@@ -417,6 +421,7 @@ impl Draft {
             Kind::S7 => u8::try_from(self.settings.len()).unwrap(),
             Kind::RslS7 => u8::try_from(rsl::FORCE_OFF_SETTINGS.into_iter().filter(|&rsl::ForceOffSetting { name, .. }| self.settings.contains_key(name)).count()).unwrap()
                 + u8::try_from(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).map(|rsl::MultiOptionSetting { name, .. }| self.settings.get(name).map(|value| 1 + value.chars().filter(|c| *c == ',').count()).unwrap_or_default()).sum::<usize>()).unwrap(),
+            Kind::MultiworldS2 => u8::try_from(mw::S2_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS3 => u8::try_from(mw::S3_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS4 => u8::try_from(mw::S4_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS5 => u8::try_from(mw::S5_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
@@ -803,7 +808,12 @@ impl Draft {
                     }
                 }
             }
-            Kind::MultiworldS3 => {
+            Kind::MultiworldS2 | Kind::MultiworldS3 => {
+                let all_settings = match kind {
+                    Kind::MultiworldS2 => mw::S2_SETTINGS,
+                    Kind::MultiworldS3 => mw::S3_SETTINGS,
+                    Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                };
                 if let Some(went_first) = self.went_first {
                     match self.pick_count(kind) {
                         prev_bans @ 0..=1 => {
@@ -815,7 +825,7 @@ impl Draft {
                             Step {
                                 kind: StepKind::Ban {
                                     available_settings: BanSettings(vec![
-                                        ("All Settings", mw::S3_SETTINGS.iter().copied()
+                                        ("All Settings", all_settings.iter().copied()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                             .map(|mw::Setting { name, display, default, default_display, description, .. }| BanSetting {
                                                 description: Cow::Borrowed(description),
@@ -859,7 +869,7 @@ impl Draft {
                             Step {
                                 kind: StepKind::Pick {
                                     available_choices: DraftSettings(vec![
-                                        ("All Settings", mw::S3_SETTINGS.iter().copied()
+                                        ("All Settings", all_settings.iter().copied()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                             .map(|mw::Setting { name, display, default, default_display, other, description }| DraftSetting {
                                                 options: iter::once(DraftSettingChoice { name: default, display: default_display.into() })
@@ -920,14 +930,25 @@ impl Draft {
                                 },
                             }
                         }
-                        6.. => Step {
-                            kind: StepKind::Done(mw::resolve_s3_draft_settings(&self.settings)),
-                            message: match msg_ctx {
-                                MessageContext::None => String::default(),
-                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", mw::display_s3_draft_picks(&self.settings)),
-                                MessageContext::RaceTime { .. } => mw::display_s3_draft_picks(&self.settings),
-                            },
-                        },
+                        6.. => {
+                            let display = match kind {
+                                Kind::MultiworldS2 => mw::display_s2_draft_picks(&self.settings),
+                                Kind::MultiworldS3 => mw::display_s3_draft_picks(&self.settings),
+                                Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                            };
+                            Step {
+                                kind: StepKind::Done(match kind {
+                                    Kind::MultiworldS2 => mw::resolve_s2_draft_settings(&self.settings),
+                                    Kind::MultiworldS3 => mw::resolve_s3_draft_settings(&self.settings),
+                                    Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                }),
+                                message: match msg_ctx {
+                                    MessageContext::None => String::default(),
+                                    MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {display}."),
+                                    MessageContext::RaceTime { .. } => display,
+                                },
+                            }
+                        }
                     }
                 } else {
                     Step {
@@ -966,7 +987,7 @@ impl Draft {
                     Kind::MultiworldS4 => mw::S4_SETTINGS,
                     Kind::MultiworldS5 => mw::S5_SETTINGS,
                     Kind::MultiworldS6 => mw::S6_SETTINGS,
-                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
                     match self.pick_count(kind) {
@@ -1128,14 +1149,14 @@ impl Draft {
                                 Kind::MultiworldS4 => mw::display_s4_draft_picks(&self.settings),
                                 Kind::MultiworldS5 => mw::display_s5_draft_picks(&self.settings),
                                 Kind::MultiworldS6 => mw::display_s6_draft_picks(&self.settings),
-                                Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                             };
                             Step {
                                 kind: StepKind::Done(match kind {
                                     Kind::MultiworldS4 => mw::resolve_s4_draft_settings(&self.settings),
                                     Kind::MultiworldS5 => mw::resolve_s5_draft_settings(&self.settings),
                                     Kind::MultiworldS6 => mw::resolve_s6_draft_settings(&self.settings),
-                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 }),
                                 message: match msg_ctx {
                                     MessageContext::None => String::default(),
@@ -1181,7 +1202,7 @@ impl Draft {
                                         builder.push_line("");
                                         builder.push("You have no opt-ins in common.");
                                     },
-                                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 }
                                 if self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
                                     builder.push_line("");
@@ -1429,7 +1450,7 @@ impl Draft {
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
                     Kind::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
                     Kind::TournoiFrancoS6 => &fr::S6_SETTINGS[..],
-                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
                     let mut pick_count = self.pick_count(kind);
@@ -1447,7 +1468,7 @@ impl Draft {
                                 Kind::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS6 => fr::resolve_s6_draft_settings(&self.settings),
-                                Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                             }),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
@@ -1459,7 +1480,7 @@ impl Draft {
                                 MessageContext::RaceTime { .. } => fr::display_draft_picks(kind.language(), all_settings, &self.settings),
                             },
                         }),
-                        (Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen, _, _) => unreachable!(),
+                        (Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen, _, _) => unreachable!(),
                     };
                     if select_mixed_dungeons {
                         Step {
@@ -1574,13 +1595,13 @@ impl Draft {
                                     Kind::TournoiFrancoS4 => 8,
                                     Kind::TournoiFrancoS5 => 8,
                                     Kind::TournoiFrancoS6 => 8,
-                                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 };
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let can_ban = match kind {
                                     Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => n < round_count - 2 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes",
                                     Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 => n == 4 || n == 5,
-                                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                                 };
                                 let skippable = n == round_count - 1 && can_ban;
                                 let (hard_settings, classic_settings) = all_settings.iter()
@@ -2067,9 +2088,14 @@ impl Draft {
                     }),
                 }
             }
-            Kind::MultiworldS3 => {
+            Kind::MultiworldS2 | Kind::MultiworldS3 => {
+                let all_settings = match kind {
+                    Kind::MultiworldS2 => mw::S2_SETTINGS,
+                    Kind::MultiworldS3 => mw::S3_SETTINGS,
+                    Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                };
                 let resolved_action = match action {
-                    Action::Ban { setting } => if let Some(setting) = mw::S3_SETTINGS.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
+                    Action::Ban { setting } => if let Some(setting) = all_settings.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
                         Action::Pick { setting: setting.name.to_owned(), value: setting.default.to_owned() }
                     } else {
                         return Ok(Err(match msg_ctx {
@@ -2077,7 +2103,7 @@ impl Draft {
                             MessageContext::Discord { .. } => {
                                 let mut content = MessageBuilder::default();
                                 content.push("Sorry, I don't recognize that setting. Use one of the following: ");
-                                for (i, setting) in mw::S3_SETTINGS.iter().copied().enumerate() {
+                                for (i, setting) in all_settings.iter().copied().enumerate() {
                                     if i > 0 {
                                         content.push(" or ");
                                     }
@@ -2087,7 +2113,7 @@ impl Draft {
                             }
                             MessageContext::RaceTime { reply_to, .. } => format!(
                                 "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
-                                mw::S3_SETTINGS.iter().copied().map(|setting| setting.name).format(" or "),
+                                all_settings.iter().copied().map(|setting| setting.name).format(" or "),
                             ),
                         }))
                     },
@@ -2156,7 +2182,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S3_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
+                            let exists = all_settings.iter().copied().any(|mw::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -2220,7 +2246,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S3_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
+                            let exists = all_settings.iter().copied().any(|mw::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -2325,7 +2351,7 @@ impl Draft {
                     Kind::MultiworldS4 => mw::S4_SETTINGS,
                     Kind::MultiworldS5 => mw::S5_SETTINGS,
                     Kind::MultiworldS6 => mw::S6_SETTINGS,
-                    Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 let resolved_action = match action {
                     Action::Ban { setting } => if let Some(setting) = all_settings.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
@@ -2938,7 +2964,7 @@ impl Draft {
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
                     Kind::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
                     Kind::TournoiFrancoS6 => &fr::S6_SETTINGS[..],
-                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
+                    Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
                 };
                 let resolved_action = match action {
                     Action::Ban { setting } => if let Some(setting) = all_settings.iter().find(|&&fr::Setting { name, .. }| *name == setting) {
