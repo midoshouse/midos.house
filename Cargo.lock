@@ -3935,6 +3935,7 @@ dependencies = [
  "hyper",
  "ics",
  "image",
+ "indexmap 2.14.0",
  "itertools",
  "kuchiki",
  "lazy-regex",

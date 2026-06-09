@@ -61,6 +61,7 @@ graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "sk
 hyper = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
+indexmap = { version = "2", features = ["serde"] }
 itertools = "0.14"
 kuchiki = "0.8" #TODO unmaintained, replace with `scraper` crate?
 lazy-regex = "3"

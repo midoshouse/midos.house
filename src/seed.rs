@@ -440,6 +440,8 @@ pub(crate) enum GetError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("unsupported user message for progression spoiler")]
+    UnknownProgressionSpoilerFormat,
 }
 
 impl<E: Into<GetError>> From<E> for StatusOrError<GetError> {
@@ -493,13 +495,17 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
             } else {
                 Path::new(DIR).join(format!("{file_stem}.json"))
             };
-            let spoiler = match fs::read_json(spoiler_path).await {
+            let spoiler = match fs::read_json::<serde_json::Value>(spoiler_path).await {
                 Ok(spoiler) => spoiler,
                 Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
                 Err(e) => return Err(e.into()),
             };
             GetResponse::Spoiler {
-                inner: RawJson(serde_json::to_vec_pretty(&tfb::progression_spoiler(spoiler))?),
+                inner: RawJson(match spoiler.as_object().and_then(|spoiler| spoiler.get("settings")).and_then(|settings| settings.as_object()).and_then(|settings| settings.get("user_message")).and_then(|user_message| user_message.as_str()) {
+                    Some("Spoiler Log Tournament") => serde_json::to_vec_pretty(&sl::progression_spoiler(spoiler)),
+                    Some("Triforce Blitz Progression Spoiler") => serde_json::to_vec_pretty(&tfb::progression_spoiler(spoiler)),
+                    _ => return Err(StatusOrError::Err(GetError::UnknownProgressionSpoilerFormat)),
+                }?),
                 content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "inline"),
                 // may not work in all browsers, see https://bugzilla.mozilla.org/show_bug.cgi?id=1185705
                 link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(Suffix(extra.chests.textures(), "png"))))),

@@ -1,9 +1,13 @@
-use crate::{
-    event::{
-        Data,
-        InfoError,
+use {
+    indexmap::IndexMap,
+    serde_json::Value as Json,
+    crate::{
+        event::{
+            Data,
+            InfoError,
+        },
+        prelude::*,
     },
-    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -111,4 +115,70 @@ pub(crate) fn settings_2026() -> seed::Settings {
         format!("junk_ice_traps") => json!("off"),
         format!("ice_trap_appearance") => json!("anything"),
     ]
+}
+
+#[derive(Serialize)]
+pub(crate) struct ProgressionSpoiler {
+    entrances: IndexMap<Json, Json>,
+    locations: serde_json::Map<String, Json>,
+}
+
+pub(crate) fn progression_spoiler(spoiler: Json) -> ProgressionSpoiler {
+    fn replace(value: Json) -> Json {
+        if value == "Child Spawn -> KF Links House" {
+            json!("Child Spawn")
+        } else if value == "DMC Fire Temple Entrance -> Fire Temple Lower" {
+            json!("Fire Temple")
+        } else if value == "Death Mountain -> Dodongos Cavern Beginning" {
+            json!("Dodongos Cavern")
+        } else if value == "Desert Colossus -> Spirit Temple Lobby" {
+            json!("Spirit Temple")
+        } else if value == "Gerudo Fortress -> Gerudo Training Ground Lobby" {
+            json!("Gerudo Training Ground")
+        } else if value == "Graveyard Warp Pad Region -> Shadow Temple Entryway" {
+            json!("Shadow Temple")
+        } else if value == "KF Outside Deku Tree -> Deku Tree Lobby" {
+            json!("Deku Tree")
+        } else if value == "Kakariko Village -> Bottom of the Well" {
+            json!("Bottom of the Well")
+        } else if value == "Lake Hylia -> Water Temple Lobby" {
+            json!("Water Temple")
+        } else if value == "SFM Forest Temple Entrance Ledge -> Forest Temple Lobby" {
+            json!("Forest Temple")
+        } else if value == "ZF Ice Ledge -> Ice Cavern Beginning" {
+            json!("Ice Cavern")
+        } else if value == "Zoras Fountain -> Jabu Jabus Belly Beginning" {
+            json!("Jabu Jabus Belly")
+        } else if value == json!({"region": "Gerudo Training Ground Lobby", "from": "Gerudo Fortress"}) {
+            json!("Gerudo Training Ground")
+        } else if value == json!({"region": "Jabu Jabus Belly Beginning", "from": "Zoras Fountain"}) {
+            json!("Jabu Jabus Belly")
+        } else if value == json!({"region": "Bottom of the Well", "from": "Kakariko Village"}) {
+            json!("Bottom of the Well")
+        } else if value == json!({"region": "Shadow Temple Entryway", "from": "Graveyard Warp Pad Region"}) {
+            json!("Shadow Temple")
+        } else if value == json!({"region": "Water Temple Lobby", "from": "Lake Hylia"}) {
+            json!("Water Temple")
+        } else if value == json!({"region": "Dodongos Cavern Beginning", "from": "Death Mountain"}) {
+            json!("Dodongos Cavern")
+        } else if value == json!({"region": "Spirit Temple Lobby", "from": "Desert Colossus"}) {
+            json!("Spirit Temple")
+        } else if value == json!({"region": "Ice Cavern Beginning", "from": "ZF Ice Ledge"}) {
+            json!("Ice Cavern")
+        } else if value == json!({"region": "Fire Temple Lower", "from": "DMC Fire Temple Entrance"}) {
+            json!("Fire Temple")
+        } else if value == json!({"region": "Forest Temple Lobby", "from": "SFM Forest Temple Entrance Ledge"}) {
+            json!("Forest Temple")
+        } else if value == json!({"region": "Deku Tree Lobby", "from": "KF Outside Deku Tree"}) {
+            json!("Deku Tree")
+        } else {
+            value
+        }
+    }
+
+    let Json::Object(mut spoiler) = spoiler else { panic!("spoiler log must be a JSON object") };
+    ProgressionSpoiler {
+        entrances: as_variant!(spoiler.remove("entrances").unwrap(), Json::Object).unwrap().into_iter().map(|(key, value)| (replace(Json::String(key)), replace(value))).collect(),
+        locations: as_variant!(spoiler.remove("locations").unwrap(), Json::Object).unwrap(),
+    }
 }
