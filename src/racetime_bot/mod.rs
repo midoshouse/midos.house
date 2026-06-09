@@ -277,6 +277,7 @@ pub(crate) enum Goal {
     NineDaysOfSaws,
     Pic6,
     Pic7,
+    PicRs1,
     PicRs2,
     PotsOfTime,
     Rsl,
@@ -349,6 +350,7 @@ impl Goal {
             Self::NineDaysOfSaws => Err(|series, _| series == Series::NineDaysOfSaws),
             Self::Pic6 => Ok((Series::Pictionary, "6")),
             Self::Pic7 => Ok((Series::Pictionary, "7")),
+            Self::PicRs1 => Ok((Series::Pictionary, "rs1")),
             Self::PicRs2 => Ok((Series::Pictionary, "rs2")),
             Self::PotsOfTime => Ok((Series::PotsOfTime, "1")),
             Self::Rsl => Err(|series, _| series == Series::Rsl),
@@ -416,6 +418,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic6
             | Self::Pic7
+            | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::S6
@@ -473,6 +476,7 @@ impl Goal {
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::Pic6 => "6th Pictionary Spoiler Log Race",
             Self::Pic7 => "7th Pictionary Spoiler Log Race",
+            Self::PicRs1 => "1st Random Settings Pictionary Spoiler Log Race",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::PotsOfTime => "Pots Of Time",
             Self::Rsl => "Random settings league",
@@ -530,6 +534,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic6
             | Self::Pic7
+            | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::Rsl
@@ -595,6 +600,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic6
             | Self::Pic7
+            | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::S6
@@ -656,6 +662,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic6
             | Self::Pic7
+            | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::Rsl
@@ -688,6 +695,7 @@ impl Goal {
             match self {
                 | Self::Pic6
                 | Self::Pic7
+                | Self::PicRs1
                 | Self::PicRs2
                     => UnlockSpoilerLog::Now,
                 | Self::SpoilerLog2026
@@ -797,7 +805,7 @@ impl Goal {
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::WeTryToBeBetterS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 0, 11) },
             Self::WeTryToBeBetterS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
-            Self::PicRs2 | Self::PotsOfTime | Self::Rsl => return Err("randomizer version for this goal must be parsed from RSL script"),
+            Self::PicRs1 | Self::PicRs2 | Self::PotsOfTime | Self::Rsl => return Err("randomizer version for this goal must be parsed from RSL script"),
         })
     }
 
@@ -831,6 +839,7 @@ impl Goal {
             Self::Pic6 => Some(pic::race6_settings()),
             Self::Pic7 => Some(pic::race7_settings()),
             Self::PotsOfTime => None, // random settings
+            Self::PicRs1 => None, // random settings
             Self::PicRs2 => None, // random settings
             Self::Rsl => None, // random settings
             Self::S6 => Some(s::s6_settings()),
@@ -864,6 +873,7 @@ impl Goal {
             | Self::Pic6
             | Self::Pic7
                 => ctx.say("!seed: The settings used for the race").await?,
+            | Self::PicRs1
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
             | Self::BattleRoyaleS1
@@ -1427,6 +1437,10 @@ impl Goal {
                 },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             }
+            Self::PicRs1 => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::Fenhl {
+                version: Some((Version::new(2, 2, 10), 5)),
+                preset: rsl::DevFenhlPreset::Pictionary,
+            }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::PicRs2 => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::Fenhl {
                 version: Some((Version::new(2, 3, 8), 10)),
                 preset: rsl::DevFenhlPreset::Pictionary,
@@ -2929,6 +2943,10 @@ trait SeedHandler {
                         self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version().unwrap(), settings, plando, None, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
                     Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
+                    Goal::PicRs1 => self.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
+                        version: Some((Version::new(2, 2, 10), 5)),
+                        preset: rsl::DevFenhlPreset::Pictionary,
+                    }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                     Goal::PicRs2 => self.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
                         version: Some((Version::new(2, 3, 8), 10)),
                         preset: rsl::DevFenhlPreset::Pictionary,
@@ -3627,6 +3645,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Mq
                             | Goal::Pic6
                             | Goal::Pic7
+                            | Goal::PicRs1
                             | Goal::PicRs2
                             | Goal::SpoilerLog2026
                                 => {
@@ -5273,13 +5292,13 @@ impl RaceHandler<GlobalState> for Handler {
                     });
                 }
                 match goal {
-                    Goal::Pic6 | Goal::Pic7 | Goal::PicRs2 => {
+                    Goal::Pic6 | Goal::Pic7 | Goal::PicRs1 | Goal::PicRs2 => {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
                                 let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(match goal {
                                     Goal::Pic6 | Goal::Pic7 => 10,
-                                    Goal::PicRs2 => 25,
+                                    Goal::PicRs1 | Goal::PicRs2 => 25,
                                     _ => unreachable!(),
                                 }) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
