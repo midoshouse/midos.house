@@ -274,6 +274,7 @@ pub(crate) enum Goal {
     MultiworldS5,
     MultiworldS6,
     NineDaysOfSaws,
+    Pic6,
     Pic7,
     PicRs2,
     PotsOfTime,
@@ -344,6 +345,7 @@ impl Goal {
             Self::MultiworldS5 => Ok((Series::Multiworld, "5")),
             Self::MultiworldS6 => Ok((Series::Multiworld, "6")),
             Self::NineDaysOfSaws => Err(|series, _| series == Series::NineDaysOfSaws),
+            Self::Pic6 => Ok((Series::Pictionary, "6")),
             Self::Pic7 => Ok((Series::Pictionary, "7")),
             Self::PicRs2 => Ok((Series::Pictionary, "rs2")),
             Self::PotsOfTime => Ok((Series::PotsOfTime, "1")),
@@ -409,6 +411,7 @@ impl Goal {
             | Self::MultiworldS5
             | Self::MultiworldS6
             | Self::NineDaysOfSaws
+            | Self::Pic6
             | Self::Pic7
             | Self::PicRs2
             | Self::PotsOfTime
@@ -464,6 +467,7 @@ impl Goal {
             Self::MultiworldS5 => "5th Multiworld Tournament",
             Self::MultiworldS6 => "6th Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
+            Self::Pic6 => "6th Pictionary Spoiler Log Race",
             Self::Pic7 => "7th Pictionary Spoiler Log Race",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::PotsOfTime => "Pots Of Time",
@@ -519,6 +523,7 @@ impl Goal {
             | Self::MultiworldS5
             | Self::MultiworldS6
             | Self::NineDaysOfSaws
+            | Self::Pic6
             | Self::Pic7
             | Self::PicRs2
             | Self::PotsOfTime
@@ -582,6 +587,7 @@ impl Goal {
             | Self::MixedPoolsS5
             | Self::Mq
             | Self::NineDaysOfSaws
+            | Self::Pic6
             | Self::Pic7
             | Self::PicRs2
             | Self::PotsOfTime
@@ -642,6 +648,7 @@ impl Goal {
             | Self::MultiworldS5
             | Self::MultiworldS6
             | Self::NineDaysOfSaws
+            | Self::Pic6
             | Self::Pic7
             | Self::PicRs2
             | Self::PotsOfTime
@@ -672,6 +679,7 @@ impl Goal {
             UnlockSpoilerLog::Now
         } else {
             match self {
+                | Self::Pic6
                 | Self::Pic7
                 | Self::PicRs2
                     => UnlockSpoilerLog::Now,
@@ -755,6 +763,7 @@ impl Goal {
             Self::MultiworldS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::MultiworldS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 0) },
             Self::NineDaysOfSaws => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2) },
+            Self::Pic6 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 2, 206, 5) },
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
             Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
             Self::S7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
@@ -809,6 +818,7 @@ impl Goal {
             Self::MultiworldS5 => None, // settings draft
             Self::MultiworldS6 => None, // settings draft
             Self::NineDaysOfSaws => None, // per-event settings
+            Self::Pic6 => Some(pic::race6_settings()),
             Self::Pic7 => Some(pic::race7_settings()),
             Self::PotsOfTime => None, // random settings
             Self::PicRs2 => None, // random settings
@@ -841,6 +851,7 @@ impl Goal {
 
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
+            | Self::Pic6
             | Self::Pic7
                 => ctx.say("!seed: The settings used for the race").await?,
             | Self::PicRs2
@@ -1057,6 +1068,7 @@ impl Goal {
             | Self::MixedPoolsS4
             | Self::MixedPoolsS5
             | Self::Mq
+            | Self::Pic6
             | Self::Pic7
             | Self::S6
             | Self::S8
@@ -2860,6 +2872,7 @@ trait SeedHandler {
                     | Goal::MixedPoolsS4
                     | Goal::MixedPoolsS5
                     | Goal::Mq
+                    | Goal::Pic6
                     | Goal::Pic7
                     | Goal::S6
                     | Goal::S8
@@ -3598,6 +3611,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::MixedPoolsS4
                             | Goal::MixedPoolsS5
                             | Goal::Mq
+                            | Goal::Pic6
                             | Goal::Pic7
                             | Goal::PicRs2
                             | Goal::SpoilerLog2026
@@ -5245,12 +5259,12 @@ impl RaceHandler<GlobalState> for Handler {
                     });
                 }
                 match goal {
-                    Goal::Pic7 | Goal::PicRs2 => {
+                    Goal::Pic6 | Goal::Pic7 | Goal::PicRs2 => {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
                                 let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(match goal {
-                                    Goal::Pic7 => 10,
+                                    Goal::Pic6 | Goal::Pic7 => 10,
                                     Goal::PicRs2 => 25,
                                     _ => unreachable!(),
                                 }) - Utc::now();

@@ -643,6 +643,91 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, g
     }).await?)
 }
 
+pub(crate) fn race6_settings() -> seed::Settings {
+    collect![
+        format!("user_message") => json!("6th Pictionary Spoiler Log Race"),
+        format!("open_forest") => json!(true),
+        format!("require_gohma") => json!(false),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("bridge") => json!("tokens"),
+        format!("bridge_tokens") => json!(13),
+        format!("trials") => json!(0),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("start_with_consumables") => json!(true),
+        format!("big_poe_count") => json!(3),
+        format!("shuffle_dungeon_rewards") => json!("vanilla"),
+        format!("shuffle_child_trade") => json!("skip_child_zelda"),
+        format!("shuffle_dungeon_entrances") => json!("all"),
+        format!("spawn_positions") => json!("balanced"),
+        format!("tokensanity") => json!("all"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("key_rings_choice") => json!("all"),
+        format!("key_rings") => json!([
+            "Thieves Hideout",
+            "Forest Temple",
+            "Fire Temple",
+            "Water Temple",
+            "Shadow Temple",
+            "Spirit Temple",
+            "Bottom of the Well",
+            "Gerudo Training Ground",
+            "Ganons Castle",
+        ]),
+        format!("shuffle_ganon_bosskey") => json!("on_lacs"),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+        ]),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_items") => json!([
+            "ocarina",
+        ]),
+        format!("starting_songs") => json!([
+            "prelude",
+        ]),
+        format!("hints") => json!("none"),
+        format!("hint_dist") => json!("useless"),
+        format!("misc_hints") => json!([]),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("junk_ice_traps") => json!("off"),
+        format!("starting_tod") => json!("midnight"),
+        format!("starting_age") => json!("random"),
+    ]
+}
+
 pub(crate) fn race7_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("7th Pictionary Spoiler Log Race"),
