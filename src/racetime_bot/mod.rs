@@ -993,7 +993,7 @@ impl Goal {
                 }
                 ctx.say("!seed draft: Pick the weights here in the chat.").await?;
                 ctx.say("!seed draft lite: Pick the weights here in the chat, but limit picks to RSL-Lite.").await?;
-                ctx.say("“!seed s6” or “!seed s5”: Previous seasons' weights").await?;
+                ctx.say("“!seed s6”, “!seed s5”, or “!seed s4”: Previous seasons' weights").await?;
             }
             Self::SlugOpen2026 => for format in all::<sco::Format>() {
                 match format.draft_kind() {
@@ -1494,6 +1494,14 @@ impl Goal {
                             skipped_bans: 0,
                             settings: HashMap::default(),
                         },
+                        unlock_spoiler_log,
+                    }),
+                    [preset] if preset == "s4" => return Ok(SeedCommandParseResult::Rsl {
+                        preset: rsl::VersionedPreset::Xopar { version: Some(Version::new(2, 2, 10)), preset: rsl::Preset::League },
+                        world_count: 1,
+                        language: English,
+                        article: "an",
+                        description: format!("RSL season 4 seed"),
                         unlock_spoiler_log,
                     }),
                     [preset] if preset == "s5" => return Ok(SeedCommandParseResult::Rsl {
@@ -3902,6 +3910,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                     .chain([
                                                         (format!("s6"), format!("RSL Season 6")),
                                                         (format!("s5"), format!("RSL Season 5")),
+                                                        (format!("s4"), format!("RSL Season 4")),
                                                     ])
                                                     .collect(),
                                             },
