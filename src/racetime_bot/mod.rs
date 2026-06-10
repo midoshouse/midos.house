@@ -736,7 +736,6 @@ impl Goal {
                 | Self::MultiworldS3
                 | Self::MultiworldS4
                 | Self::MultiworldS5
-                | Self::MultiworldS6
                 | Self::NineDaysOfSaws
                 | Self::PotsOfTime
                 | Self::Rsl
@@ -759,6 +758,7 @@ impl Goal {
                 | Self::Cc7
                 | Self::CoOpS3
                 | Self::LeagueS9
+                | Self::MultiworldS6
                 | Self::S6
                 | Self::S7
                 | Self::S8
