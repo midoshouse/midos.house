@@ -858,9 +858,9 @@ impl Goal {
             Self::Pic5 => Some(pic::race5_settings()),
             Self::Pic6 => Some(pic::race6_settings()),
             Self::Pic7 => Some(pic::race7_settings()),
-            Self::PotsOfTime => None, // random settings
             Self::PicRs1 => None, // random settings
             Self::PicRs2 => None, // random settings
+            Self::PotsOfTime => None, // random settings
             Self::Rsl => None, // random settings
             Self::S6 => Some(s::s6_settings()),
             Self::S7 => None, // settings draft
@@ -1479,7 +1479,7 @@ impl Goal {
                 let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?;
                 weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
                 SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::XoparCustom {
-                    version: None, //TODO freeze version after the tournament
+                    version: Some(Version::new(2, 8, 2)),
                     weights,
                 }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") }
             }
@@ -2987,7 +2987,7 @@ trait SeedHandler {
                         let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?;
                         weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
                         self.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
-                            version: None, //TODO freeze version after the tournament
+                            version: Some(Version::new(2, 8, 2)),
                             weights,
                         }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }

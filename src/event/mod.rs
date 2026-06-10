@@ -622,25 +622,36 @@ impl<'a> Data<'a> {
     pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
         Ok(match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => self.rando_version.clone().map(|rando_version| (rando_version, Cow::Owned(br::s1_settings()))), // support for randomized starting song
-            (Series::PotsOfTime, "1") | (Series::Rsl, "5" | "6") => {
+            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "5" | "6") => {
                 #[derive(Deserialize)]
                 struct Plando {
                     settings: seed::Settings,
                 }
 
-                let (rsl_version, custom_override) = match (self.series, &*self.event) {
-                    (Series::PotsOfTime, "1") => (
-                        None, //TODO freeze version after the tournament
-                        Some(include_bytes!("../../assets/event/pot/weights-1.json")),
-                    ),
-                    (Series::Rsl, "5") => (Some(Version::new(2, 3, 8)), None),
-                    (Series::Rsl, "6") => (Some(Version::new(2, 5, 11)), None),
+                let (rsl_preset, custom_override) = match (self.series, &*self.event) {
+                    (Series::Pictionary, "rs1") => (rsl::VersionedPreset::Fenhl {
+                        version: Some((Version::new(2, 2, 10), 5)),
+                        preset: rsl::DevFenhlPreset::Pictionary,
+                    }, None),
+                    (Series::Pictionary, "rs2") => (rsl::VersionedPreset::Fenhl {
+                        version: Some((Version::new(2, 3, 8), 10)),
+                        preset: rsl::DevFenhlPreset::Pictionary,
+                    }, None),
+                    (Series::PotsOfTime, "1") => (rsl::VersionedPreset::Xopar {
+                        version: Some(Version::new(2, 8, 2)),
+                        preset: rsl::Preset::League,
+                    }, Some(include_bytes!("../../assets/event/pot/weights-1.json"))),
+                    (Series::Rsl, "5") => (rsl::VersionedPreset::Xopar {
+                        version: Some(Version::new(2, 3, 8)),
+                        preset: rsl::Preset::League,
+                    }, None),
+                    (Series::Rsl, "6") => (rsl::VersionedPreset::Xopar {
+                        version: Some(Version::new(2, 5, 11)),
+                        preset: rsl::Preset::League,
+                    }, None),
                     (_, _) => unreachable!("checked by outer match"),
                 };
-                let rsl_script_path = rsl::VersionedPreset::Xopar {
-                    version: rsl_version,
-                    preset: rsl::Preset::League,
-                }.script_path().await?;
+                let rsl_script_path = rsl_preset.script_path().await?;
                 // check RSL script version
                 let rsl_version = Command::new(racetime_bot::PYTHON)
                     .arg("-c")
@@ -705,7 +716,7 @@ impl<'a> Data<'a> {
     pub(crate) fn has_single_settings(&self) -> bool {
         match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => true,
-            (Series::PotsOfTime, "1") | (Series::Rsl, "5" | "6") => true,
+            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "5" | "6") => true,
             (_, _) => self.single_settings.is_some(),
         }
     }
