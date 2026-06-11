@@ -153,6 +153,7 @@ enum Error {
     #[error(transparent)] AutoImport(#[from] cal::AutoImportError),
     #[error(transparent)] Base64(#[from] base64::DecodeError),
     #[error(transparent)] Config(#[from] config::Error),
+    #[error(transparent)] DiscordCleanup(#[from] discord_bot::CleanupError),
     #[cfg(unix)] #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] RaceTime(#[from] racetime_bot::MainError),
     #[cfg(unix)] #[error(transparent)] Read(#[from] async_proto::ReadError),
@@ -179,9 +180,6 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
         #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
         #[cfg(unix)] subcommand.write(&mut sock).await?;
         match subcommand {
-            #[cfg(unix)] Subcommand::CleanupRoles { .. } => {
-                u8::read(&mut sock).await?;
-            }
             #[cfg(unix)] Subcommand::PrepareStop { async_proto: false, .. } => {
                 while let Some(update) = Option::<PrepareStopUpdate>::read(&mut sock).await? {
                     println!("{} preparing to stop Mido's House: {update}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
@@ -240,33 +238,23 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
         let rocket = http::rocket(global.clone(), port.unwrap_or_else(|| if Environment::default().is_dev() { 24814 } else { 24812 })).await?;
         let discord_builder = discord_bot::configure_builder(discord_builder, global.clone(), rocket.shutdown());
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), global.clone());
-        let racetime_task = tokio::spawn(racetime_bot::main(global.clone(), rocket.shutdown(), seed_cache_rx)).map(|res| match res {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(Error::from(e)),
-            Err(e) => Err(Error::from(e)),
-        });
-        let import_task = tokio::spawn(cal::auto_import_races(global, rocket.shutdown())).map(|res| match res {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(Error::from(e)),
-            Err(e) => Err(Error::from(e)),
-        });
-        let rocket_task = tokio::spawn(rocket.launch()).map(|res| match res {
-            Ok(Ok(Rocket { .. })) => Ok(()),
-            Ok(Err(e)) => Err(Error::from(e)),
-            Err(e) => Err(Error::from(e)),
-        });
-        let discord_task = tokio::spawn(discord_builder.run()).map(|res| match res {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(Error::from(e)),
-            Err(e) => Err(Error::from(e)),
-        });
-        #[cfg(unix)] let unix_socket_task = tokio::spawn(unix_listener).map(|res| match res {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(Error::from(e)),
-            Err(e) => Err(Error::from(e)),
-        });
+
+        fn spawn<E: Into<Error> + Send + 'static>(fut: impl Future<Output = Result<(), E>> + Send + 'static) -> impl Future<Output = Result<(), Error>> {
+            tokio::spawn(fut).map(|res| match res {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(e)) => Err(e.into()),
+                Err(e) => Err(e.into()),
+            })
+        }
+
+        let racetime_task = spawn(racetime_bot::main(global.clone(), rocket.shutdown(), seed_cache_rx));
+        let import_task = spawn(cal::auto_import_races(global.clone(), rocket.shutdown()));
+        let role_cleanup_task = spawn(discord_bot::cleanup_roles(global, rocket.shutdown()));
+        let rocket_task = spawn(rocket.launch().map_ok(|Rocket { .. }| ()));
+        let discord_task = spawn(discord_builder.run());
+        #[cfg(unix)] let unix_socket_task = spawn(unix_listener);
         #[cfg(not(unix))] let unix_socket_task = future::ok(());
-        let ((), (), (), (), ()) = tokio::try_join!(discord_task, import_task, racetime_task, rocket_task, unix_socket_task)?;
+        let ((), (), (), (), (), ()) = tokio::try_join!(discord_task, import_task, role_cleanup_task, racetime_task, rocket_task, unix_socket_task)?;
     }
     Ok(true)
 }

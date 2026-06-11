@@ -2823,3 +2823,50 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
     });
     Ok(transaction)
 }
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CleanupError {
+    #[error(transparent)] Event(#[from] event::DataError),
+    #[error(transparent)] Serenity(#[from] serenity::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+pub(crate) async fn cleanup_roles(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), CleanupError> {
+    loop {
+        let mut transaction = global.db_pool.begin().await?;
+        let events_to_clean_up = sqlx::query!(r#"UPDATE events SET cleaned_up = TRUE WHERE NOT cleaned_up AND end_time IS NOT NULL AND end_time <= NOW() RETURNING series AS "series: Series", event"#).fetch_all(&mut *transaction).await?;
+        for row in events_to_clean_up {
+            let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event disappeared during transaction");
+            if let Some(discord_guild) = event.discord_guild {
+                let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
+                let mut roles_to_remove = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND role = ANY($2)"#, PgSnowflake(discord_guild) as _, event.team_config.roles().iter().map(|(role, _)| *role).collect_vec() as _)
+                    .fetch(&mut *transaction)
+                    .map_ok(|PgSnowflake(role_id)| role_id)
+                    .try_collect::<Vec<_>>().await?;
+                {
+                    let mut team_roles = sqlx::query_scalar!(
+                        r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = ANY($2)"#,
+                        PgSnowflake(discord_guild) as _,
+                        teams.iter().filter_map(|team| team.racetime_slug.as_ref()).collect_vec() as _,
+                    ).fetch(&mut *transaction);
+                    while let Some(PgSnowflake(role_id)) = team_roles.try_next().await? {
+                        roles_to_remove.push(role_id);
+                    }
+                }
+                for team in teams {
+                    for member in team.members(&mut transaction).await? {
+                        if let Some(discord) = member.discord {
+                            discord_guild.member(discord_ctx!(global), discord.id).await?.remove_roles(discord_ctx!(global), &roles_to_remove).await?;
+                        }
+                    }
+                }
+            }
+        }
+        transaction.commit().await?;
+        select! {
+            () = &mut shutdown => break,
+            () = sleep(Duration::from_hours(1)) => {}
+        }
+    }
+    Ok(())
+}
