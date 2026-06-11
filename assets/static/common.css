@@ -223,6 +223,7 @@ input[type="submit"],
 input[type="submit"],
 .button-row > form button,
 .button {
+    line-height: 120%;
     border-inline-start-width: 0;
 }
 
