@@ -310,7 +310,13 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
                 @match extra.spoiler_status {
                     SpoilerStatus::Unlocked(spoiler_file_name) => {
                         : " • ";
-                        a(href = format!("/seed/{spoiler_file_name}")) : "Spoiler Log";
+                        @if seed.progression_spoiler {
+                            a(href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                            : " • ";
+                            a(href = format!("/seed/{spoiler_file_name}")) : "Full Spoiler";
+                        } else {
+                            a(href = format!("/seed/{spoiler_file_name}")) : "Spoiler Log";
+                        }
                     }
                     SpoilerStatus::Progression => {
                         : " • ";
@@ -584,7 +590,12 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                 @match extra.spoiler_status {
                     SpoilerStatus::Unlocked(spoiler_filename) => div(class = "button-row") {
                         a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
-                        a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Spoiler Log";
+                        @if seed.progression_spoiler {
+                            a(class = "button", href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                            a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Full Spoiler";
+                        } else {
+                            a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Spoiler Log";
+                        }
                     }
                     SpoilerStatus::Progression => {
                         div(class = "button-row") {
