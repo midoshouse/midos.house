@@ -231,10 +231,9 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 .application_name("midos-house")
                 .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
             ).await?;
-        let seed_metadata = Arc::<RwLock<HashMap<String, SeedMetadata>>>::default();
         let ootr_api_client = Arc::new(ootr_web::ApiClient::new(http_client.clone(), config.ootr_api_key.clone(), config.ootr_api_key_encryption.clone()));
         let (seed_cache_tx, seed_cache_rx) = watch::channel(());
-        let global = GlobalState::new(config.clone(), db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), ootr_api_client.clone(), seed_cache_tx, seed_metadata.clone());
+        let global = GlobalState::new(config.clone(), db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), ootr_api_client.clone(), seed_cache_tx);
         let rocket = http::rocket(global.clone(), port.unwrap_or_else(|| if Environment::default().is_dev() { 24814 } else { 24812 })).await?;
         let discord_builder = discord_bot::configure_builder(discord_builder, global.clone(), rocket.shutdown());
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), global.clone());

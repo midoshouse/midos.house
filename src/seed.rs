@@ -108,16 +108,6 @@ pub(crate) struct BingoData {
     pub(crate) passphrase: String,
 }
 
-impl BingoData {
-    pub(crate) async fn read(file_stem: &str) -> wheel::Result<Option<Self>> {
-        match fs::read_json(Path::new(DIR).join(format!("{file_stem}_bingo.json"))).await {
-            Ok(bingo) => Ok(Some(bingo)),
-            Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Files {
@@ -186,7 +176,7 @@ impl Data {
         }
     }
 
-    pub(crate) async fn extra(&self, now: DateTime<Utc>) -> Result<ExtraData, ExtraDataError> {
+    pub(crate) async fn extra(&self, global: &GlobalState) -> Result<ExtraData, ExtraDataError> {
         /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash and password from the log
         #[derive(Deserialize)]
         struct SparseSpoilerLog {
@@ -194,76 +184,82 @@ impl Data {
             password: Option<NEVec<Button>>,
         }
 
-        if (self.file_hash.is_none() || self.password.is_none() || match self.files {
-            Some(Files::MidosHouse { .. }) => true,
-            Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - WEB_TIMEOUT,
-            Some(Files::TriforceBlitz { .. }) => false,
-            None => false,
-        })
-            && let Some((spoiler_path, spoiler_file_name)) = match self.files {
-                Some(Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. }) if fs::exists(spoiler_path).await? => Some((PathBuf::from(spoiler_path), None)),
-                Some(Files::MidosHouse { ref file_stem, .. } | Files::OotrWeb { ref file_stem, .. }) => {
-                    let spoiler_file_name = format!("{file_stem}_Spoiler.json");
-                    Some((Path::new(DIR).join(&spoiler_file_name).to_owned(), Some(spoiler_file_name)))
-                }
-                _ => None,
-            }
-        {
-            let spoiler_path_exists = fs::exists(&spoiler_path).await?;
-            let (file_hash, password, world_count, chests) = if spoiler_path_exists {
-                let log = fs::read_to_string(&spoiler_path).await?;
-                if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                    (Some(log.file_hash), log.password.clone(), Some(log.settings[0].world_count), if spoiler_file_name.is_some() {
-                        ChestAppearances::from(log)
-                    } else {
-                        ChestAppearances::random() // keeping chests random for locked spoilers to avoid leaking seed info
-                    })
-                } else if let Ok(log) = serde_json::from_str::<SparseSpoilerLog>(&log) {
-                    (Some(log.file_hash), self.password.clone().or(log.password), None, ChestAppearances::random())
-                } else {
-                    (self.file_hash, self.password.clone(), None, ChestAppearances::random())
-                }
-            } else {
-                (self.file_hash, self.password.clone(), None, ChestAppearances::random())
-            };
-            //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
-            let bingo = if let Some(bingo) = &self.bingo {
-                Some(bingo.clone())
-            } else if let Some(Files::MidosHouse { ref file_stem, .. } | Files::OotrWeb { ref file_stem, .. }) = self.files {
-                BingoData::read(file_stem).await?
-            } else {
-                None
-            };
-            return Ok(ExtraData {
-                spoiler_status: if spoiler_path_exists {
-                    if let Some(spoiler_file_name) = spoiler_file_name {
-                        SpoilerStatus::Unlocked(spoiler_file_name)
-                    } else if self.progression_spoiler {
-                        SpoilerStatus::Progression
-                    } else {
-                        SpoilerStatus::Locked
-                    }
-                } else {
-                    SpoilerStatus::NotFound
-                },
-                file_hash, password, bingo, world_count, chests,
-            })
-        }
-        //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
-        Ok(ExtraData {
+        let mut locked_spoiler_log_path = None;
+        let mut progression_spoiler = self.progression_spoiler;
+        let mut extra = ExtraData {
             spoiler_status: SpoilerStatus::NotFound,
             file_hash: self.file_hash,
             password: self.password.clone(),
             bingo: self.bingo.clone(),
             world_count: None,
             chests: ChestAppearances::random(),
-        })
+        };
+        match &self.files {
+            Some(Files::MidosHouse { file_stem, .. } | Files::OotrWeb { file_stem, .. }) => {
+                locked_spoiler_log_path = sqlx::query_scalar!(r#"SELECT locked_spoiler_log_path AS "locked_spoiler_log_path!" FROM races WHERE file_stem = $1 AND locked_spoiler_log_path IS NOT NULL"#, file_stem).fetch_optional(&global.db_pool).await?;
+                if let Some(row) = sqlx::query!("SELECT locked_spoiler_log_path, progression_spoiler, bingosync_url, bingo_passphrase FROM seed_metadata WHERE file_stem = $1", file_stem).fetch_optional(&global.db_pool).await? {
+                    if locked_spoiler_log_path.is_none() {
+                        locked_spoiler_log_path = row.locked_spoiler_log_path;
+                    }
+                    progression_spoiler = progression_spoiler || row.progression_spoiler;
+                    if let (Some(url), Some(passphrase)) = (row.bingosync_url, row.bingo_passphrase) {
+                        extra.bingo = Some(BingoData { url: url.parse().expect("invalid Bingosync URL in database"), passphrase });
+                    }
+                }
+            }
+            None | Some(Files::TriforceBlitz { .. }) => {}
+        }
+        let spoiler_data = if let Some(locked_spoiler_log_path) = locked_spoiler_log_path && fs::exists(&locked_spoiler_log_path).await? {
+            Some((PathBuf::from(locked_spoiler_log_path), false))
+        } else {
+            match &self.files {
+                Some(Files::MidosHouse { file_stem, .. } | Files::OotrWeb { file_stem, .. }) => {
+                    let spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json"));
+                    fs::exists(&spoiler_path).await?.then(|| (spoiler_path, true))
+                }
+                None | Some(Files::TriforceBlitz { .. }) => None,
+            }
+        };
+        if let Some((spoiler_path, unlocked)) = spoiler_data {
+            let log = fs::read_to_string(&spoiler_path).await?;
+            extra.spoiler_status = if unlocked {
+                if progression_spoiler {
+                    SpoilerStatus::UnlockedProgression
+                } else {
+                    SpoilerStatus::Unlocked
+                }
+            } else {
+                if progression_spoiler {
+                    SpoilerStatus::Progression(spoiler_path)
+                } else {
+                    SpoilerStatus::Locked
+                }
+            };
+            if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
+                extra.file_hash.get_or_insert(log.file_hash);
+                if let Some(password) = &log.password {
+                    extra.password.get_or_insert_with(|| password.clone());
+                }
+                extra.world_count = Some(log.settings[0].world_count);
+                if unlocked || progression_spoiler && log.settings[0].user_message == "Spoiler Log Tournament" { // keeping chests random for locked spoilers to avoid leaking seed info; this progression spoiler format (but not the other one) includes the chests in Mido's house
+                    extra.chests = ChestAppearances::from(log);
+                }
+            } else if let Ok(log) = serde_json::from_str::<SparseSpoilerLog>(&log) {
+                extra.file_hash.get_or_insert(log.file_hash);
+                if let Some(password) = &log.password {
+                    extra.password.get_or_insert_with(|| password.clone());
+                }
+            }
+        }
+        //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
+        Ok(extra)
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ExtraDataError {
     #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
@@ -271,6 +267,7 @@ impl IsNetworkError for ExtraDataError {
     fn is_network_error(&self) -> bool {
         match self {
             Self::Json(_) => false,
+            Self::Sql(_) => false,
             Self::Wheel(e) => e.is_network_error(),
         }
     }
@@ -286,14 +283,15 @@ pub(crate) struct ExtraData {
 }
 
 enum SpoilerStatus {
-    Unlocked(String),
-    Progression,
+    UnlockedProgression,
+    Unlocked,
+    Progression(PathBuf),
     Locked,
     NotFound,
 }
 
-pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, show_password: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
-    let extra = seed.extra(now).await?;
+pub(crate) async fn table_cell(global: &GlobalState, now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, show_password: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
+    let extra = seed.extra(global).await?;
     let mut seed_links = match seed.files {
         Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => Some(html! {
             a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
@@ -308,17 +306,17 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
             })) : "Patch File";
             @if spoiler_logs {
                 @match extra.spoiler_status {
-                    SpoilerStatus::Unlocked(spoiler_file_name) => {
+                    SpoilerStatus::UnlockedProgression => {
                         : " • ";
-                        @if seed.progression_spoiler {
-                            a(href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
-                            : " • ";
-                            a(href = format!("/seed/{spoiler_file_name}")) : "Full Spoiler";
-                        } else {
-                            a(href = format!("/seed/{spoiler_file_name}")) : "Spoiler Log";
-                        }
+                        a(href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                        : " • ";
+                        a(href = format!("/seed/{file_stem}_Spoiler.json")) : "Full Spoiler";
                     }
-                    SpoilerStatus::Progression => {
+                    SpoilerStatus::Unlocked => {
+                        : " • ";
+                        a(href = format!("/seed/{file_stem}_Spoiler.json")) : "Spoiler Log";
+                    }
+                    SpoilerStatus::Progression(_) => {
                         : " • ";
                         a(href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
                     }
@@ -404,7 +402,7 @@ pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bo
     })
 }
 
-pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool, show_password: bool) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table(global: &GlobalState, seeds: impl Stream<Item = Data>, spoiler_logs: bool, show_password: bool) -> Result<RawHtml<String>, ExtraDataError> {
     let mut seeds = pin!(seeds);
     let now = Utc::now();
     Ok(html! {
@@ -417,7 +415,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool, s
             tbody {
                 @while let Some(seed) = seeds.next().await {
                     tr {
-                        td : table_cell(now, &seed, spoiler_logs, show_password, None).await?;
+                        td : table_cell(global, now, &seed, spoiler_logs, show_password, None).await?;
                     }
                 }
             }
@@ -473,33 +471,20 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
             }
         }
         Some("json") => if let Some(file_stem) = file_stem.strip_suffix("_Progression") {
-            let mut transaction = global.db_pool.begin().await?;
-            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = global.seed_metadata; seed_metadata.get(file_stem).cloned()) {
-                info
-            } else if let Some(locked_spoiler_log_path) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
-                SeedMetadata { locked_spoiler_log_path, progression_spoiler: false /* no official races with progression spoilers so far */ }
-            } else {
-                SeedMetadata::default()
-            };
-            let seed = Data {
+            let extra = Data {
                 password: None, // not displayed
-                bingo: BingoData::read(file_stem).await?,
+                bingo: None,
                 files: Some(Files::MidosHouse {
                     file_stem: Cow::Owned(file_stem.to_owned()),
-                    locked_spoiler_log_path,
+                    locked_spoiler_log_path: None,
                 }),
                 file_hash: None,
-                progression_spoiler,
-            };
-            let extra = seed.extra(Utc::now()).await?;
-            match extra.spoiler_status {
-                SpoilerStatus::Unlocked(_) | SpoilerStatus::Progression => {}
-                SpoilerStatus::Locked | SpoilerStatus::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
-            }
-            let spoiler_path = if let Some(Files::MidosHouse { locked_spoiler_log_path: Some(path), .. }) = seed.files {
-                PathBuf::from(path)
-            } else {
-                Path::new(DIR).join(format!("{file_stem}.json"))
+                progression_spoiler: false,
+            }.extra(global).await?;
+            let spoiler_path = match extra.spoiler_status {
+                SpoilerStatus::UnlockedProgression => Path::new(DIR).join(format!("{file_stem}_Spoiler.json")),
+                SpoilerStatus::Progression(locked_spoiler_log_path) => locked_spoiler_log_path,
+                SpoilerStatus::Unlocked | SpoilerStatus::Locked | SpoilerStatus::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
             };
             let spoiler = match fs::read_json::<serde_json::Value>(spoiler_path).await {
                 Ok(spoiler) => spoiler,
@@ -541,25 +526,16 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
         },
         Some(_) => return Err(StatusOrError::Status(Status::NotFound)),
         None => {
-            let mut transaction = global.db_pool.begin().await?;
-            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = global.seed_metadata; seed_metadata.get(file_stem).cloned()) {
-                info
-            } else if let Some(locked_spoiler_log_path) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
-                SeedMetadata { locked_spoiler_log_path, progression_spoiler: false /* no official races with progression spoilers so far */ }
-            } else {
-                SeedMetadata::default()
-            };
-            let seed = Data {
+            let extra = Data {
                 password: None, // not displayed
-                bingo: BingoData::read(file_stem).await?,
+                bingo: None,
                 files: Some(Files::MidosHouse {
                     file_stem: Cow::Owned(file_stem.to_owned()),
-                    locked_spoiler_log_path,
+                    locked_spoiler_log_path: None,
                 }),
                 file_hash: None,
-                progression_spoiler,
-            };
-            let extra = seed.extra(Utc::now()).await?;
+                progression_spoiler: false,
+            }.extra(global).await?;
             let patch_suffix = if let Some(world_count) = extra.world_count {
                 if world_count.get() > 1 { "zpfz" } else { "zpf" }
             } else if fs::exists(Path::new(DIR).join(format!("{file_stem}.zpfz"))).await? {
@@ -567,7 +543,7 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
             } else {
                 "zpf"
             };
-            GetResponse::Page(page(transaction, global, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::new(extra.chests) }, "Seed — Mido's House", html! {
+            GetResponse::Page(page(global.db_pool.begin().await?, global, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::new(extra.chests) }, "Seed — Mido's House", html! {
                 @if let Some(hash) = extra.file_hash {
                     h1(class = "hash") {
                         @for hash_icon in hash {
@@ -588,16 +564,16 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                     }
                 }
                 @match extra.spoiler_status {
-                    SpoilerStatus::Unlocked(spoiler_filename) => div(class = "button-row") {
+                    SpoilerStatus::UnlockedProgression => div(class = "button-row") {
                         a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
-                        @if seed.progression_spoiler {
-                            a(class = "button", href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
-                            a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Full Spoiler";
-                        } else {
-                            a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Spoiler Log";
-                        }
+                        a(class = "button", href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                        a(class = "button", href = format!("/seed/{file_stem}_Spoiler.json")) : "Full Spoiler";
                     }
-                    SpoilerStatus::Progression => {
+                    SpoilerStatus::Unlocked => div(class = "button-row") {
+                        a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
+                        a(class = "button", href = format!("/seed/{file_stem}_Spoiler.json")) : "Spoiler Log";
+                    }
+                    SpoilerStatus::Progression(_) => {
                         div(class = "button-row") {
                             a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
                             a(class = "button", href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";

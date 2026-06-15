@@ -1936,12 +1936,6 @@ impl CleanShutdown {
     }
 }
 
-#[derive(Default, Clone)]
-pub(crate) struct SeedMetadata {
-    pub(crate) locked_spoiler_log_path: Option<String>,
-    pub(crate) progression_spoiler: bool,
-}
-
 impl GlobalState {
     pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
@@ -2567,7 +2561,7 @@ pub(crate) enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
+    async fn handle(self, global: &GlobalState, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -2582,65 +2576,62 @@ impl SeedRollUpdate {
             }).await?,
             Self::Done { mut seed, rsl_preset, unlock_spoiler_log } => {
                 if let Some(seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path }) = seed.files {
-                    lock!(@write seed_metadata = ctx.global_state.seed_metadata; seed_metadata.insert(file_stem.to_string(), SeedMetadata {
-                        locked_spoiler_log_path: locked_spoiler_log_path.clone(),
-                        progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
-                    }));
                     if unlock_spoiler_log == UnlockSpoilerLog::Now && locked_spoiler_log_path.is_some() {
                         fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                         *locked_spoiler_log_path = None;
                     }
+                    sqlx::query!("INSERT INTO seed_metadata (file_stem, locked_spoiler_log_path, progression_spoiler) VALUES ($1, $2, $3) ON CONFLICT (file_stem) DO UPDATE SET locked_spoiler_log_path = $2, progression_spoiler = $3", file_stem, *locked_spoiler_log_path as _, unlock_spoiler_log == UnlockSpoilerLog::Progression).execute(&ctx.global_state.db_pool).await?;
                 }
-                let extra = seed.extra(Utc::now()).await?;
+                let extra = seed.extra(global).await?;
                 if let Some(OfficialRaceData { cal_event, .. }) = official_data {
                     match seed.files.as_ref().expect("received seed with no files") {
                         seed::Files::MidosHouse { file_stem, .. } => {
                             sqlx::query!(
                                 "UPDATE races SET file_stem = $1 WHERE id = $2",
                                 file_stem, cal_event.race.id as _,
-                            ).execute(db_pool).await?;
+                            ).execute(&global.db_pool).await?;
                         }
                         seed::Files::OotrWeb { id, gen_time, file_stem } => {
                             sqlx::query!(
                                 "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3 WHERE id = $4",
                                 *id as i64, gen_time, file_stem, cal_event.race.id as _,
-                            ).execute(db_pool).await?;
+                            ).execute(&global.db_pool).await?;
                         }
                         seed::Files::TriforceBlitz { is_dev, uuid, scheduled_spoiler_unlock: _ } => {
                             sqlx::query!(
                                 "UPDATE races SET is_tfb_dev = $1, tfb_uuid = $2 WHERE id = $3",
                                 is_dev, uuid, cal_event.race.id as _,
-                            ).execute(db_pool).await?;
+                            ).execute(&global.db_pool).await?;
                         }
                     }
                     if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
                         sqlx::query!(
                             "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
                             hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, cal_event.race.id as _,
-                        ).execute(db_pool).await?;
+                        ).execute(&global.db_pool).await?;
                         if let Some(preset) = rsl_preset {
                             match seed.files.as_ref().expect("received seed with no files") {
                                 seed::Files::MidosHouse { file_stem, .. } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                                         format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
-                                    ).execute(db_pool).await?;
+                                    ).execute(&global.db_pool).await?;
                                 }
                                 seed::Files::OotrWeb { id, gen_time, file_stem } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                                         format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
-                                    ).execute(db_pool).await?;
+                                    ).execute(&global.db_pool).await?;
                                 }
                                 seed::Files::TriforceBlitz { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
                             }
                         }
                     }
                     if let Some(password) = &extra.password {
-                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.iter().copied().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await?;
+                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.iter().copied().map(char::from).collect::<String>(), cal_event.race.id as _).execute(&global.db_pool).await?;
                     }
                     if let Some(seed::BingoData { url, passphrase }) = &extra.bingo {
-                        sqlx::query!("UPDATE races SET bingosync_url = $1, bingo_passphrase = $2 WHERE id = $3", url.as_str(), passphrase, cal_event.race.id as _).execute(db_pool).await?;
+                        sqlx::query!("UPDATE races SET bingosync_url = $1, bingo_passphrase = $2 WHERE id = $3", url.as_str(), passphrase, cal_event.race.id as _).execute(&global.db_pool).await?;
                     }
                 }
                 let seed_url = match seed.files.as_ref().expect("received seed with no files") {
@@ -2829,7 +2820,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
 }
 
 async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
-    let extra = seed.extra(Utc::now()).await?;
+    let extra = seed.extra(&ctx.global_state).await?;
     ctx.set_bot_raceinfo(&format!(
         "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}{bingo}",
         rsl_preset = rsl_preset.map(|preset| format!("{}\n", preset.race_info())).unwrap_or_default(),
@@ -3257,7 +3248,7 @@ impl Handler {
     }
 
     async fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
-        let db_pool = ctx.global_state.db_pool.clone();
+        let global = ctx.global_state.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
         let official_data = self.official_data.clone();
@@ -3283,10 +3274,10 @@ impl Handler {
                     select! {
                         () = &mut sleep => {
                             if let Some(update) = seed_state.take() {
-                                update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
+                                update.handle(&global, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                             }
                             while let Some(update) = updates.recv().await {
-                                update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
+                                update.handle(&global, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                             }
                             break
                         }
@@ -3295,7 +3286,7 @@ impl Handler {
                 }
             } else {
                 while let Some(update) = updates.recv().await {
-                    update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
+                    update.handle(&global, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                 }
             }
             Ok::<_, Error>(())
@@ -3310,8 +3301,8 @@ impl Handler {
                     if let UnlockSpoilerLog::Progression | UnlockSpoilerLog::After = goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) {
                         match files {
                             seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
-                                lock!(@write seed_metadata = ctx.global_state.seed_metadata; seed_metadata.remove(&**file_stem));
                                 fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                                sqlx::query!("UPDATE seed_metadata SET locked_spoiler_log_path = NULL WHERE file_stem = $1", file_stem).execute(&ctx.global_state.db_pool).await?;
                             },
                             seed::Files::OotrWeb { id, file_stem, .. } => {
                                 ctx.global_state.ootr_api_client.unlock_spoiler_log(*id).await?;
@@ -3617,7 +3608,7 @@ impl RaceHandler<GlobalState> for Handler {
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 password: None,
-                                bingo: seed::BingoData::read(file_stem).await?,
+                                bingo: None,
                                 files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: None,
@@ -3631,7 +3622,7 @@ impl RaceHandler<GlobalState> for Handler {
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 password: None, //TODO get from API
-                                bingo: seed::BingoData::read(&file_stem).await?,
+                                bingo: None,
                                 files: Some(seed::Files::OotrWeb {
                                     gen_time: Utc::now(),
                                     file_stem: Cow::Owned(file_stem),
@@ -5273,7 +5264,7 @@ impl RaceHandler<GlobalState> for Handler {
         match data.status.value {
             RaceStatusValue::Pending => if !self.password_sent {
                 lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
-                    let extra = seed.extra(Utc::now()).await?;
+                    let extra = seed.extra(&ctx.global_state).await?;
                     if let Some(password) = extra.password {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password.as_nonempty_slice()))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
@@ -5541,7 +5532,7 @@ impl RaceHandler<GlobalState> for Handler {
             RaceStatusValue::Cancelled => {
                 if !self.password_sent {
                     lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
-                        let extra = seed.extra(Utc::now()).await?;
+                        let extra = seed.extra(&ctx.global_state).await?;
                         if let Some(password) = extra.password {
                             ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password.as_nonempty_slice()))).await?;
                             set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
@@ -5802,7 +5793,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                         SeedRollUpdate::Queued(_) | SeedRollUpdate::MovedForward(_) | SeedRollUpdate::Started => {}
                         #[cfg(unix)] SeedRollUpdate::Message(_) => {}
                         SeedRollUpdate::Done { mut seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                            let extra = seed.extra(Utc::now()).await?;
+                            let extra = seed.extra(&global).await?;
                             seed.file_hash = extra.file_hash;
                             seed.password = extra.password;
                             // reload race data in case anything changed during seed rolling
@@ -5948,7 +5939,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                             SeedRollUpdate::MovedForward(_) |
                                             SeedRollUpdate::Started => {}
                                             SeedRollUpdate::Done { mut seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                                                let extra = seed.extra(Utc::now()).await?;
+                                                let extra = seed.extra(&global).await?;
                                                 seed.file_hash = extra.file_hash;
                                                 seed.password = extra.password;
                                                 // reload race data in case anything changed during seed rolling
@@ -6004,7 +5995,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                                     SeedRollUpdate::MovedForward(_) |
                                     SeedRollUpdate::Started => {}
                                     SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                                        let extra = seed.extra(Utc::now()).await?;
+                                        let extra = seed.extra(&global).await?;
                                         let [hash1, hash2, hash3, hash4, hash5] = match extra.file_hash {
                                             Some(hash) => hash.map(Some),
                                             None => [None; 5],

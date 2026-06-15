@@ -1129,7 +1129,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::Mq => None,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
-        Series::Pictionary => pic::info(&mut transaction, &data).await?,
+        Series::Pictionary => pic::info(global, &mut transaction, &data).await?,
         Series::PotsOfTime => pot::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
@@ -1341,8 +1341,8 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                     async_row.bingosync_url,
                                     async_row.bingo_passphrase,
                                 );
-                                let extra = seed.extra(Utc::now()).await?;
-                                let seed_table = seed::table(stream::iter(iter::once(seed)), false, true).await?;
+                                let extra = seed.extra(global).await?;
+                                let seed_table = seed::table(global, stream::iter(iter::once(seed)), false, true).await?;
                                 let ctx = ctx.take_submit_async();
                                 let mut errors = ctx.errors().collect_vec();
                                 Some(html! {
@@ -2326,7 +2326,7 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
             async_row.bingosync_url,
             async_row.bingo_passphrase,
         );
-        let extra = seed.extra(Utc::now()).await?;
+        let extra = seed.extra(global).await?;
         if !value.confirm {
             form.context.push_error(form::Error::validation("This field is required.").with_name("confirm"));
         }
@@ -2681,6 +2681,12 @@ pub(crate) enum PracticeError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
+impl<E: Into<PracticeError>> From<E> for StatusOrError<PracticeError> {
+    fn from(e: E) -> Self {
+        Self::Err(e.into())
+    }
+}
+
 impl IsNetworkError for PracticeError {
     fn is_network_error(&self) -> bool {
         match self {
@@ -2705,12 +2711,12 @@ impl IsNetworkError for PracticeError {
 }
 
 #[rocket::post("/event/<series>/<event>/practice?<kind>&<sco_format>", data = "<form>")]
-pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, sco_format: Option<sco::Format>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, PracticeError> {
+pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, kind: Option<PracticeSeedKind>, sco_format: Option<sco::Format>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<PracticeError>> {
     let mut transaction = global.db_pool.begin().await?;
-    let Some(data) = Data::new(&mut transaction, series, event).await? else { return Ok(None) };
+    let Some(data) = Data::new(&mut transaction, series, event).await? else { return Err(StatusOrError::Status(Status::NotFound)) };
     let mut form = form.into_inner();
     form.verify(&csrf);
-    Ok(Some(if form.value.is_some() {
+    Ok(if form.value.is_some() {
         let draft_kind = if let Some(sco_format) = sco_format { sco_format.draft_kind() } else { data.draft_kind() };
         if draft_kind.is_some() && kind.is_none() {
             form.context.push_error(form::Error::validation("The seed kind is required."));
@@ -2741,16 +2747,46 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                                     : ".";
                                 }
                             };
-                            return Ok(Some(RedirectOrContent::Content(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?)))
+                            return Ok(RedirectOrContent::Content(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?))
+                        }
+                        Err(racetime_bot::RollError::InsufficientStorage) => {
+                            transaction.commit().await?;
+                            return Err(StatusOrError::Status(Status::InsufficientStorage))
                         }
                         Err(e) => {
                             transaction.commit().await?;
-                            return Err(PracticeError::Roll(e))
+                            return Err(e.into())
                         }
+                    }
+                }};
+                (@no_commit $res:expr) => {{
+                    match $res {
+                        Ok(v) => v,
+                        Err(racetime_bot::RollError::Retries { ctx, num_retries, last_error }) => {
+                            if let Some(last_error) = last_error {
+                                eprintln!("rolling practice seed failed {num_retries} times {ctx}, sample error:\n{last_error}");
+                            } else {
+                                eprintln!("rolling practice seed failed {num_retries} times {ctx}, no sample error recorded");
+                            }
+                            let content = html! {
+                                : data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
+                                p {
+                                    : "Sorry, the seed could not be rolled because the randomizer reported an error ";
+                                    : num_retries;
+                                    : " times. Please reload this page to try again. If this error persists, please report it to ";
+                                    : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?;
+                                    : ".";
+                                }
+                            };
+                            return Ok(RedirectOrContent::Content(page(transaction, global, &me, &uri, PageStyle::new(data.chests().await?), &format!("Practice — {}", data.display_name), content).await?))
+                        }
+                        Err(racetime_bot::RollError::InsufficientStorage) => return Err(StatusOrError::Status(Status::InsufficientStorage)),
+                        Err(e) => return Err(e.into()),
                     }
                 }};
             }
 
+            let unlock_spoiler_log = if series == Series::SpoilerLog { UnlockSpoilerLog::Progression } else { UnlockSpoilerLog::Now };
             if let Some(draft_kind) = draft_kind {
                 let picks = match kind {
                     None => unreachable!("form error"),
@@ -2839,44 +2875,44 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     draft::StepKind::DoneSlugOpen(_) => unreachable!("attempted to roll practice seed for SlugCentral Open without set format"),
                 };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-                if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                if let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, unlock_spoiler_log).await {
                     let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings).await?;
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
                     settings.remove("password_lock");
                     let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await);
-                    let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                    let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                     if let Some(spoiler_log_path) = spoiler_log_path {
                         fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                     }
                     RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
                 }
             } else if series == Series::BattleRoyale && event == "1" {
-                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let (mut settings, plando) = ohko::s1_settings();
                 settings.remove("password_lock");
                 let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
-                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::BattleRoyale && event == "2" {
-                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let (mut settings, plando) = ohko::s2_settings();
                 settings.remove("password_lock");
                 let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
-                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::CopaLatinoamerica && event == "2025" {
-                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Ok(None) };
+                let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let (mut settings, plando) = latam::settings_2025();
                 settings.remove("password_lock");
                 let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
-                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                 }
@@ -2893,7 +2929,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                         if let Environment::Production = Environment::default() {
                             wheel::night_report(&format!("{}/error", night_path()), Some(&format!("no TFB preset specified for {}/{event}", series.slug()))).await?;
                         }
-                        return Ok(None)
+                        return Err(StatusOrError::Status(Status::NotFound))
                     }
                 };
                 match global.http_client
@@ -2929,23 +2965,20 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     sco_format.single_settings(global, Some(&format!("{} Practice: {}", data.display_name, sco_format.display_name()))).await?.map(|(rando_version, settings, bingo_passphrase)| (rando_version, Cow::Owned(settings), bingo_passphrase))
                 } else {
                     data.single_settings().await?.map(|(rando_version, settings)| (rando_version, settings, None))
-                }) else { println!("no single settings"); return Ok(None) };
+                }) else { println!("no single settings"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-                if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, if series == Series::SpoilerLog { UnlockSpoilerLog::Progression } else { UnlockSpoilerLog::Now }).await {
+                if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, unlock_spoiler_log).await {
                     let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings.into_owned()).await?;
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
                     settings.to_mut().remove("password_lock");
-                    let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, (*settings).clone(), serde_json::Map::default()).await);
-                    let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Ok(None) };
+                    let (patch_filename, spoiler_log_path) = roll_try!(@no_commit roll_seed_locally(None, rando_version, true, (*settings).clone(), serde_json::Map::default()).await);
+                    let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                     if let Some(spoiler_log_path) = spoiler_log_path {
                         fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                     }
-                    match (settings.to_mut().remove("bingosync_url"), bingo_passphrase) {
-                        (None, None) => {}
-                        (None, Some(passphrase)) => eprintln!("rolled seed {file_stem:?} with no Bingosync URL but with Bingo passphrase {passphrase:?}"),
-                        (Some(url), None) => eprintln!("rolled seed {file_stem:?} with Bingosync URL {url} but with no Bingo passphrase"),
-                        (Some(url), Some(passphrase)) => fs::write_json(Path::new(seed::DIR).join("{file_stem}_bingo.json"), seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase }).await?,
+                    if unlock_spoiler_log == UnlockSpoilerLog::Progression || settings.contains_key("bingosync_url") || bingo_passphrase.is_some() {
+                        sqlx::query!("INSERT INTO seed_metadata (file_stem, progression_spoiler, bingosync_url, bingo_passphrase) VALUES ($1, $2, $3, $4)", file_stem, unlock_spoiler_log == UnlockSpoilerLog::Progression, settings.to_mut().remove("bingosync_url").map(|url| as_variant!(url, serde_json::Value::String).expect("settings with non-string Bingosync URL")), bingo_passphrase).execute(&mut *transaction).await?;
                     }
                     RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
                 }
@@ -2953,7 +2986,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
         }
     } else {
         RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), data, form.context).await?)
-    }))
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, FromFormField, UriDisplayQuery, Sequence)]

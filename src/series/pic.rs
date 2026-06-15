@@ -10,7 +10,7 @@ use crate::{
     prelude::*,
 };
 
-pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
+pub(crate) async fn info(global: &GlobalState, transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     let is_random_settings = data.event.starts_with("rs");
     let settings = match &*data.event {
         "5" => html! {
@@ -199,21 +199,21 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         _ => return Ok(None),
     };
     let sample_seeds = match &*data.event {
-        "5" => Some(seed::table(stream::iter(vec![
+        "5" => Some(seed::table(global, stream::iter(vec![
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_7F1NK3FEGY"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_XULLQE310I"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_3PT90NK69D"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_I7BN7K3S2Z"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_99YI7I0K6O"), locked_spoiler_log_path: None }), progression_spoiler: false },
         ]), true, true).await?),
-        "rs1" => Some(seed::table(stream::iter(vec![
+        "rs1" => Some(seed::table(global, stream::iter(vec![
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC"), locked_spoiler_log_path: None }), progression_spoiler: false },
         ]), true, true).await?),
-        "rs2" => Some(seed::table(stream::iter(vec![
+        "rs2" => Some(seed::table(global, stream::iter(vec![
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_1S6GBQNP8R"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_IIPBIQ4XAB"), locked_spoiler_log_path: None }), progression_spoiler: false },
             seed::Data { file_hash: None, password: None, bingo: None, files: Some(seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_LBZIZMD75C"), locked_spoiler_log_path: None }), progression_spoiler: false },

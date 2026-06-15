@@ -19,10 +19,6 @@ use {
         CreateSelectMenuOption,
     },
     sqlx::types::Json,
-    systemstat::{
-        ByteSize,
-        Platform as _,
-    },
     crate::{
         event::Tab,
         prelude::*,
@@ -727,7 +723,7 @@ impl Race {
                 row.async_start2,
                 row.async_start3,
                 row.file_stem,
-                row.locked_spoiler_log_path,
+                row.locked_spoiler_log_path, //TODO remove in favor of seed_metadata table?
                 row.web_id,
                 row.web_gen_time,
                 row.is_tfb_dev,
@@ -2816,7 +2812,7 @@ pub(crate) async fn race_table(
                                     br;
                                 }
                                 @if race.show_seed() {
-                                    : seed::table_cell(now, &race.seed, true, race.show_password(), options.can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
+                                    : seed::table_cell(global, now, &race.seed, true, race.show_password(), options.can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                                 } else {
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
@@ -3698,8 +3694,8 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                 @if let Ok(team) = cal_event.active_teams().exactly_one() {
                     @if let Some(team_row) = sqlx::query!(r#"SELECT requested, submitted FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
                         @if team_row.submitted.is_none() {
-                            @let extra = cal_event.race.seed.extra(Utc::now()).await?;
-                            @let seed_table = seed::table(stream::iter(iter::once(cal_event.race.seed.clone())), false, true).await?;
+                            @let extra = cal_event.race.seed.extra(global).await?;
+                            @let seed_table = seed::table(global, stream::iter(iter::once(cal_event.race.seed.clone())), false, true).await?;
                             @let ctx = ctx.take_submit_async();
                             @let mut errors = ctx.errors().collect_vec();
                             div(class = "info") {
@@ -3899,7 +3895,7 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
         if race.seed.files.is_none() {
             form.context.push_error(form::Error::validation("The seed for this race has not been rolled yet."));
         }
-        let extra = race.seed.extra(Utc::now()).await?;
+        let extra = race.seed.extra(global).await?;
         let cal_event = race.into_async_part_for(&mut transaction, &me).await?;
         if cal_event.is_err() {
             form.context.push_error(form::Error::validation("You don't have an async available for this race."));
@@ -4166,42 +4162,43 @@ pub(crate) async fn practice_seed_get(global: &GlobalState, me: Option<User>, ur
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/practice", data = "<form>")]
-pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Option<RedirectOrContent>, StatusOrError<event::Error>> {
+pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = global.db_pool.begin().await?;
-    let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Ok(None) };
+    let Some(event) = event::Data::new(&mut transaction, series, event).await? else { return Err(StatusOrError::Status(Status::NotFound)) };
     let race = Race::from_id(&mut transaction, &global.http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    Ok(Some(if form.value.is_some() {
+    Ok(if form.value.is_some() {
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), event, race, form.context).await?)
         } else {
             let (rando_version, mut settings, bingo_passphrase) = race.single_settings(global, &event, true).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-            transaction.commit().await?;
             let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
             if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await {
+                transaction.commit().await?;
                 let id = global.ootr_api_client.clone().roll_practice_seed(web_version, settings).await?;
                 RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
             } else {
-                let fs = systemstat::System::new().mount_at("/").at("/")?;
-                if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
-                    return Err(StatusOrError::Status(Status::InsufficientStorage))
-                }
                 settings.remove("password_lock");
-                let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings.clone(), serde_json::Map::default()).await?;
+                let (patch_filename, spoiler_log_path) = match roll_seed_locally(None, rando_version, true, settings.clone(), serde_json::Map::default()).await {
+                    Ok(x) => x,
+                    Err(racetime_bot::RollError::InsufficientStorage) => return Err(StatusOrError::Status(Status::InsufficientStorage)),
+                    Err(e) => return Err(e.into()),
+                };
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                 }
-                if let (Some(url), Some(passphrase)) = (settings.remove("bingosync_url"), bingo_passphrase) {
-                    fs::write_json(Path::new(seed::DIR).join("{file_stem}_bingo.json"), seed::BingoData { url: url.as_str().expect("settings with non-string Bingosync URL").parse()?, passphrase }).await?;
+                if settings.contains_key("bingosync_url") || bingo_passphrase.is_some() {
+                    sqlx::query!("INSERT INTO seed_metadata (file_stem, progression_spoiler, bingosync_url, bingo_passphrase) VALUES ($1, FALSE, $2, $3)", file_stem, settings.remove("bingosync_url").map(|url| as_variant!(url, serde_json::Value::String).expect("settings with non-string Bingosync URL")), bingo_passphrase).execute(&mut *transaction).await?;
                 }
+                transaction.commit().await?;
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             }
         }
     } else {
         RedirectOrContent::Content(practice_seed_form(transaction, global, me, uri, csrf.as_ref(), event, race, form.context).await?)
-    }))
+    })
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {

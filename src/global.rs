@@ -12,7 +12,6 @@ pub(crate) struct GlobalState {
     pub(crate) new_room_lock: Arc<Mutex<()>>,
     pub(crate) ootr_api_client: Arc<ootr_web::ApiClient>,
     pub(crate) seed_cache_tx: watch::Sender<()>,
-    pub(crate) seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>,
 }
 
 impl GlobalState {
@@ -23,13 +22,12 @@ impl GlobalState {
         http_client: reqwest::Client,
         ootr_api_client: Arc<ootr_web::ApiClient>,
         seed_cache_tx: watch::Sender<()>,
-        seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             clean_shutdown: Arc::default(),
             extra_room_tx: Arc::new(RwLock::new(mpsc::channel(1).0)),
             new_room_lock: Arc::default(),
-            config, db_pool, discord_ctx_, http_client, seed_cache_tx, seed_metadata, ootr_api_client,
+            config, db_pool, discord_ctx_, http_client, seed_cache_tx, ootr_api_client,
         })
     }
 
@@ -49,7 +47,6 @@ impl GlobalState {
             new_room_lock: Arc::default(),
             ootr_api_client: Arc::new(ootr_web::ApiClient::new(reqwest::Client::new(), String::default(), String::default())),
             seed_cache_tx: watch::Sender::default(),
-            seed_metadata: Arc::default(),
         }))
     }
 }

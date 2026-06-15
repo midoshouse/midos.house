@@ -280,7 +280,6 @@ pub(crate) use {
         racetime_bot::{
             self,
             CleanShutdown,
-            SeedMetadata,
             SeedRollUpdate,
             UnlockSpoilerLog,
             VersionedBranch,
