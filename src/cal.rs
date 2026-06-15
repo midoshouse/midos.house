@@ -3862,6 +3862,13 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                         }
                     }
                 }
+            } else {
+                p : "No information is available about this race. If you are looking to request the seed for asyncing, please schedule your async part first.";
+            }
+        } else {
+            p {
+                a(href = uri!(auth::login(Some(uri!(race_details(race.series, race.event, race.id)))))) : "Sign in or create a Mido's House account";
+                : " to view race details.";
             }
         }
     };
