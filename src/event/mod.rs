@@ -2980,6 +2980,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     if unlock_spoiler_log == UnlockSpoilerLog::Progression || settings.contains_key("bingosync_url") || bingo_passphrase.is_some() {
                         sqlx::query!("INSERT INTO seed_metadata (file_stem, progression_spoiler, bingosync_url, bingo_passphrase) VALUES ($1, $2, $3, $4)", file_stem, unlock_spoiler_log == UnlockSpoilerLog::Progression, settings.to_mut().remove("bingosync_url").map(|url| as_variant!(url, serde_json::Value::String).expect("settings with non-string Bingosync URL")), bingo_passphrase).execute(&mut *transaction).await?;
                     }
+                    transaction.commit().await?;
                     RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
                 }
             }
