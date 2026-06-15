@@ -2580,7 +2580,7 @@ impl SeedRollUpdate {
                         fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
                         *locked_spoiler_log_path = None;
                     }
-                    sqlx::query!("INSERT INTO seed_metadata (file_stem, locked_spoiler_log_path, progression_spoiler) VALUES ($1, $2, $3) ON CONFLICT (file_stem) DO UPDATE SET locked_spoiler_log_path = $2, progression_spoiler = $3", file_stem, *locked_spoiler_log_path as _, unlock_spoiler_log == UnlockSpoilerLog::Progression).execute(&ctx.global_state.db_pool).await?;
+                    sqlx::query!("INSERT INTO seed_metadata (file_stem, locked_spoiler_log_path, progression_spoiler) VALUES ($1, $2, FALSE) ON CONFLICT (file_stem) DO UPDATE SET locked_spoiler_log_path = $2, progression_spoiler = FALSE", file_stem, *locked_spoiler_log_path as _).execute(&ctx.global_state.db_pool).await?;
                 }
                 let extra = seed.extra(global).await?;
                 if let Some(OfficialRaceData { cal_event, .. }) = official_data {
@@ -5265,7 +5265,15 @@ impl RaceHandler<GlobalState> for Handler {
             RaceStatusValue::Pending => if !self.password_sent {
                 lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
                     let extra = seed.extra(&ctx.global_state).await?;
-                    if let Some(password) = extra.password {
+                    if goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) == UnlockSpoilerLog::Progression {
+                        match &seed.files {
+                            Some(seed::Files::MidosHouse { file_stem, .. } | seed::Files::OotrWeb { file_stem, .. }) => {
+                                sqlx::query!("UPDATE seed_metadata SET progression_spoiler = TRUE WHERE file_stem = $1", &file_stem).execute(&ctx.global_state.db_pool).await?;
+                                ctx.say(format!("Here is the progression spoiler: https://midos.house/seed/{file_stem}_Progression.json")).await?;
+                            }
+                            None | Some(seed::Files::TriforceBlitz { .. }) => unimplemented!("cannot unlock progression spoiler for seed with no known file stem"),
+                        }
+                    } else if let Some(password) = extra.password {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password.as_nonempty_slice()))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
                         if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
@@ -5360,6 +5368,7 @@ impl RaceHandler<GlobalState> for Handler {
                     Goal::SpoilerLog2026 => {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
+                            let race_state = self.race_state.clone();
                             tokio::spawn(async move {
                                 let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(15) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
@@ -5367,8 +5376,14 @@ impl RaceHandler<GlobalState> for Handler {
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
-                                        sleep(Duration::from_mins(5)),
+                                        sleep(Duration::from_mins(4)),
                                     );
+                                    let sleep = tokio::spawn(sleep(Duration::from_mins(1)));
+                                    lock!(@read state = race_state; if let RaceState::Rolled(ref seed) = *state && let Ok(extra) = seed.extra(&ctx.global_state).await && let Some(password) = extra.password {
+                                        let _ = ctx.say(format!("@entrants This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password now. 1 minute until you can start playing.", format_password(password.as_nonempty_slice()))).await;
+                                        let _ = set_bot_raceinfo(&ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await;
+                                    });
+                                    let _ = sleep.await;
                                     let _ = ctx.say("@entrants You may now start playing.").await;
                                 }
                             })
@@ -5530,16 +5545,6 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             },
             RaceStatusValue::Cancelled => {
-                if !self.password_sent {
-                    lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
-                        let extra = seed.extra(&ctx.global_state).await?;
-                        if let Some(password) = extra.password {
-                            ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password.as_nonempty_slice()))).await?;
-                            set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
-                        }
-                    });
-                    self.password_sent = true;
-                }
                 if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
                     if let cal::Source::League { id } = cal_event.race.source {
                         let form = collect![as HashMap<_, _>:
@@ -5561,8 +5566,19 @@ impl RaceHandler<GlobalState> for Handler {
                             ).await?;
                         }
                     }
+                } else {
+                    if !self.password_sent {
+                        lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
+                            let extra = seed.extra(&ctx.global_state).await?;
+                            if let Some(password) = extra.password {
+                                ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password.as_nonempty_slice()))).await?;
+                                set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
+                            }
+                        });
+                        self.password_sent = true;
+                    }
+                    self.unlock_spoiler_log(ctx, goal).await?;
                 }
-                self.unlock_spoiler_log(ctx, goal).await?;
                 if let Goal::Rsl = goal {
                     sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await?;
                 }
