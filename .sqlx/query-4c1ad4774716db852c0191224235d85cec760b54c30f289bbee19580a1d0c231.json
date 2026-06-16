@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE seed_metadata SET progression_spoiler = TRUE WHERE file_stem = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4c1ad4774716db852c0191224235d85cec760b54c30f289bbee19580a1d0c231"
+}

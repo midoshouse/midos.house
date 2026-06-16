@@ -66,8 +66,8 @@ pub(crate) enum Error {
     #[error("missing TFB score")]
     MissingTfbScore {
         room: Url,
-        tfb_scores: HashMap<String, tfb::Score>,
-        user_or_team: String,
+        tfb_scores: HashMap<Entrant, tfb::Score>,
+        entrant: Entrant,
     },
     #[error("failed to determine settings for SlugCentral Open format")]
     NoSingleSettings,
@@ -2674,8 +2674,8 @@ impl SeedRollUpdate {
                     // send multiworld rooms
                     let mut transaction = ctx.global_state.db_pool.begin().await?;
                     let mut mw_rooms_created = 0;
-                    for team in cal_event.active_teams() {
-                        if let Some(mw::Impl::MidosHouse) = team.mw_impl {
+                    for entrant in cal_event.active_entrants() {
+                        if let Entrant::MidosHouseTeam(team) = entrant && let Some(mw::Impl::MidosHouse) = team.mw_impl {
                             let members = team.members_roles(&mut transaction).await?;
                             let mut reply_to = String::default();
                             for (member, role) in &members {
@@ -3031,8 +3031,7 @@ struct OfficialRaceData {
     restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
     fpa_invoked: bool,
-    /// Keys are racetime.gg team slugs if is_racetime_team_format, racetime.gg user IDs otherwise
-    scores: HashMap<String, Option<tfb::Score>>,
+    scores: HashMap<Entrant, Option<tfb::Score>>,
 }
 
 #[derive(Default, Clone)]
@@ -3060,28 +3059,33 @@ struct Handler {
 
 impl Handler {
     /// For `existing_state`, `Some(None)` means this is an existing race room with unknown state, while `None` means this is a new race room.
-    async fn should_handle_inner(race_data: &RaceData, global: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> bool {
-        if Goal::from_race_data(race_data).is_none() { return false }
+    async fn should_handle_inner(race_data: &RaceData, global: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> sqlx::Result<bool> {
+        if Goal::from_race_data(race_data).is_none() { return Ok(false) }
+        if race_data.ended_at.is_some_and(|ended_at| Utc::now() - ended_at >= TimeDelta::hours(1)) { return Ok(false) }
         if let Some(existing_state) = existing_state {
             if let Some(existing_state) = existing_state {
                 if let Some(ref official_data) = existing_state.official_data {
-                    if race_data.entrants.iter().any(|entrant| entrant.status.value == EntrantStatusValue::Done && entrant.user.as_ref().is_some_and(|user| {
-                        let key = if let Some(ref team) = entrant.team { &team.slug } else { &user.id };
-                        official_data.scores.get(key).is_some_and(|score| score.is_none())
-                    })) {
-                        return true
+                    let mut transaction = global.db_pool.begin().await?;
+                    for rtgg_entrant in &race_data.entrants {
+                        if rtgg_entrant.status.value == EntrantStatusValue::Done
+                            && let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, &official_data.event, rtgg_entrant).await?
+                            && official_data.scores.get(&mh_entrant).is_some_and(|score| score.is_none())
+                        {
+                            return Ok(true)
+                        }
                     }
+                    transaction.commit().await?;
                 }
-                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return !existing_state.cleaned_up.load(atomic::Ordering::SeqCst) && race_data.ended_at.is_none_or(|ended_at| Utc::now() - ended_at < TimeDelta::hours(1)) }
+                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return Ok(!existing_state.cleaned_up.load(atomic::Ordering::SeqCst)) }
             } else {
-                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
+                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return Ok(false) }
             }
         } else {
-            if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
+            if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return Ok(false) }
             lock!(clean_shutdown = global.clean_shutdown; {
                 if !clean_shutdown.should_handle_new() {
                     unlock!();
-                    return false
+                    return Ok(false)
                 }
                 let room = OpenRoom::RaceTime {
                     room_url: race_data.url.clone(),
@@ -3091,7 +3095,7 @@ impl Handler {
                 clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
             });
         }
-        true
+        Ok(true)
     }
 
     fn is_official(&self) -> bool { self.official_data.is_some() }
@@ -3390,11 +3394,11 @@ impl RaceHandler<GlobalState> for Handler {
     type Error = Error;
 
     async fn should_handle(race_data: &RaceData, global: Arc<GlobalState>) -> Result<bool, Error> {
-        Ok(Self::should_handle_inner(race_data, global, None).await)
+        Ok(Self::should_handle_inner(race_data, global, None).await?)
     }
 
     async fn should_stop(&mut self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
-        Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(Some(self))).await)
+        Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(Some(self))).await?)
     }
 
     async fn task(global: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<Result<(), racetime::bot::HandleError<Error>>>) -> Result<(), Error> {
@@ -3552,7 +3556,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase != "Qualifier");
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
-                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
+                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                             if !stream_delay.is_zero() {
                                 ctx.say(format!("@entrants Remember to go live with a delay of {} ({} seconds){}!",
                                     English.format_duration(stream_delay, true),
@@ -3563,7 +3567,7 @@ impl RaceHandler<GlobalState> for Handler {
                             if event.emulator_settings_reminder || event.prevent_late_joins {
                                 sleep(stream_delay).await;
                                 let data = ctx.data().await;
-                                if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
+                                if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                 if event.prevent_late_joins && data.status.value == RaceStatusValue::Open {
                                     ctx.set_invitational().await.expect("failed to make the room invitational");
                                 }
@@ -4832,7 +4836,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         } else {
                                             format!(
                                                 "he {player_team} that did not call FPA can continue playing; t",
-                                                player_team = match (matches!(event.team_config, TeamConfig::Solo), cal_event.active_teams().count() == 1) {
+                                                player_team = match (matches!(event.team_config, TeamConfig::Solo), cal_event.active_entrants().count() == 1) {
                                                     (false, false) => "teams",
                                                     (false, true) => "team",
                                                     (true, false) => "players",
@@ -5075,16 +5079,13 @@ impl RaceHandler<GlobalState> for Handler {
             "score" => if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal
                 && let Some(OfficialRaceData { ref event, ref mut scores, .. }) = self.official_data
             {
-                if let Some(UserData { id, .. }) = &msg.user {
-                    let data = ctx.data().await;
-                    let id = if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *id))
-                        && let Some(ref team) = entrant.team
-                    {
-                        &team.slug
-                    } else {
-                        id
-                    };
-                    if let Some(score) = scores.get_mut(id) {
+                let mut transaction = ctx.global_state.db_pool.begin().await?;
+                if let Some(UserData { id, .. }) = &msg.user
+                && let data = ctx.data().await
+                && let Some(rtgg_entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *id))
+                && let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, event, rtgg_entrant).await?
+                {
+                    if let Some(score) = scores.get_mut(&mh_entrant) {
                         let old_score = *score;
                         if let Some((pieces, duration)) = args.split_first()
                             && let Ok(pieces) = pieces.parse()
@@ -5128,6 +5129,7 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     ctx.say(format!("Sorry {reply_to}, I was unable to read your user ID.")).await?;
                 }
+                transaction.commit().await?;
             } else {
                 ctx.say(format!("Sorry {reply_to}, this command is only available for official Triforce Blitz races.")).await?;
             },
@@ -5229,26 +5231,40 @@ impl RaceHandler<GlobalState> for Handler {
         let data = ctx.data().await;
         let goal = self.goal(ctx).await?;
         if let Some(OfficialRaceData { ref event, ref restreams, ref entrants, ref mut scores, .. }) = self.official_data {
-            for entrant in &data.entrants {
-                if let Some(user) = &entrant.user {
-                    match entrant.status.value {
+            for rtgg_entrant in &data.entrants {
+                if let Some(user) = &rtgg_entrant.user {
+                    match rtgg_entrant.status.value {
                         EntrantStatusValue::Requested => if entrants.contains(&user.id) {
                             ctx.accept_request(&user.id).await?;
                         },
                         EntrantStatusValue::Done => if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal {
-                            let (key, reply_to) = if let Some(ref team) = entrant.team {
-                                (team.slug.clone(), &team.name)
-                            } else {
-                                (user.id.clone(), &user.name)
-                            };
-                            if let hash_map::Entry::Vacant(entry) = scores.entry(key) {
-                                ctx.send_message(
-                                    &format!("{reply_to}, please report your score:"),
-                                    false,
-                                    vec![tfb::report_score_button(event.team_config, adjust_for_breaks(entrant.finish_time, self.breaks, !restreams.is_empty()), self.breaks.is_some())],
-                                ).await?;
-                                entry.insert(None);
+                            let mut transaction = ctx.global_state.db_pool.begin().await?;
+                            if let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, event, rtgg_entrant).await? {
+                                let members = mh_entrant.members_roles(&mut transaction).await?;
+                                let mut reply_to = String::default();
+                                for (member, role) in members {
+                                    if event.team_config.role_is_racing(role) {
+                                        if let Some(racetime) = member.racetime {
+                                            if !reply_to.is_empty() {
+                                                reply_to.push_str(", ");
+                                            }
+                                            reply_to.push_str(&racetime.display_name);
+                                        } else {
+                                            reply_to = mh_entrant.name(&mut transaction, discord_ctx!(ctx.global_state)).await?.map(Cow::into_owned).unwrap_or_else(|| format!("(unnamed team)"));
+                                            break
+                                        }
+                                    }
+                                }
+                                if let hash_map::Entry::Vacant(entry) = scores.entry(mh_entrant) {
+                                    ctx.send_message(
+                                        &format!("{reply_to}, please report your score:"),
+                                        false,
+                                        vec![tfb::report_score_button(event.team_config, adjust_for_breaks(rtgg_entrant.finish_time, self.breaks, !restreams.is_empty()), self.breaks.is_some())],
+                                    ).await?;
+                                    entry.insert(None);
+                                }
                             }
+                            transaction.commit().await?;
                         },
                         _ => {}
                     }
@@ -5311,7 +5327,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
                             sleep(breaks.interval - Duration::from_mins(5)).await;
-                            while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await {
+                            while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) {
                                 let (_, ()) = tokio::join!(
                                     ctx.say(if let French = goal.language() {
                                         "@entrants Rappel : pause dans 5 minutes."
@@ -5320,7 +5336,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                     sleep(Duration::from_mins(5)),
                                 );
-                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { break }
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { break }
                                 let msg = if let French = goal.language() {
                                     format!("@entrants C'est l'heure de la pause ! Elle durera {}.", French.format_duration(breaks.duration, true))
                                 } else {
@@ -5330,7 +5346,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     ctx.say(msg),
                                     sleep(breaks.duration),
                                 );
-                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { break }
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { break }
                                 let (_, ()) = tokio::join!(
                                     ctx.say(if let French = goal.language() {
                                         "@entrants Fin de la pause. Vous pouvez recommencer à jouer."
@@ -5355,7 +5371,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 }) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
-                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start drawing/playing."),
                                         sleep(Duration::from_mins(5)),
@@ -5373,7 +5389,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(15) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
-                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
                                         sleep(Duration::from_mins(4)),
@@ -5398,7 +5414,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     sleep(initial_wait).await;
                                     let is_1v1 = {
                                         let data = ctx.data().await;
-                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
+                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                         data.entrants_count == 2
                                     };
                                     let _ = ctx.say(if is_1v1 {
@@ -5417,7 +5433,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(10) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
-                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
                                         sleep(Duration::from_mins(5)),
@@ -5428,7 +5444,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     );
                                     let is_1v1 = {
                                         let data = ctx.data().await;
-                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
+                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                         data.entrants_count == 2
                                     };
                                     let _ = ctx.say(if is_1v1 {
@@ -6101,7 +6117,7 @@ async fn create_rooms(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) 
                                 } else {
                                     FENHL.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
                                 }
-                                for team in cal_event.active_teams() {
+                                for team in cal_event.active_entrants() {
                                     for member in team.members(&mut transaction).await? {
                                         if let Some(discord) = member.discord {
                                             discord.id.create_dm_channel(ctx).await?.say(ctx, &msg).await?;

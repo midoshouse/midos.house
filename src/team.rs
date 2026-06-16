@@ -23,10 +23,6 @@ impl Team {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", series AS "series: Series", event, name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE id = $1"#, id as _).fetch_optional(&mut **transaction).await
     }
 
-    pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str, racetime_slug: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", series AS "series: Series", event, name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(&mut **transaction).await
-    }
-
     pub(crate) async fn from_challonge(transaction: &mut Transaction<'_, Postgres>, challonge_id: &str) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", series AS "series: Series", event, name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE challonge_id = $1"#, challonge_id).fetch_optional(&mut **transaction).await
     }
@@ -175,6 +171,12 @@ impl PartialEq for Team {
 }
 
 impl Eq for Team {}
+
+impl Hash for Team {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.id.hash(hasher);
+    }
+}
 
 impl PartialOrd for Team {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

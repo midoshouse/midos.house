@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE seed_metadata SET locked_spoiler_log_path = NULL WHERE file_stem = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3dc53976be5c2904aa7fa531d31b8ce09864b8bc7a7d1dfeaca75668691a073e"
+}

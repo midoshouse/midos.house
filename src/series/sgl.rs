@@ -434,8 +434,8 @@ impl InPersonMatch {
                         } else {
                             let mut response_content = MessageBuilder::default();
                             if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
-                                for team in cal_event.active_teams() {
-                                    response_content.mention_team(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), team).await?;
+                                for entrant in cal_event.active_entrants() {
+                                    response_content.mention_entrant_long(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), entrant).await?;
                                     response_content.push(' ');
                                 }
                             }

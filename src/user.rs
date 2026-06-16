@@ -344,6 +344,12 @@ impl PartialEq for User {
 
 impl Eq for User {}
 
+impl Hash for User {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.id.hash(hasher);
+    }
+}
+
 #[rocket::get("/user/<id>")]
 pub(crate) async fn profile(global: &GlobalState, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id<Users>) -> Result<RawHtml<String>, StatusOrError<PageError>> {
     let mut transaction = global.db_pool.begin().await?;

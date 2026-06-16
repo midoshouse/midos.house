@@ -21,7 +21,10 @@ pub(crate) use {
             self,
             Write as _,
         },
-        hash::Hash,
+        hash::{
+            Hash,
+            Hasher,
+        },
         iter,
         marker::PhantomData,
         mem,

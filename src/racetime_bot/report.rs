@@ -366,7 +366,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 }
                 None
             }
-            cal::Source::StartGG { ref set, .. } | cal::Source::StartGGSpeedGamingOnline { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
+            cal::Source::StartGG { ref set, .. } | cal::Source::StartGGSpeedGamingOnline { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) | Entrant::MidosHouseTeamMember { team: Team { startgg_id: Some(winner_entrant_id), .. }, .. } = &winner {
                 if let Some(game) = cal_event.race.game {
                     if let Some(access_token) = &ctx.global_state.config.startgg {
                         let startgg::set_scores_query::ResponseData {
@@ -530,27 +530,25 @@ impl Handler {
     pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         let data = ctx.data().await;
         let Some(OfficialRaceData { ref cal_event, ref event, ref restreams, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(true) };
-        Ok(if let Some(scores) = data.entrants.iter().map(|entrant| {
-            let key = if let Some(ref team) = entrant.team { Some(&team.slug) } else { entrant.user.as_ref().map(|user| &user.id) };
-            if let Some(key) = key {
-                match entrant.status.value {
-                    EntrantStatusValue::Dnf => Some((key.clone(), tfb::Score::dnf(event.team_config))),
-                    EntrantStatusValue::Done => scores.get(key).and_then(|&score| Some((key.clone(), score?))),
-                    _ => None,
-                }
-            } else {
-                None
-            }
-        }).collect() {
-            ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
-            self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, self.breaks, !restreams.is_empty(), Some(scores)).await?;
-            true
-        } else {
-            false
-        })
+        let mut transaction = ctx.global_state.db_pool.begin().await?;
+        let mut resolved_scores = HashMap::default();
+        for rtgg_entrant in &data.entrants {
+            let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, event, rtgg_entrant).await? else { return Ok(false) };
+            let score = match rtgg_entrant.status.value {
+                EntrantStatusValue::Dnf => Some(tfb::Score::dnf(event.team_config)),
+                EntrantStatusValue::Done => scores.get(&mh_entrant).copied().and_then(identity),
+                _ => None,
+            };
+            let Some(score) = score else { return Ok(false) };
+            resolved_scores.insert(mh_entrant, score);
+        }
+        transaction.commit().await?;
+        ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
+        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, self.breaks, !restreams.is_empty(), Some(resolved_scores)).await?;
+        Ok(true)
     }
 
-    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks: Option<Breaks>, restreamed: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
+    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks: Option<Breaks>, restreamed: bool, tfb_scores: Option<HashMap<Entrant, tfb::Score>>) -> Result<(), Error> {
         let stream_delay = match cal_event.race.entrants {
             Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
             Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
@@ -633,48 +631,34 @@ impl Handler {
                         let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url))?;
                         if let Some(mut tfb_scores) = tfb_scores {
                             let mut teams = Vec::with_capacity(data.entrants.len());
-                            for entrant in &data.entrants {
-                                if let Some(rt_user) = &entrant.user {
-                                    teams.push((if let Some(user) = User::from_racetime(&mut *transaction, &rt_user.id).await?
-                                        && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await?
-                                    {
-                                        Entrant::MidosHouseTeam(team)
-                                    } else {
-                                        Entrant::Named {
-                                            name: rt_user.full_name.clone(),
-                                            racetime_id: Some(rt_user.id.clone()),
-                                            twitch_username: rt_user.twitch_name.clone(),
-                                        }
-                                    }, tfb_scores.remove(&rt_user.id).ok_or_else(|| Error::MissingTfbScore {
+                            let mut all_entrants_found = true;
+                            for rtgg_entrant in &data.entrants {
+                                if let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, event, rtgg_entrant).await? {
+                                    teams.push((mh_entrant.clone(), tfb_scores.remove(&mh_entrant).ok_or_else(|| Error::MissingTfbScore {
                                         room: room.clone(),
                                         tfb_scores: tfb_scores.clone(),
-                                        user_or_team: rt_user.id.clone(),
+                                        entrant: mh_entrant,
                                     })?, TeamLinks::Room(room.clone())));
+                                } else {
+                                    all_entrants_found = false;
                                 }
                             }
-                            if let Ok(teams) = teams.try_into() {
+                            if all_entrants_found && let Ok(teams) = teams.try_into() {
                                 transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 report_ffa(ctx, cal_event, event, room).await?;
                             }
                         } else {
                             let mut teams = Vec::with_capacity(data.entrants.len());
-                            for entrant in &data.entrants {
-                                if let Some(rt_user) = &entrant.user {
-                                    teams.push((if let Some(user) = User::from_racetime(&mut *transaction, &rt_user.id).await?
-                                        && let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await?
-                                    {
-                                        Entrant::MidosHouseTeam(team)
-                                    } else {
-                                        Entrant::Named {
-                                            name: rt_user.full_name.clone(),
-                                            racetime_id: Some(rt_user.id.clone()),
-                                            twitch_username: rt_user.twitch_name.clone(),
-                                        }
-                                    }, adjust_for_breaks(entrant.finish_time, breaks, restreamed), TeamLinks::Room(room.clone())));
+                            let mut all_entrants_found = true;
+                            for rtgg_entrant in &data.entrants {
+                                if let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, event, &rtgg_entrant).await? {
+                                    teams.push((mh_entrant, adjust_for_breaks(rtgg_entrant.finish_time, breaks, restreamed), TeamLinks::Room(room.clone())));
+                                } else {
+                                    all_entrants_found = false;
                                 }
                             }
-                            if let Ok(teams) = teams.try_into() {
+                            if all_entrants_found && let Ok(teams) = teams.try_into() {
                                 transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 report_ffa(ctx, cal_event, event, room).await?;
@@ -690,30 +674,31 @@ impl Handler {
                     }
                     Entrants::Named(_) => unimplemented!(),
                     Entrants::Two(_) | Entrants::Three(_) => {
-                        let mut team_times = HashMap::<_, Vec<_>>::default();
-                        let mut team_rooms = HashMap::new();
+                        let mut entrant_times = HashMap::<_, Vec<_>>::default();
+                        let mut entrant_rooms = HashMap::new();
+                        let mut all_entrants_found = true;
                         if cal_event.is_public_async_part() {
                             for private_async_part in cal_event.race.cal_events().filter(|cal_event| cal_event.is_private_async_part()) {
-                                let nonactive_team = private_async_part.active_teams().exactly_one().map_err(|_| Error::ExactlyOne)?;
+                                let nonactive_entrant = private_async_part.active_entrants().exactly_one().map_err(|_| Error::ExactlyOne)?;
                                 if let Some(ref room) = private_async_part.room() {
                                     let data = ctx.global_state.http_client.get(format!("{}/data", room.to_string()))
                                         .send().await?
                                         .detailed_error_for_status().await?
                                         .json_with_text_in_error::<RaceData>().await?;
-                                    team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::Room(Url::clone(room)));
+                                    entrant_rooms.insert(nonactive_entrant.clone(), TeamLinks::Room(Url::clone(room)));
                                     for entrant in &data.entrants {
-                                        team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
+                                        entrant_times.entry(nonactive_entrant.clone()).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                                     }
                                 } else {
-                                    let members = nonactive_team.member_ids_roles(&mut transaction).await?;
+                                    let members = nonactive_entrant.member_ids_roles(&mut transaction).await?;
                                     let data = sqlx::query!(
                                         r#"SELECT player AS "player: Id<Users>", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)"#,
                                         cal_event.race.id as _,
                                         &members.iter().map(|(member_id, _)| i64::from(*member_id)).collect_vec(),
                                     ).fetch_all(&mut *transaction).await?;
                                     if members.iter().all(|(member_id, _)| data.iter().any(|row| row.player == *member_id)) {
-                                        team_times.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), data.iter().map(|row| Ok::<_, Error>(adjust_for_breaks(row.time.map(decode_pginterval).transpose()?, breaks, restreamed))).try_collect()?);
-                                        team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::AsyncForm({
+                                        entrant_times.insert(nonactive_entrant.clone(), data.iter().map(|row| Ok::<_, Error>(adjust_for_breaks(row.time.map(decode_pginterval).transpose()?, breaks, restreamed))).try_collect()?);
+                                        entrant_rooms.insert(nonactive_entrant.clone(), TeamLinks::AsyncForm({
                                             let mut links = data.into_iter().map(|row| {
                                                 let (_, role) = *members.iter().find(|(member_id, _)| *member_id == row.player).expect("async submission from unexpected player");
                                                 let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
@@ -725,66 +710,56 @@ impl Handler {
                                     }
                                 }
                             }
-                            let active_team = cal_event.active_teams().exactly_one().map_err(|_| Error::ExactlyOne)?;
-                            team_rooms.insert(active_team.racetime_slug.clone().expect("non-racetime.gg team"), TeamLinks::Room(Url::parse(&format!("https://{}{}", racetime_host(), data.url))?));
+                            let active_entrant = cal_event.active_entrants().exactly_one().map_err(|_| Error::ExactlyOne)?;
+                            entrant_rooms.insert(active_entrant.clone(), TeamLinks::Room(Url::parse(&format!("https://{}{}", racetime_host(), data.url))?));
                             for entrant in &data.entrants {
-                                team_times.entry(active_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
+                                entrant_times.entry(active_entrant.clone()).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
                             }
                         } else {
-                            for entrant in &data.entrants {
-                                if let Some(ref team) = entrant.team {
-                                    if let hash_map::Entry::Vacant(entry) = team_rooms.entry(team.slug.clone()) {
+                            for rtgg_entrant in &data.entrants {
+                                if let Some(mh_entrant) = Entrant::from_racetime(&mut transaction, event, rtgg_entrant).await? {
+                                    if let hash_map::Entry::Vacant(entry) = entrant_rooms.entry(mh_entrant.clone()) {
                                         entry.insert(TeamLinks::Room(Url::parse(&format!("https://{}{}", racetime_host(), data.url))?));
                                     }
-                                    team_times.entry(team.slug.clone()).or_default().push(adjust_for_breaks(entrant.finish_time, breaks, restreamed));
+                                    entrant_times.entry(mh_entrant).or_default().push(adjust_for_breaks(rtgg_entrant.finish_time, breaks, restreamed));
                                 } else {
-                                    unimplemented!("solo runner in team race") //TODO report error in organizer channel
+                                    all_entrants_found = false;
                                 }
                             }
                         }
                         if let Some(mut tfb_scores) = tfb_scores {
-                            let mut all_teams_found = true;
-                            let mut teams = Vec::with_capacity(team_times.len());
-                            for team_slug in team_times.keys() {
-                                if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await? {
-                                    teams.push((
-                                        Entrant::MidosHouseTeam(team),
-                                        if let Some(tfb_score) = tfb_scores.remove(team_slug) {
-                                            tfb_score
-                                        } else {
-                                            return Err(Error::MissingTfbScore {
-                                                tfb_scores,
-                                                user_or_team: team_slug.clone(),
-                                                room: Url::parse(&format!("https://{}{}", racetime_host(), data.url))?,
-                                            })
-                                        },
-                                        team_rooms.remove(team_slug).expect("each team should have a room"),
-                                    ));
-                                } else {
-                                    all_teams_found = false;
-                                }
+                            let mut teams = Vec::with_capacity(entrant_times.len());
+                            for entrant in entrant_times.into_keys() {
+                                teams.push((
+                                    entrant.clone(),
+                                    if let Some(tfb_score) = tfb_scores.remove(&entrant) {
+                                        tfb_score
+                                    } else {
+                                        return Err(Error::MissingTfbScore {
+                                            room: Url::parse(&format!("https://{}{}", racetime_host(), data.url))?,
+                                            entrant: entrant.clone(),
+                                            tfb_scores,
+                                        })
+                                    },
+                                    entrant_rooms.remove(&entrant).expect("each team should have a room"),
+                                ));
                             }
-                            if all_teams_found && let Ok(teams) = teams.try_into() {
+                            if all_entrants_found && let Ok(teams) = teams.try_into() {
                                 transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url))?;
                                 report_ffa(ctx, cal_event, event, room).await?;
                             }
                         } else {
-                            let mut all_teams_found = true;
-                            let mut teams = Vec::with_capacity(team_times.len());
-                            for (team_slug, times) in team_times {
-                                if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await? {
-                                    teams.push((
-                                        Entrant::MidosHouseTeam(team),
-                                        times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
-                                        team_rooms.remove(&team_slug).expect("each team should have a room"),
-                                    ));
-                                } else {
-                                    all_teams_found = false;
-                                }
+                            let mut teams = Vec::with_capacity(entrant_times.len());
+                            for (entrant, times) in entrant_times {
+                                teams.push((
+                                    entrant.clone(),
+                                    times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
+                                    entrant_rooms.remove(&entrant).expect("each team should have a room"),
+                                ));
                             }
-                            if all_teams_found && let Ok(teams) = teams.try_into() {
+                            if all_entrants_found && let Ok(teams) = teams.try_into() {
                                 transaction = report_1v1(transaction, ctx, cal_event, event, breaks.is_some(), restreamed, teams).await?;
                             } else { //TODO separate function for reporting 3-entrant results
                                 let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url))?;

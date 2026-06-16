@@ -20,7 +20,10 @@ use {
     },
     sqlx::types::Json,
     crate::{
-        event::Tab,
+        event::{
+            Role,
+            Tab,
+        },
         prelude::*,
         racetime_bot::roll_seed_locally,
         sheets,
@@ -77,6 +80,28 @@ pub(crate) enum Entrant {
 }
 
 impl Entrant {
+    pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>, entrant: &racetime::model::Entrant) -> sqlx::Result<Option<Self>> {
+        Ok(if let Some(rtgg_user) = &entrant.user {
+            Some(if let Some(mh_user) = User::from_racetime(&mut **transaction, &rtgg_user.id).await?
+                && let Some(team) = Team::from_event_and_member(transaction, event.series, &event.event, mh_user.id).await?
+            {
+                if let TeamConfig::SlugOpen = event.team_config {
+                    Entrant::MidosHouseTeamMember { team, member: mh_user }
+                } else {
+                    Entrant::MidosHouseTeam(team)
+                }
+            } else {
+                Entrant::Named {
+                    name: rtgg_user.full_name.clone(),
+                    racetime_id: Some(rtgg_user.id.clone()),
+                    twitch_username: rtgg_user.twitch_name.clone(),
+                }
+            })
+        } else {
+            None
+        })
+    }
+
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx) -> Result<Option<Cow<'_, str>>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.name(transaction).await?,
@@ -105,6 +130,38 @@ impl Entrant {
             Self::MidosHouseTeam(team) | Self::MidosHouseTeamMember { team, .. } => Some(team),
             Self::Discord { .. } | Self::Named { .. } => None,
         }
+    }
+
+    pub(crate) async fn member_ids_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(Id<Users>, Role)>> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.member_ids_roles(transaction).await?,
+            Self::MidosHouseTeamMember { team, member } => {
+                let mut members = team.member_ids_roles(transaction).await?;
+                members.retain(|(iter_member, _)| *iter_member == member.id);
+                members
+            }
+            Self::Discord { .. } | Self::Named { .. } => Vec::default(),
+        })
+    }
+
+    pub(crate) async fn members(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<User>> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.members(transaction).await?,
+            Self::MidosHouseTeamMember { member, .. } => vec![member.clone()],
+            Self::Discord { .. } | Self::Named { .. } => Vec::default(),
+        })
+    }
+
+    pub(crate) async fn members_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(User, Role)>> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.members_roles(transaction).await?,
+            Self::MidosHouseTeamMember { team, member } => {
+                let mut members = team.members_roles(transaction).await?;
+                members.retain(|(iter_member, _)| iter_member == member);
+                members
+            }
+            Self::Discord { .. } | Self::Named { .. } => Vec::default(),
+        })
     }
 
     async fn num_trackers(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<usize> {
@@ -192,6 +249,30 @@ impl PartialEq for Entrant {
 }
 
 impl Eq for Entrant {}
+
+impl Hash for Entrant {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        match self {
+            Self::MidosHouseTeam(team) => {
+                0u8.hash(hasher);
+                team.hash(hasher);
+            }
+            Self::MidosHouseTeamMember { team, member } => {
+                1u8.hash(hasher);
+                team.hash(hasher);
+                member.hash(hasher);
+            }
+            Self::Discord { id, .. } => {
+                2u8.hash(hasher);
+                id.hash(hasher);
+            }
+            Self::Named { name, .. } => {
+                3u8.hash(hasher);
+                name.hash(hasher);
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Entrants {
@@ -1137,7 +1218,7 @@ impl Race {
         let mut tuples = Vec::default();
         for event in self.cal_events() {
             if all_ended || !event.is_private_async_part() {
-                for team in event.active_teams() {
+                for team in event.active_entrants() {
                     for member in team.members(&mut *transaction).await? {
                         if let Some(video) = sqlx::query_scalar!(r#"SELECT video FROM race_player_videos WHERE race = $1 AND player = $2"#, self.id as _, member.id as _).fetch_optional(&mut **transaction).await? {
                             tuples.push((member, video.parse()?));
@@ -1485,18 +1566,18 @@ impl Event {
         Ok(events)
     }
 
-    pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
+    pub(crate) fn active_entrants(&self) -> impl Iterator<Item = &Entrant> + Send {
         match self.race.entrants {
-            Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
+            Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Entrant> + Send>,
             Entrants::Two([ref team1, ref team2]) => Box::new([
                 matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
                 matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
-            ].into_iter().filter_map(identity).filter_map(as_variant!(Entrant::MidosHouseTeam))),
+            ].into_iter().filter_map(identity)),
             Entrants::Three([ref team1, ref team2, ref team3]) => Box::new([
                 matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
                 matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
                 matches!(self.kind, EventKind::Normal | EventKind::Async3).then_some(team3),
-            ].into_iter().filter_map(identity).filter_map(as_variant!(Entrant::MidosHouseTeam))),
+            ].into_iter().filter_map(identity)),
         }
     }
 
@@ -1758,7 +1839,7 @@ impl Event {
                     Some(url)
                 }
             }
-        } else if self.is_public_async_part() && self.room().is_some() && let Ok(team) = self.active_teams().exactly_one() {
+        } else if self.is_public_async_part() && self.room().is_some() && let Ok(team) = self.active_entrants().exactly_one() {
             let mut channels = Vec::default();
             for (member, role) in team.members_roles(&mut *transaction).await? {
                 if event.team_config.role_is_racing(role) {
@@ -3697,7 +3778,7 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
         : event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
         @if let Some(me) = &me {
             @if let Ok(cal_event) = race.into_async_part_for(&mut transaction, me).await? {
-                @if let Ok(team) = cal_event.active_teams().exactly_one() {
+                @if let Ok(team) = cal_event.active_entrants().filter_map(Entrant::team).exactly_one() {
                     @if let Some(team_row) = sqlx::query!(r#"SELECT requested, submitted FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
                         @if team_row.submitted.is_none() {
                             @let extra = cal_event.race.seed.extra(global).await?;

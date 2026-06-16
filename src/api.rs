@@ -392,11 +392,11 @@ struct CalEvent(cal::Event);
     }
 
     /// All teams participating in this async part. For solo events, these will be single-member teams.
-    /// Currently this will not be more than one team but Mido's House may gain support for 2 teams in a 3-way tiebreaker racing live with the 3rd asyncing.
+    /// Currently this will not be more than one team, but in the future, Mido's House may gain support for 2 teams in a 3-way tiebreaker racing live with the 3rd asyncing.
     /// Null if the event does not use Mido's House to manage entrants.
     async fn active_teams(&self, ctx: &Context<'_>) -> Result<Option<Vec<Team>>, event::DataError> {
         let event = db!(db = ctx; self.0.race.event(&mut *db).await?);
-        Ok(self.0.race.teams_opt().map(|_| self.0.active_teams().map(|team| Team { inner: team.clone(), event: event.clone() }).collect()))
+        Ok(self.0.race.teams_opt().map(|_| self.0.active_entrants().filter_map(as_variant!(Entrant::MidosHouseTeam)).map(|team| Team { inner: team.clone(), event: event.clone() }).collect()))
     }
 }
 

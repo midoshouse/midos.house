@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO seed_metadata (file_stem, locked_spoiler_log_path, progression_spoiler) VALUES ($1, $2, FALSE) ON CONFLICT (file_stem) DO UPDATE SET locked_spoiler_log_path = $2, progression_spoiler = FALSE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7b5c35136b7887f3bc754d63ee7c89d238a0493dcc829d43a62c4aa88e6d41f3"
+}

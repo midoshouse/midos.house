@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE events SET cleaned_up = TRUE WHERE NOT cleaned_up AND end_time IS NOT NULL AND end_time <= NOW() RETURNING series AS \"series: Series\", event",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "series: Series",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "event",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "b65cceeb4302568246ab05953a1252d6e27d999a5de499178c20fd3da71b2f12"
+}

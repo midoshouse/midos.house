@@ -1,5 +1,4 @@
 use {
-    std::hash::Hasher,
     noisy_float::prelude::*,
     racetime::model::{
         EntrantStatusValue,

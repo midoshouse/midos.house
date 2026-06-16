@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO seed_metadata (file_stem, progression_spoiler, bingosync_url, bingo_passphrase) VALUES ($1, FALSE, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Bpchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6753ade2d6dfdae4ff9cacd5f021c07397a56ce3057d1d4a0f4af51c887d11b1"
+}
