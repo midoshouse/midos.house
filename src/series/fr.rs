@@ -194,7 +194,7 @@ pub(crate) const S5_SETTINGS: [Setting; 30] = [
     Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (default) or required (hardcore)" },
 ];
 
-pub(crate) const S6_SETTINGS: [Setting; 31] = [
+pub(crate) const S6_SETTINGS: [Setting; 30] = [
     Setting { name: "camc", display: "CAMC", default: "on", default_display: "CAMC", other: &[("off", false, "no CAMC")], description: "camc: on (default) or off" },
     Setting { name: "start-weirdegg", display: "start & weird egg", default: "random-skip", default_display: "random start & Skip Child Zelda", other: &[("vanilla-shuffle", false, "vanilla start & shuffled weird egg")], description: "start-weirdegg: random-skip (default: random start & Skip Child Zelda) or vanilla-shuffle (vanilla start & shuffled weird egg)" },
     Setting { name: "keysy", display: "keysy", default: "off", default_display: "dungeon small keys not removed", other: &[("on", false, "small keysy")], description: "keysy: off (default) or on" },
@@ -215,7 +215,6 @@ pub(crate) const S6_SETTINGS: [Setting; 31] = [
     Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", false, "open fountain")], description: "fountain: closed (default) or open" },
     Setting { name: "1major", display: "1 major item per dungeon", default: "off", default_display: "no major items per dungeon restriction", other: &[("on", false, "1 major item per dungeon")], description: "1major: off (default) or on" },
     Setting { name: "souls", display: "enemy souls", default: "off", default_display: "no enemy souls", other: &[("bosses", false, "boss souls"), ("all-anywhere", true, "all enemy souls (anywhere)"), ("all-regional", true, "all enemy souls (regional)")], description: "souls: off (default), bosses, all-anywhere (hardcore), or all-regional (hardcore)" },
-    Setting { name: "th", display: "Triforce Hunt", default: "off", default_display: "no Triforce Hunt", other: &[("on", false, "Triforce Hunt (between 1 and 45)")], description: "th (Triforce Hunt): off (default) or on (between 1 and 45)" },
     Setting { name: "boss-er", display: "boss ER", default: "off", default_display: "no boss ER", other: &[("on", false, "boss ER")], description: "boss-er: off (default) or on" },
     Setting { name: "bridge", display: "rainbow bridge", default: "6meds", default_display: "6 medallions bridge", other: &[("4meds-meds", false, "4 medallions bridge (GBK 6 meds)"), ("4meds-dungeons", false, "4 medallions bridge (GBK 6 dungeons)"), ("5meds-meds", false, "5 medallions bridge (GBK 6 meds)"), ("5meds-dungeons", false, "5 medallions bridge (GBK 6 dungeons)"), ("1stones", false, "1 stone bridge"), ("2stones", false, "2 stones bridge"), ("3stones", false, "3 stones bridge"), ("vanilla", false, "vanilla bridge"), ("5dungeons", false, "5 dungeons bridge"), ("6dungeons", false, "6 dungeons bridge"), ("7dungeons", false, "7 dungeons bridge"), ("8dungeons", false, "8 dungeons bridge"), ("9dungeons", false, "9 dungeons bridge"), ("1precompleted", false, "1 pre-completed dungeon"), ("2precompleted", false, "2 pre-completed dungeons"), ("3precompleted", false, "3 pre-completed dungeons")], description: "bridge: <4–6>meds (GBK 6 meds, default: 6), <1–3>stones (3 stones, GBK 6 rewards), vanilla (GBK 6 meds), <5–9>dungeons, <1-3>precompleted (9 rewards, map/compass gives info)" },
     Setting { name: "mixed-er", display: "mixed ER", default: "off", default_display: "no mixed ER", other: &[("on", true, "mixed ER")], description: "mixed-er: off (default) or on (hardcore: intérieurs et grottos mixés)" },
@@ -1218,7 +1217,6 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
     let fountain = picks.get("fountain").map(|fountain| &**fountain).unwrap_or("closed");
     let one_major = picks.get("1major").map(|one_major| &**one_major).unwrap_or("off");
     let souls = picks.get("souls").map(|souls| &**souls).unwrap_or("off");
-    let th = picks.get("th").map(|th| &**th).unwrap_or("off");
     let boss_er = picks.get("boss-er").map(|boss_er| &**boss_er).unwrap_or("off");
     let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("6meds");
     let mixed_er = picks.get("mixed-er").map(|mixed_er| &**mixed_er).unwrap_or("off");
@@ -1250,24 +1248,6 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
     if mixed_dungeons == "mixed" {
         mix_entrance_pools.push("Dungeon");
     }
-    let mut triforce_count = 30;
-    if one_major == "on" { triforce_count -= 10 }
-    if keysanity == "on" { triforce_count -= 5 }
-    if keysy == "on" { triforce_count += 5 }
-    if let "overworld" | "all" = skulls { triforce_count += 5 }
-    if cows == "on" { triforce_count += 5 }
-    if shops == "4" { triforce_count += 10 }
-    if scrubs == "affordable" { triforce_count += 10 }
-    if let "minimal" | "scarce" = itempool { triforce_count += 10 }
-    if pots == "all" { triforce_count += 15 }
-    if crates == "all" { triforce_count += 10 }
-    match souls {
-        "bosses" => triforce_count -= 5,
-        "all-regional" => triforce_count -= 10,
-        "all-anywhere" => triforce_count -= 25,
-        _ => {}
-    }
-    let triforce_count = triforce_count.clamp(1, 45);
     collect![
         format!("user_message") => json!("Tournoi Francophone Saison 6"),
         format!("password_lock") => json!(true),
@@ -1276,18 +1256,6 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
             "required" => json!("beatable"),
             _ => unreachable!(),
         },
-        format!("triforce_hunt") => match th {
-            "on" => json!(true),
-            "off" => json!(false),
-            _ => unreachable!(),
-        },
-        format!("triforce_count_per_world") => json!(triforce_count),
-        format!("triforce_goal_per_world") => json!((triforce_count as f32 / match itempool {
-            "balanced" => 1.5,
-            "scarce" => 1.25,
-            "minimal" => 1.0,
-            _ => unreachable!(),
-        }).round().max(1.0) as u8),
         format!("lacs_medallions") => json!(2),
         format!("lacs_stones") => json!(2),
         format!("lacs_rewards") => json!(2),
