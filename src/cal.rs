@@ -2817,6 +2817,11 @@ pub(crate) async fn race_table(
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
                                     @if !event.has_single_settings() && race.single_settings(global, event, false).await?.is_some() {
+                                        @if let Some(draft_kind) = race.draft_kind(event) && let Some(draft) = &race.draft {
+                                            div(class = "settings-hover") {
+                                                abbr(title = draft_kind.display_picks(&draft.settings, false)) : "Hover for Settings";
+                                            }
+                                        }
                                         @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, global, race.id).await? {
                                             external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), &favicon_url, "Practice")
                                         } else {

@@ -56,11 +56,15 @@ pub(crate) const S7_SETTINGS: [Setting; 31] = [
     Setting { major: false, name: "bombchus_in_logic", display: "Add Bombchu Bag and Drops", default_display: "Bombchu Bag and Drops Off", other: &[("on", "Bombchu Bag and Drops On", || collect![format!("free_bombchu_drops") => json!(true)])] },
 ];
 
-pub(crate) fn display_s7_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str_opt(
-        S7_SETTINGS.into_iter()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, display, _)| display)),
-    ).unwrap_or_else(|| format!("base settings"))
+pub(crate) fn display_s7_draft_picks(picks: &draft::Picks, running_text: bool) -> String {
+    let mut picks = S7_SETTINGS.into_iter()
+        .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, display, _)| display));
+    if running_text {
+        English.join_str_opt(picks).unwrap_or_else(|| format!("base settings"))
+    } else {
+        let picks = picks.join(", ");
+        if picks.is_empty() { format!("base settings") } else { picks }
+    }
 }
 
 pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> seed::Settings {

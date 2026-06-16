@@ -140,45 +140,65 @@ pub(crate) fn get_custom_choices(settings: &[Setting]) -> impl Iterator<Item = (
         .unique_by(|(key, _)| *key)
 }
 
-pub(crate) fn display_s2_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str_opt(
-        S2_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
-    ).unwrap_or_else(|| format!("base settings"))
+pub(crate) fn display_s2_draft_picks(picks: &draft::Picks, running_text: bool) -> String {
+    let mut picks = S2_SETTINGS.iter().copied()
+        .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display));
+    if running_text {
+        English.join_str_opt(picks).unwrap_or_else(|| format!("base settings"))
+    } else {
+        let picks = picks.join(", ");
+        if picks.is_empty() { format!("base settings") } else { picks }
+    }
 }
 
-pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str_opt(
-        S3_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
-    ).unwrap_or_else(|| format!("base settings"))
+pub(crate) fn display_s3_draft_picks(picks: &draft::Picks, running_text: bool) -> String {
+    let mut picks = S3_SETTINGS.iter().copied()
+        .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display));
+    if running_text {
+        English.join_str_opt(picks).unwrap_or_else(|| format!("base settings"))
+    } else {
+        let picks = picks.join(", ");
+        if picks.is_empty() { format!("base settings") } else { picks }
+    }
 }
 
-pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str_opt(
-        S4_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }|
-                picks.get(name)
-                    .cloned()
-                    .or_else(|| (name == "camc" && picks.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes").then_some(Cow::Borrowed("both")))
-                    .and_then(|pick| other.iter().find(|&(other, _, _)| pick == *other))
-                    .map(|(_, _, display)| display)
-            ),
-    ).unwrap_or_else(|| format!("base settings"))
+pub(crate) fn display_s4_draft_picks(picks: &draft::Picks, running_text: bool) -> String {
+    let mut picks = S4_SETTINGS.iter().copied()
+        .filter_map(|Setting { name, other, .. }|
+            picks.get(name)
+                .cloned()
+                .or_else(|| (name == "camc" && picks.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes").then_some(Cow::Borrowed("both")))
+                .and_then(|pick| other.iter().find(|&(other, _, _)| pick == *other))
+                .map(|(_, _, display)| display)
+        );
+    if running_text {
+        English.join_str_opt(picks).unwrap_or_else(|| format!("base settings"))
+    } else {
+        let picks = picks.join(", ");
+        if picks.is_empty() { format!("base settings") } else { picks }
+    }
 }
 
-pub(crate) fn display_s5_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str_opt(
-        S5_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
-    ).unwrap_or_else(|| format!("base settings"))
+pub(crate) fn display_s5_draft_picks(picks: &draft::Picks, running_text: bool) -> String {
+    let mut picks = S5_SETTINGS.iter().copied()
+        .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display));
+    if running_text {
+        English.join_str_opt(picks).unwrap_or_else(|| format!("base settings"))
+    } else {
+        let picks = picks.join(", ");
+        if picks.is_empty() { format!("base settings") } else { picks }
+    }
 }
 
-pub(crate) fn display_s6_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str_opt(
-        S6_SETTINGS.iter().copied()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display)),
-    ).unwrap_or_else(|| format!("base settings"))
+pub(crate) fn display_s6_draft_picks(picks: &draft::Picks, running_text: bool) -> String {
+    let mut picks = S6_SETTINGS.iter().copied()
+        .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, _, display)| display));
+    if running_text {
+        English.join_str_opt(picks).unwrap_or_else(|| format!("base settings"))
+    } else {
+        let picks = picks.join(", ");
+        if picks.is_empty() { format!("base settings") } else { picks }
+    }
 }
 
 pub(crate) fn resolve_s2_draft_settings(picks: &draft::Picks) -> seed::Settings {
@@ -925,7 +945,7 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
 pub(crate) fn s3_chests(picks: &draft::Picks) -> ChestAppearances {
     static WEIGHTS: LazyLock<HashMap<String, Vec<(ChestAppearances, usize)>>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/mw/chests-3-6.2.181.json")).expect("failed to parse chest weights")); //TODO update to 6.2.205
 
-    if let Some(settings_weights) = WEIGHTS.get(&display_s3_draft_picks(picks)) {
+    if let Some(settings_weights) = WEIGHTS.get(&display_s3_draft_picks(picks, true)) {
         settings_weights.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     } else {
         ChestAppearances::INVISIBLE

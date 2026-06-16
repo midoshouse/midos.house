@@ -228,7 +228,7 @@ pub(crate) const S6_SETTINGS: [Setting; 31] = [
     Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (default) or required (hardcore)" },
 ];
 
-pub(crate) fn display_draft_picks(language: Language, all_settings: &[Setting], picks: &draft::Picks) -> String {
+pub(crate) fn display_draft_picks(language: Language, running_text: bool, all_settings: &[Setting], picks: &draft::Picks) -> String {
     let mut picks_display = Vec::default();
     if picks.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" || picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0") != "0" {
         let mq_dungeons_count = picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
@@ -265,11 +265,23 @@ pub(crate) fn display_draft_picks(language: Language, all_settings: &[Setting], 
             },
             (_, _) => Cow::Borrowed(display),
         })));
-    language.join_str_opt(picks_display).unwrap_or_else(|| if let French = language {
-        format!("settings de base")
+    if running_text {
+        language.join_str_opt(picks_display).unwrap_or_else(|| if let French = language {
+            format!("settings de base")
+        } else {
+            format!("base settings")
+        })
     } else {
-        format!("base settings")
-    })
+        if picks_display.is_empty() {
+            if let French = language {
+                format!("settings de base")
+            } else {
+                format!("base settings")
+            }
+        } else {
+            picks_display.join(", ")
+        }
+    }
 }
 
 pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> seed::Settings {

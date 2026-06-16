@@ -23,9 +23,18 @@ a {
     color: inherit;
 }
 
+abbr {
+    text-decoration: underline dashed;
+}
+
+.settings-hover {
+    font-size: 0.75rem;
+}
+
 a.nav,
 a.button,
 a:hover,
+abbr:hover,
 .favicon {
     text-decoration: none;
 }

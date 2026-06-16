@@ -1272,7 +1272,7 @@ impl Goal {
                     unlock_spoiler_log,
                     language: English,
                     article: "a",
-                    description: format!("seed with {}", s::display_s7_draft_picks(&settings)),
+                    description: format!("seed with {}", s::display_s7_draft_picks(&settings, true)),
                 }
             }
             Self::CopaLatinoamerica2025 => {
@@ -1344,11 +1344,11 @@ impl Goal {
                     }
                 };
                 let (settings, display) = match self {
-                    Self::MultiworldS2 => (mw::resolve_s2_draft_settings(&settings), mw::display_s2_draft_picks(&settings)),
-                    Self::MultiworldS3 => (mw::resolve_s3_draft_settings(&settings), mw::display_s3_draft_picks(&settings)),
-                    Self::MultiworldS4 => (mw::resolve_s4_draft_settings(&settings), mw::display_s4_draft_picks(&settings)),
-                    Self::MultiworldS5 => (mw::resolve_s5_draft_settings(&settings), mw::display_s5_draft_picks(&settings)),
-                    Self::MultiworldS6 => (mw::resolve_s6_draft_settings(&settings), mw::display_s6_draft_picks(&settings)),
+                    Self::MultiworldS2 => (mw::resolve_s2_draft_settings(&settings), mw::display_s2_draft_picks(&settings, true)),
+                    Self::MultiworldS3 => (mw::resolve_s3_draft_settings(&settings), mw::display_s3_draft_picks(&settings, true)),
+                    Self::MultiworldS4 => (mw::resolve_s4_draft_settings(&settings), mw::display_s4_draft_picks(&settings, true)),
+                    Self::MultiworldS5 => (mw::resolve_s5_draft_settings(&settings), mw::display_s5_draft_picks(&settings, true)),
+                    Self::MultiworldS6 => (mw::resolve_s6_draft_settings(&settings), mw::display_s6_draft_picks(&settings, true)),
                     _ => unreachable!("checked in outer match"),
                 };
                 SeedCommandParseResult::Regular {
@@ -1679,7 +1679,7 @@ impl Goal {
                             unlock_spoiler_log,
                             language: self.language(),
                             article: if let French = self.language() { "une" } else { "a" },
-                            description: format!("seed {} {}", if let French = self.language() { "avec" } else { "with" }, fr::display_draft_picks(self.language(), all_settings, &settings)),
+                            description: format!("seed {} {}", if let French = self.language() { "avec" } else { "with" }, fr::display_draft_picks(self.language(), true, all_settings, &settings)),
                         }
                     }
                     _ => unimplemented!(),
@@ -1794,7 +1794,7 @@ impl Goal {
                     unlock_spoiler_log,
                     language: self.language(),
                     article: if let French = self.language() { "une" } else { "a" },
-                    description: format!("seed {} {}", if let French = self.language() { "avec" } else { "with" }, fr::display_draft_picks(self.language(), all_settings, &settings)),
+                    description: format!("seed {} {}", if let French = self.language() { "avec" } else { "with" }, fr::display_draft_picks(self.language(), true, all_settings, &settings)),
                 }
             }
             Self::TriforceBlitz => match args {

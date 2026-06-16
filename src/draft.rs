@@ -115,6 +115,23 @@ impl Kind {
             Self::TournoiFrancoS6 => VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevRob, 9, 0, 2, 17) },
         })
     }
+
+    pub(crate) fn display_picks(&self, picks: &Picks, running_text: bool) -> String {
+        match self {
+            Self::S7 => s::display_s7_draft_picks(picks, running_text),
+            Self::MultiworldS2 => mw::display_s2_draft_picks(picks, running_text),
+            Self::MultiworldS3 => mw::display_s3_draft_picks(picks, running_text),
+            Self::MultiworldS4 => mw::display_s4_draft_picks(picks, running_text),
+            Self::MultiworldS5 => mw::display_s5_draft_picks(picks, running_text),
+            Self::MultiworldS6 => mw::display_s6_draft_picks(picks, running_text),
+            Self::RslS7 => rsl::display_s7_draft_picks(picks),
+            Self::SlugOpen => panic!("displaying draft picks for SlugCentral Open is not supported"),
+            Self::TournoiFrancoS3 => fr::display_draft_picks(self.language(), running_text, &fr::S3_SETTINGS, picks),
+            Self::TournoiFrancoS4 => fr::display_draft_picks(self.language(), running_text, &fr::S4_SETTINGS, picks),
+            Self::TournoiFrancoS5 => fr::display_draft_picks(self.language(), running_text, &fr::S5_SETTINGS, picks),
+            Self::TournoiFrancoS6 => fr::display_draft_picks(self.language(), running_text, &fr::S6_SETTINGS, picks),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -551,8 +568,8 @@ impl Draft {
                             kind: StepKind::Done(s::resolve_s7_draft_settings(&self.settings)),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
-                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", s::display_s7_draft_picks(&self.settings)),
-                                MessageContext::RaceTime { .. } => s::display_s7_draft_picks(&self.settings),
+                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", s::display_s7_draft_picks(&self.settings, true)),
+                                MessageContext::RaceTime { .. } => s::display_s7_draft_picks(&self.settings, true),
                             },
                         },
                     }
@@ -931,11 +948,7 @@ impl Draft {
                             }
                         }
                         6.. => {
-                            let display = match kind {
-                                Kind::MultiworldS2 => mw::display_s2_draft_picks(&self.settings),
-                                Kind::MultiworldS3 => mw::display_s3_draft_picks(&self.settings),
-                                Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
-                            };
+                            let display = kind.display_picks(&self.settings, true);
                             Step {
                                 kind: StepKind::Done(match kind {
                                     Kind::MultiworldS2 => mw::resolve_s2_draft_settings(&self.settings),
@@ -1145,12 +1158,7 @@ impl Draft {
                             }
                         }
                         10.. => {
-                            let display = match kind {
-                                Kind::MultiworldS4 => mw::display_s4_draft_picks(&self.settings),
-                                Kind::MultiworldS5 => mw::display_s5_draft_picks(&self.settings),
-                                Kind::MultiworldS6 => mw::display_s6_draft_picks(&self.settings),
-                                Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 | Kind::TournoiFrancoS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen => unreachable!(),
-                            };
+                            let display = kind.display_picks(&self.settings, true);
                             Step {
                                 kind: StepKind::Done(match kind {
                                     Kind::MultiworldS4 => mw::resolve_s4_draft_settings(&self.settings),
@@ -1473,11 +1481,11 @@ impl Draft {
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { .. } => if let French = kind.language() {
-                                    format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(kind.language(), all_settings, &self.settings))
+                                    format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(French, true, all_settings, &self.settings))
                                 } else {
-                                    format!("Settings draft completed. You will be playing with {}.", fr::display_draft_picks(kind.language(), all_settings, &self.settings))
+                                    format!("Settings draft completed. You will be playing with {}.", fr::display_draft_picks(English, true, all_settings, &self.settings))
                                 },
-                                MessageContext::RaceTime { .. } => fr::display_draft_picks(kind.language(), all_settings, &self.settings),
+                                MessageContext::RaceTime { .. } => fr::display_draft_picks(kind.language(), true, all_settings, &self.settings),
                             },
                         }),
                         (Kind::MultiworldS2 | Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::MultiworldS6 | Kind::RslS7 | Kind::S7 | Kind::SlugOpen, _, _) => unreachable!(),
