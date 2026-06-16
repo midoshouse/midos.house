@@ -2821,6 +2821,7 @@ pub(crate) async fn race_table(
                                             div(class = "settings-hover") {
                                                 abbr(title = draft_kind.display_picks(&draft.settings, false)) : "Hover for Settings";
                                             }
+                                            div(class = "settings-tap", data_tooltip = draft_kind.display_picks(&draft.settings, false)) : "Tap for Settings";
                                         }
                                         @let (errors, button) = if let Some(favicon_url) = practice_seed_favicon_url(&mut *transaction, global, race.id).await? {
                                             external_button_form(uri!(practice_seed_post(event.series, &*event.event, race.id)), csrf, Vec::default(), &favicon_url, "Practice")

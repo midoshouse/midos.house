@@ -31,6 +31,27 @@ abbr {
     font-size: 0.75rem;
 }
 
+.settings-tap {
+    position: relative;
+}
+
+.settings-tap:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: white;
+    color: black;
+    padding: 8px 12px;
+    border: 1px solid black;
+    font-size: 1rem;
+    z-index: 1000;
+    max-width: 500px;
+    min-width: 300px;
+    overflow-wrap: break-word;
+}
+
 a.nav,
 a.button,
 a:hover,
@@ -622,6 +643,12 @@ footer,
         color: white;
     }
 
+    .settings-tap:hover::after {
+        background-color: black;
+        color: white;
+        border-color: white;
+    }
+
     input[type="text"],
     input[type="number"],
     input[type="submit"],
@@ -732,7 +759,17 @@ footer,
     }
 }
 
+@media (hover: none) {
+    .settings-hover {
+        display: none;
+    }
+}
+
 @media (hover: hover) {
+    .settings-tap {
+        display: none;
+    }
+
     .seed {
         display: grid;
         align-items: center;
