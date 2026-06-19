@@ -5955,7 +5955,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                             'seed: loop {
                                 let mut seed_rx = global.clone().roll_seed(
                                     PrerollMode::Long,
-                                    false,
+                                    true,
                                     Some(start),
                                     version.clone(),
                                     settings.clone(),
