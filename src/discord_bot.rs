@@ -1631,6 +1631,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     commentators: if reset_schedule { HashMap::default() } else { race.commentators },
                                     trackers: if reset_schedule { HashMap::default() } else { race.trackers },
                                     notified: race.notified && !reset_schedule,
+                                    async_notified1: race.async_notified1 && !reset_schedule,
+                                    async_notified2: race.async_notified2 && !reset_schedule,
+                                    async_notified3: race.async_notified3 && !reset_schedule,
                                     // explicitly listing remaining fields here instead of using `..race` so if the fields change they're kept/reset correctly
                                     id: race.id,
                                     series: race.series,

@@ -297,6 +297,9 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
             ignored: false,
             schedule_locked: false,
             notified: false,
+            async_notified1: false,
+            async_notified2: false,
+            async_notified3: false,
             phase, round,
         });
         Ok(None)

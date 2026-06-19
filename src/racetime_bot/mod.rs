@@ -5907,12 +5907,12 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                     msg.push('>');
                 }
             }
-            Err(notification) => if cal_event.race.notified {
+            Err(notification) => if cal_event.is_notified() {
                 return Ok(None)
             } else {
                 msg.push(" — ");
                 msg.push(notification);
-                cal_event.race.notified = true;
+                *cal_event.is_notified_mut() = true;
             },
         }
         (msg.build(), allowed_mentions)
