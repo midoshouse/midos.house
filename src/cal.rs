@@ -3380,323 +3380,198 @@ impl IsNetworkError for AutoImportError {
 
 async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shutdown) -> Result<(), AutoImportError> {
     loop {
-        lock!(new_room_lock = global.new_room_lock; {
-            let mut transaction = global.db_pool.begin().await?;
-            for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
-                let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
-                if event.auto_import {
-                    match event.match_source() {
-                        MatchSource::Manual => {}
-                        MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
-                        MatchSource::League => if event.is_started(&mut transaction).await? {
-                            let mut races = Vec::default();
-                            for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
-                                races.push(Race::from_id(&mut transaction, &global.http_client, id).await?);
-                            }
-                            let schedule = global.http_client.get("https://league.ootrandomizer.com/scheduleJson")
-                                .send().await?
-                                .detailed_error_for_status().await.map_err(AutoImportError::LeagueSchedule)?
-                                .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::LeagueSchedule)?;
-                            for match_data in schedule.matches {
-                                if match_data.id <= 938 { continue } // seasons 5 to 8
-                                let mut new_race = Race {
-                                    id: Id::dummy(),
-                                    series: event.series,
-                                    event: event.event.to_string(),
-                                    source: Source::League { id: match_data.id },
-                                    entrants: Entrants::Two([
-                                        match_data.player_a.into_entrant(&global.http_client).await.map_err(AutoImportError::IntoEntrant)?,
-                                        match_data.player_b.into_entrant(&global.http_client).await.map_err(AutoImportError::IntoEntrant)?,
-                                    ]),
-                                    phase: None,
-                                    round: Some(match_data.division),
-                                    game: None,
-                                    scheduling_thread: None,
-                                    schedule: RaceSchedule::Live {
-                                        start: match_data.time_utc,
-                                        end: None,
-                                        room: None,
-                                    },
-                                    schedule_updated_at: None,
-                                    fpa_invoked: false,
-                                    draft: None,
-                                    seed: seed::Data::default(),
-                                    video_urls: if let Ok(twitch_username) = match_data.restreamers.iter().filter_map(|restreamer| restreamer.twitch_username.as_ref()).exactly_one() { //TODO notify on multiple restreams
-                                        iter::once((match_data.restream_language.unwrap_or(English), Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
-                                    } else {
-                                        HashMap::default()
-                                    },
-                                    restreamers: if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one() //TODO notify on multiple restreams
-                                        && let Some(restreamer) = restreamer.into_restreamer(&mut transaction, &global.http_client).await?
-                                    {
-                                        iter::once((match_data.restream_language.unwrap_or(English), restreamer)).collect()
-                                    } else {
-                                        HashMap::default()
-                                    },
-                                    commentators: HashMap::default(), //TODO import from League website
-                                    trackers: HashMap::default(),
-                                    last_edited_by: None,
-                                    last_edited_at: None,
-                                    ignored: match match_data.status {
-                                        league::MatchStatus::Canceled => true,
-                                        league::MatchStatus::Confirmed => false,
-                                    },
-                                    schedule_locked: false,
-                                    notified: false,
-                                    async_notified1: false,
-                                    async_notified2: false,
-                                    async_notified3: false,
-                                };
-                                if let Some(race) = races.iter_mut().find(|race| if let Source::League { id } = race.source { id == match_data.id } else { false }) {
-                                    if !race.schedule_locked {
-                                        let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
-                                        *race = Race {
-                                            id: race.id,
-                                            schedule: if is_upcoming { new_race.schedule } else { mem::take(&mut race.schedule) },
-                                            schedule_updated_at: race.schedule_updated_at,
-                                            seed: mem::take(&mut race.seed),
-                                            video_urls: if is_upcoming { new_race.video_urls } else { mem::take(&mut race.video_urls) },
-                                            restreamers: if is_upcoming { new_race.restreamers } else { mem::take(&mut race.restreamers) },
-                                            last_edited_at: race.last_edited_at,
-                                            last_edited_by: race.last_edited_by,
-                                            notified: race.notified,
-                                            async_notified1: race.async_notified1,
-                                            async_notified2: race.async_notified2,
-                                            async_notified3: race.async_notified3,
-                                            ..new_race
-                                        };
-                                    }
-                                    race
+        let mut transaction = global.db_pool.begin().await?;
+        for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
+            let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
+            if event.auto_import {
+                match event.match_source() {
+                    MatchSource::Manual => {}
+                    MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
+                    MatchSource::League => if event.is_started(&mut transaction).await? {
+                        let mut races = Vec::default();
+                        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
+                            races.push(Race::from_id(&mut transaction, &global.http_client, id).await?);
+                        }
+                        let schedule = global.http_client.get("https://league.ootrandomizer.com/scheduleJson")
+                            .send().await?
+                            .detailed_error_for_status().await.map_err(AutoImportError::LeagueSchedule)?
+                            .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::LeagueSchedule)?;
+                        for match_data in schedule.matches {
+                            if match_data.id <= 938 { continue } // seasons 5 to 8
+                            let mut new_race = Race {
+                                id: Id::dummy(),
+                                series: event.series,
+                                event: event.event.to_string(),
+                                source: Source::League { id: match_data.id },
+                                entrants: Entrants::Two([
+                                    match_data.player_a.into_entrant(&global.http_client).await.map_err(AutoImportError::IntoEntrant)?,
+                                    match_data.player_b.into_entrant(&global.http_client).await.map_err(AutoImportError::IntoEntrant)?,
+                                ]),
+                                phase: None,
+                                round: Some(match_data.division),
+                                game: None,
+                                scheduling_thread: None,
+                                schedule: RaceSchedule::Live {
+                                    start: match_data.time_utc,
+                                    end: None,
+                                    room: None,
+                                },
+                                schedule_updated_at: None,
+                                fpa_invoked: false,
+                                draft: None,
+                                seed: seed::Data::default(),
+                                video_urls: if let Ok(twitch_username) = match_data.restreamers.iter().filter_map(|restreamer| restreamer.twitch_username.as_ref()).exactly_one() { //TODO notify on multiple restreams
+                                    iter::once((match_data.restream_language.unwrap_or(English), Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
                                 } else {
-                                    new_race.id = Id::<Races>::new(&mut transaction).await?;
-                                    races.push(new_race);
-                                    races.last_mut().expect("just pushed")
-                                }.save(&mut transaction).await?;
-                            }
-                        },
-                        MatchSource::StartGG(event_slug) => if global.config.startgg.is_some() {
-                            loop {
-                                match startgg::races_to_import(&mut transaction, global, &event, event_slug).await {
-                                    Ok((races, _)) => {
-                                        for race in races {
-                                            transaction = import_race(transaction, discord_ctx!(global), race).await?;
-                                        }
-                                        break
-                                    }
-                                    Err(Error::UnknownTeamStartGG(entrant)) => if let Some(auth_token) = &global.config.startgg {
-                                        let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, auth_token, startgg::team_members_query::Variables { entrant: entrant.clone() }).await?;
-                                        let startgg::team_members_query::ResponseData {
-                                            entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
-                                                participants: Some(participants),
-                                            }),
-                                        } = response else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                        let Ok(startgg::team_members_query::TeamMembersQueryEntrantParticipants {
-                                            user: Some(startgg::team_members_query::TeamMembersQueryEntrantParticipantsUser { //TODO if user is None, this is a participant without a start.gg account, match on display name or DM Fenhl about connecting manually, don't return error
-                                                id: Some(user_id),
-                                            }),
-                                        }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                        let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                        let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                        sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant as _, team.id as _).execute(&mut *transaction).await?;
-                                        transaction.commit().await?;
-                                        transaction = global.db_pool.begin().await?;
-                                    } else {
-                                        return Err(Error::UnknownTeamStartGG(entrant).into())
-                                    },
-                                    Err(e) => return Err(e.into()),
+                                    HashMap::default()
+                                },
+                                restreamers: if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one() //TODO notify on multiple restreams
+                                    && let Some(restreamer) = restreamer.into_restreamer(&mut transaction, &global.http_client).await?
+                                {
+                                    iter::once((match_data.restream_language.unwrap_or(English), restreamer)).collect()
+                                } else {
+                                    HashMap::default()
+                                },
+                                commentators: HashMap::default(), //TODO import from League website
+                                trackers: HashMap::default(),
+                                last_edited_by: None,
+                                last_edited_at: None,
+                                ignored: match match_data.status {
+                                    league::MatchStatus::Canceled => true,
+                                    league::MatchStatus::Confirmed => false,
+                                },
+                                schedule_locked: false,
+                                notified: false,
+                                async_notified1: false,
+                                async_notified2: false,
+                                async_notified3: false,
+                            };
+                            if let Some(race) = races.iter_mut().find(|race| if let Source::League { id } = race.source { id == match_data.id } else { false }) {
+                                if !race.schedule_locked {
+                                    let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
+                                    *race = Race {
+                                        id: race.id,
+                                        schedule: if is_upcoming { new_race.schedule } else { mem::take(&mut race.schedule) },
+                                        schedule_updated_at: race.schedule_updated_at,
+                                        seed: mem::take(&mut race.seed),
+                                        video_urls: if is_upcoming { new_race.video_urls } else { mem::take(&mut race.video_urls) },
+                                        restreamers: if is_upcoming { new_race.restreamers } else { mem::take(&mut race.restreamers) },
+                                        last_edited_at: race.last_edited_at,
+                                        last_edited_by: race.last_edited_by,
+                                        notified: race.notified,
+                                        async_notified1: race.async_notified1,
+                                        async_notified2: race.async_notified2,
+                                        async_notified3: race.async_notified3,
+                                        ..new_race
+                                    };
                                 }
-                            }
-                        } else {
-                            println!("skipping start.gg race import due to missing access token");
-                        },
-                    }
-                }
-                if let Some(ref speedgaming_slug) = event.speedgaming_slug {
-                    let schedule = sgl::online_schedule(&global.http_client, speedgaming_slug).await.map_err(AutoImportError::SglOnlineSchedule)?;
-                    let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
-                    let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
-                    unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
-                    existing_races.sort_unstable_by_key(|cal_event| {
-                        let (Source::SpeedGamingOnline { id } | Source::StartGGSpeedGamingOnline { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
-                        id
-                    });
-                    let disambiguation_messages = sqlx::query_scalar!(
-                        "SELECT speedgaming_id FROM speedgaming_disambiguation_messages WHERE speedgaming_id = ANY($1) ORDER BY speedgaming_id ASC",
-                        &schedule.iter().flat_map(|restream| restream.matches()).map(|restream_match| restream_match.id).collect_vec(),
-                    ).fetch_all(&mut *transaction).await?;
-                    for restream in schedule {
-                        for restream_match in restream.matches() {
-                            if let Ok(idx) = existing_races.binary_search_by_key(&restream_match.id, |cal_event| {
-                                let (Source::SpeedGamingOnline { id } | Source::StartGGSpeedGamingOnline { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
-                                id
-                            }) {
-                                // this match is already assigned to a race, update it in case it got rescheduled or its restream info got changed
-                                let cal_event = &mut existing_races[idx];
-                                transaction = restream.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, cal_event, restream_match.id).await?;
-                                cal_event.race.save(&mut transaction).await?;
+                                race
                             } else {
-                                let mut matching_races = Vec::default();
-                                for (idx, cal_event) in unassigned_races.iter().enumerate() {
-                                    if restream_match.mismatch_reason(&mut transaction, &global.http_client, &cal_event.race).await?.is_none() {
-                                        matching_races.push((idx, cal_event));
+                                new_race.id = Id::<Races>::new(&mut transaction).await?;
+                                races.push(new_race);
+                                races.last_mut().expect("just pushed")
+                            }.save(&mut transaction).await?;
+                        }
+                    },
+                    MatchSource::StartGG(event_slug) => if global.config.startgg.is_some() {
+                        loop {
+                            match startgg::races_to_import(&mut transaction, global, &event, event_slug).await {
+                                Ok((races, _)) => {
+                                    for race in races {
+                                        transaction = import_race(transaction, discord_ctx!(global), race).await?;
                                     }
+                                    break
                                 }
-                                match matching_races.into_iter().at_most_one() {
-                                    Ok(None) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
-                                        if let Some(organizer_channel) = event.discord_organizer_channel {
-                                            let msg = MessageBuilder::default()
-                                                .push("could not find any races matching SpeedGaming match ")
-                                                .push_mono(restream_match.id.to_string())
-                                                .push(" (")
-                                                .push_safe(restream_match.to_string())
-                                                .push(')')
-                                                //TODO instructions for how to fix?
-                                                .build();
-                                            let notification = organizer_channel.say(discord_ctx!(global), msg).await?;
-                                            sqlx::query!(
-                                                "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
-                                                restream_match.id, PgSnowflake(notification.id) as _,
-                                            ).execute(&mut *transaction).await?;
-                                        }
-                                    },
-                                    Ok(Some((idx, _))) => {
-                                        let mut cal_event = unassigned_races.swap_remove(idx);
-                                        transaction = restream.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, &mut cal_event, restream_match.id).await?;
-                                        cal_event.race.save(&mut transaction).await?;
-                                    }
-                                    Err(races) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
-                                        if let Some(organizer_channel) = event.discord_organizer_channel {
-                                            let msg = MessageBuilder::default()
-                                                .push("found multiple races matching SpeedGaming match ")
-                                                .push_mono(restream_match.id.to_string())
-                                                .push(" (")
-                                                .push_safe(restream_match.to_string())
-                                                .push("), please select one to assign it to:")
-                                                .build();
-                                            let mut options = Vec::with_capacity(races.size_hint().0);
-                                            for (_, cal_event) in races {
-                                                let info_prefix = format!("{}{}{}",
-                                                    cal_event.race.phase.as_deref().unwrap_or(""),
-                                                    if cal_event.race.phase.is_none() || cal_event.race.round.is_none() { "" } else { " " },
-                                                    cal_event.race.round.as_deref().unwrap_or(""),
-                                                );
-                                                let summary = match cal_event.race.entrants {
-                                                    Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
-                                                    Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
-                                                    Entrants::Two([ref team1, ref team2]) => format!(
-                                                        "{info_prefix}{}{} vs {}",
-                                                        if info_prefix.is_empty() { "" } else { ": " },
-                                                        team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                        team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                    ),
-                                                    Entrants::Three([ref team1, ref team2, ref team3]) => format!(
-                                                        "{info_prefix}{}{} vs {} vs {}",
-                                                        if info_prefix.is_empty() { "" } else { ": " },
-                                                        team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                        team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                        team3.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                                    ),
-                                                };
-                                                options.push(CreateSelectMenuOption::new(if let Some(game) = cal_event.race.game {
-                                                    format!("{summary}, game {game}")
-                                                } else {
-                                                    summary
-                                                }, cal_event.race.id.to_string()));
-                                            }
-                                            let notification = organizer_channel.send_message(discord_ctx!(global), CreateMessage::default()
-                                                .content(msg)
-                                                .select_menu(
-                                                    CreateSelectMenu::new(format!("sgdisambig_{}", restream_match.id), CreateSelectMenuKind::String { options })
-                                                        .placeholder("Select Race")
-                                                )
-                                            ).await?;
-                                            sqlx::query!(
-                                                "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
-                                                restream_match.id, PgSnowflake(notification.id) as _,
-                                            ).execute(&mut *transaction).await?;
-                                        }
-                                    },
-                                }
+                                Err(Error::UnknownTeamStartGG(entrant)) => if let Some(auth_token) = &global.config.startgg {
+                                    let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, auth_token, startgg::team_members_query::Variables { entrant: entrant.clone() }).await?;
+                                    let startgg::team_members_query::ResponseData {
+                                        entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
+                                            participants: Some(participants),
+                                        }),
+                                    } = response else {return Err(Error::UnknownTeamStartGG(entrant).into()) };
+                                    let Ok(startgg::team_members_query::TeamMembersQueryEntrantParticipants {
+                                        user: Some(startgg::team_members_query::TeamMembersQueryEntrantParticipantsUser { //TODO if user is None, this is a participant without a start.gg account, match on display name or DM Fenhl about connecting manually, don't return error
+                                            id: Some(user_id),
+                                        }),
+                                    }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
+                                    let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
+                                    let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
+                                    sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant as _, team.id as _).execute(&mut *transaction).await?;
+                                    transaction.commit().await?;
+                                    transaction = global.db_pool.begin().await?;
+                                } else {
+                                    return Err(Error::UnknownTeamStartGG(entrant).into())
+                                },
+                                Err(e) => return Err(e.into()),
                             }
                         }
-                    }
+                    } else {
+                        println!("skipping start.gg race import due to missing access token");
+                    },
                 }
-                if let Some(tournament_id) = event.speedgaming_in_person_id {
-                    let schedule = sgl::in_person_schedule(&global.http_client, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
-                    let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
-                    let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
-                    unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
-                    existing_races.sort_unstable_by_key(|cal_event| {
-                        let Source::SpeedGamingInPerson { id } = cal_event.race.source else { unreachable!("partitioned above") };
-                        id
-                    });
-                    let disambiguation_messages = sqlx::query_scalar!(
-                        "SELECT speedgaming_id FROM speedgaming_onsite_disambiguation_messages WHERE speedgaming_id = ANY($1) ORDER BY speedgaming_id ASC",
-                        &schedule.iter().map(|schedule_match| schedule_match.id).collect_vec(),
-                    ).fetch_all(&mut *transaction).await?;
-                    for schedule_match in schedule {
-                        if let Ok(idx) = existing_races.binary_search_by_key(&schedule_match.id, |cal_event| {
-                            let Source::SpeedGamingInPerson { id } = cal_event.race.source else { unreachable!("partitioned above") };
+            }
+            if let Some(ref speedgaming_slug) = event.speedgaming_slug {
+                let schedule = sgl::online_schedule(&global.http_client, speedgaming_slug).await.map_err(AutoImportError::SglOnlineSchedule)?;
+                let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
+                let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
+                unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
+                existing_races.sort_unstable_by_key(|cal_event| {
+                    let (Source::SpeedGamingOnline { id } | Source::StartGGSpeedGamingOnline { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
+                    id
+                });
+                let disambiguation_messages = sqlx::query_scalar!(
+                    "SELECT speedgaming_id FROM speedgaming_disambiguation_messages WHERE speedgaming_id = ANY($1) ORDER BY speedgaming_id ASC",
+                    &schedule.iter().flat_map(|restream| restream.matches()).map(|restream_match| restream_match.id).collect_vec(),
+                ).fetch_all(&mut *transaction).await?;
+                for restream in schedule {
+                    for restream_match in restream.matches() {
+                        if let Ok(idx) = existing_races.binary_search_by_key(&restream_match.id, |cal_event| {
+                            let (Source::SpeedGamingOnline { id } | Source::StartGGSpeedGamingOnline { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
                             id
                         }) {
-                            // this match is already assigned to a race, update it in case it finished, got rescheduled, or its restream info got changed
+                            // this match is already assigned to a race, update it in case it got rescheduled or its restream info got changed
                             let cal_event = &mut existing_races[idx];
-                            transaction = schedule_match.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, cal_event).await?;
+                            transaction = restream.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, cal_event, restream_match.id).await?;
                             cal_event.race.save(&mut transaction).await?;
                         } else {
                             let mut matching_races = Vec::default();
                             for (idx, cal_event) in unassigned_races.iter().enumerate() {
-                                if schedule_match.matches(&mut transaction, &cal_event.race).await? {
+                                if restream_match.mismatch_reason(&mut transaction, &global.http_client, &cal_event.race).await?.is_none() {
                                     matching_races.push((idx, cal_event));
                                 }
                             }
                             match matching_races.into_iter().at_most_one() {
-                                Ok(None) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
+                                Ok(None) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
                                     if let Some(organizer_channel) = event.discord_organizer_channel {
-                                        let mut msg = MessageBuilder::default();
-                                        msg.push("could not find any races matching SpeedGaming on-site match ");
-                                        msg.push_mono(schedule_match.id.to_string());
-                                        if let Some(players) = NEVec::try_from_vec(schedule_match.players) {
-                                            let (first, rest) = players.into_nonempty_iter().next();
-                                            msg.push(" (");
-                                            msg.mention(&first.user.discord_id);
-                                            for player in rest {
-                                                msg.push(" vs ");
-                                                msg.mention(&player.user.discord_id);
-                                            }
-                                            msg.push(')');
-                                        }
-                                        //TODO instructions for how to fix?
-                                        let msg = msg.build();
+                                        let msg = MessageBuilder::default()
+                                            .push("could not find any races matching SpeedGaming match ")
+                                            .push_mono(restream_match.id.to_string())
+                                            .push(" (")
+                                            .push_safe(restream_match.to_string())
+                                            .push(')')
+                                            //TODO instructions for how to fix?
+                                            .build();
                                         let notification = organizer_channel.say(discord_ctx!(global), msg).await?;
                                         sqlx::query!(
-                                            "INSERT INTO speedgaming_onsite_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
-                                            schedule_match.id, PgSnowflake(notification.id) as _,
+                                            "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+                                            restream_match.id, PgSnowflake(notification.id) as _,
                                         ).execute(&mut *transaction).await?;
                                     }
                                 },
                                 Ok(Some((idx, _))) => {
                                     let mut cal_event = unassigned_races.swap_remove(idx);
-                                    transaction = schedule_match.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, &mut cal_event).await?;
+                                    transaction = restream.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, &mut cal_event, restream_match.id).await?;
                                     cal_event.race.save(&mut transaction).await?;
                                 }
-                                Err(races) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
+                                Err(races) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
                                     if let Some(organizer_channel) = event.discord_organizer_channel {
-                                        let mut msg = MessageBuilder::default();
-                                        msg.push("found multiple races matching SpeedGaming on-site match ");
-                                        msg.push_mono(schedule_match.id.to_string());
-                                        if let Some(players) = NEVec::try_from_vec(schedule_match.players) {
-                                            let (first, rest) = players.into_nonempty_iter().next();
-                                            msg.push(" (");
-                                            msg.mention(&first.user.discord_id);
-                                            for player in rest {
-                                                msg.push(" vs ");
-                                                msg.mention(&player.user.discord_id);
-                                            }
-                                            msg.push(')');
-                                        }
-                                        msg.push(", please select one to assign it to:");
-                                        let msg = msg.build();
+                                        let msg = MessageBuilder::default()
+                                            .push("found multiple races matching SpeedGaming match ")
+                                            .push_mono(restream_match.id.to_string())
+                                            .push(" (")
+                                            .push_safe(restream_match.to_string())
+                                            .push("), please select one to assign it to:")
+                                            .build();
                                         let mut options = Vec::with_capacity(races.size_hint().0);
                                         for (_, cal_event) in races {
                                             let info_prefix = format!("{}{}{}",
@@ -3730,13 +3605,13 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                                         let notification = organizer_channel.send_message(discord_ctx!(global), CreateMessage::default()
                                             .content(msg)
                                             .select_menu(
-                                                CreateSelectMenu::new(format!("sgonsitedisambig_{}", schedule_match.id), CreateSelectMenuKind::String { options })
+                                                CreateSelectMenu::new(format!("sgdisambig_{}", restream_match.id), CreateSelectMenuKind::String { options })
                                                     .placeholder("Select Race")
                                             )
                                         ).await?;
                                         sqlx::query!(
-                                            "INSERT INTO speedgaming_onsite_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
-                                            schedule_match.id, PgSnowflake(notification.id) as _,
+                                            "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+                                            restream_match.id, PgSnowflake(notification.id) as _,
                                         ).execute(&mut *transaction).await?;
                                     }
                                 },
@@ -3745,8 +3620,131 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                     }
                 }
             }
-            transaction.commit().await?;
-        });
+            if let Some(tournament_id) = event.speedgaming_in_person_id {
+                let schedule = sgl::in_person_schedule(&global.http_client, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
+                let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
+                let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
+                unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
+                existing_races.sort_unstable_by_key(|cal_event| {
+                    let Source::SpeedGamingInPerson { id } = cal_event.race.source else { unreachable!("partitioned above") };
+                    id
+                });
+                let disambiguation_messages = sqlx::query_scalar!(
+                    "SELECT speedgaming_id FROM speedgaming_onsite_disambiguation_messages WHERE speedgaming_id = ANY($1) ORDER BY speedgaming_id ASC",
+                    &schedule.iter().map(|schedule_match| schedule_match.id).collect_vec(),
+                ).fetch_all(&mut *transaction).await?;
+                for schedule_match in schedule {
+                    if let Ok(idx) = existing_races.binary_search_by_key(&schedule_match.id, |cal_event| {
+                        let Source::SpeedGamingInPerson { id } = cal_event.race.source else { unreachable!("partitioned above") };
+                        id
+                    }) {
+                        // this match is already assigned to a race, update it in case it finished, got rescheduled, or its restream info got changed
+                        let cal_event = &mut existing_races[idx];
+                        transaction = schedule_match.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, cal_event).await?;
+                        cal_event.race.save(&mut transaction).await?;
+                    } else {
+                        let mut matching_races = Vec::default();
+                        for (idx, cal_event) in unassigned_races.iter().enumerate() {
+                            if schedule_match.matches(&mut transaction, &cal_event.race).await? {
+                                matching_races.push((idx, cal_event));
+                            }
+                        }
+                        match matching_races.into_iter().at_most_one() {
+                            Ok(None) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
+                                if let Some(organizer_channel) = event.discord_organizer_channel {
+                                    let mut msg = MessageBuilder::default();
+                                    msg.push("could not find any races matching SpeedGaming on-site match ");
+                                    msg.push_mono(schedule_match.id.to_string());
+                                    if let Some(players) = NEVec::try_from_vec(schedule_match.players) {
+                                        let (first, rest) = players.into_nonempty_iter().next();
+                                        msg.push(" (");
+                                        msg.mention(&first.user.discord_id);
+                                        for player in rest {
+                                            msg.push(" vs ");
+                                            msg.mention(&player.user.discord_id);
+                                        }
+                                        msg.push(')');
+                                    }
+                                    //TODO instructions for how to fix?
+                                    let msg = msg.build();
+                                    let notification = organizer_channel.say(discord_ctx!(global), msg).await?;
+                                    sqlx::query!(
+                                        "INSERT INTO speedgaming_onsite_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+                                        schedule_match.id, PgSnowflake(notification.id) as _,
+                                    ).execute(&mut *transaction).await?;
+                                }
+                            },
+                            Ok(Some((idx, _))) => {
+                                let mut cal_event = unassigned_races.swap_remove(idx);
+                                transaction = schedule_match.update_race(&global.db_pool, transaction, discord_ctx!(global), &event, &mut cal_event).await?;
+                                cal_event.race.save(&mut transaction).await?;
+                            }
+                            Err(races) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
+                                if let Some(organizer_channel) = event.discord_organizer_channel {
+                                    let mut msg = MessageBuilder::default();
+                                    msg.push("found multiple races matching SpeedGaming on-site match ");
+                                    msg.push_mono(schedule_match.id.to_string());
+                                    if let Some(players) = NEVec::try_from_vec(schedule_match.players) {
+                                        let (first, rest) = players.into_nonempty_iter().next();
+                                        msg.push(" (");
+                                        msg.mention(&first.user.discord_id);
+                                        for player in rest {
+                                            msg.push(" vs ");
+                                            msg.mention(&player.user.discord_id);
+                                        }
+                                        msg.push(')');
+                                    }
+                                    msg.push(", please select one to assign it to:");
+                                    let msg = msg.build();
+                                    let mut options = Vec::with_capacity(races.size_hint().0);
+                                    for (_, cal_event) in races {
+                                        let info_prefix = format!("{}{}{}",
+                                            cal_event.race.phase.as_deref().unwrap_or(""),
+                                            if cal_event.race.phase.is_none() || cal_event.race.round.is_none() { "" } else { " " },
+                                            cal_event.race.round.as_deref().unwrap_or(""),
+                                        );
+                                        let summary = match cal_event.race.entrants {
+                                            Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
+                                            Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
+                                            Entrants::Two([ref team1, ref team2]) => format!(
+                                                "{info_prefix}{}{} vs {}",
+                                                if info_prefix.is_empty() { "" } else { ": " },
+                                                team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                            ),
+                                            Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                                                "{info_prefix}{}{} vs {} vs {}",
+                                                if info_prefix.is_empty() { "" } else { ": " },
+                                                team1.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                team2.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                team3.name(&mut transaction, discord_ctx!(global)).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                            ),
+                                        };
+                                        options.push(CreateSelectMenuOption::new(if let Some(game) = cal_event.race.game {
+                                            format!("{summary}, game {game}")
+                                        } else {
+                                            summary
+                                        }, cal_event.race.id.to_string()));
+                                    }
+                                    let notification = organizer_channel.send_message(discord_ctx!(global), CreateMessage::default()
+                                        .content(msg)
+                                        .select_menu(
+                                            CreateSelectMenu::new(format!("sgonsitedisambig_{}", schedule_match.id), CreateSelectMenuKind::String { options })
+                                                .placeholder("Select Race")
+                                        )
+                                    ).await?;
+                                    sqlx::query!(
+                                        "INSERT INTO speedgaming_onsite_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+                                        schedule_match.id, PgSnowflake(notification.id) as _,
+                                    ).execute(&mut *transaction).await?;
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        }
+        transaction.commit().await?;
         select! {
             () = &mut shutdown => break,
             () = sleep(Duration::from_mins(1)) => {}
