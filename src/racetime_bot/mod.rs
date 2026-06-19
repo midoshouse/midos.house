@@ -665,7 +665,6 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
             | Self::Efk2026
-            | Self::MixedPoolsS5
             | Self::Mq
             | Self::MultiworldS2
             | Self::MultiworldS3
@@ -698,6 +697,7 @@ impl Goal {
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::MixedPoolsS4
+            | Self::MixedPoolsS5
                 => PrerollMode::Long,
         }
     }
