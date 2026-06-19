@@ -194,6 +194,7 @@ pub(crate) struct Data<'a> {
     pub(crate) emulator_settings_reminder: bool,
     pub(crate) prevent_late_joins: bool,
     pub(crate) manual_reporting_with_breaks: bool,
+    pub(crate) async_organizer_notifications: bool,
     pub(crate) language: Language,
     pub(crate) listed: bool,
 }
@@ -253,6 +254,7 @@ impl<'a> Data<'a> {
             emulator_settings_reminder,
             prevent_late_joins,
             manual_reporting_with_breaks,
+            async_organizer_notifications,
             language AS "language: Language",
             listed
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&mut **transaction).await?
@@ -291,6 +293,7 @@ impl<'a> Data<'a> {
                 emulator_settings_reminder: row.emulator_settings_reminder,
                 prevent_late_joins: row.prevent_late_joins,
                 manual_reporting_with_breaks: row.manual_reporting_with_breaks,
+                async_organizer_notifications: row.async_organizer_notifications,
                 language: row.language,
                 series, event,
                 listed: row.listed,

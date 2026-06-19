@@ -22,10 +22,7 @@ use {
         Encode,
         types::Json,
     },
-    crate::{
-        event::SchedulingBackend,
-        prelude::*,
-    },
+    crate::prelude::*,
 };
 
 pub(crate) const FENHL: UserId = UserId::new(86841168427495424);

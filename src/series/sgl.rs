@@ -4,7 +4,6 @@ use {
         event::{
             Data,
             InfoError,
-            SchedulingBackend,
         },
         prelude::*,
     },

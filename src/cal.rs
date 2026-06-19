@@ -3780,143 +3780,147 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
             @if let Ok(cal_event) = race.into_async_part_for(&mut transaction, me).await? {
                 @if let Ok(team) = cal_event.active_entrants().filter_map(Entrant::team).exactly_one() {
                     @if let Some(team_row) = sqlx::query!(r#"SELECT requested, submitted FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
-                        @if team_row.submitted.is_none() {
-                            @let extra = cal_event.race.seed.extra(global).await?;
-                            @let seed_table = seed::table(global, stream::iter(iter::once(cal_event.race.seed.clone())), false, true).await?;
-                            @let ctx = ctx.take_submit_async();
-                            @let mut errors = ctx.errors().collect_vec();
-                            div(class = "info") {
-                                p {
-                                    : "You requested an async on ";
-                                    : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
-                                    : ".";
-                                };
-                                : seed_table;
-                                @if let Some(mw::Impl::MidosHouse) = team.mw_impl {
+                        @if let RaceHandleMode::AsyncForm = cal_event.should_create_room(&mut transaction, &event).await? {
+                            @if team_row.submitted.is_none() {
+                                @let extra = cal_event.race.seed.extra(global).await?;
+                                @let seed_table = seed::table(global, stream::iter(iter::once(cal_event.race.seed.clone())), false, true).await?;
+                                @let ctx = ctx.take_submit_async();
+                                @let mut errors = ctx.errors().collect_vec();
+                                div(class = "info") {
                                     p {
-                                        : "Your Mido's House Multiworld room named “";
-                                        : cal_event.race.mw_room_name(&event, team.id);
-                                        : "” is now open. You can find it at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen. Please note that you are ";
-                                        strong : "required";
-                                        : " to use this room.";
-                                    }
-                                }
-                                p : "After playing the async, fill out the form below.";
-                                : full_form(uri!(submit_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
-                                    @match event.team_config {
-                                        TeamConfig::Solo => {
-                                            @if let Series::TriforceBlitz = event.series {
-                                                : form_field("pieces", &mut errors, html! {
-                                                    label(for = "pieces") : "Number of Triforce Pieces found:";
-                                                    input(type = "number", min = "0", max = tfb::piece_count(event.team_config), name = "pieces", value? = ctx.field_value("pieces"));
-                                                });
-                                                : form_field("time1", &mut errors, html! {
-                                                    label(for = "time1") : "Time at which you found the most recent piece:";
-                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
-                                                    label(class = "help") : "(If you did not find any, leave this field blank.)";
-                                                });
-                                            } else {
-                                                : form_field("time1", &mut errors, html! {
-                                                    label(for = "time1") : "Finishing Time:";
-                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
-                                                    label(class = "help") : "(If you did not finish, leave this field blank.)";
-                                                });
-                                            }
-                                            : form_field("vod1", &mut errors, html! {
-                                                label(for = "vod1") : "VoD:";
-                                                input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
-                                                label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
-                                            });
+                                        : "You requested an async on ";
+                                        : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
+                                        : ".";
+                                    };
+                                    : seed_table;
+                                    @if let Some(mw::Impl::MidosHouse) = team.mw_impl {
+                                        p {
+                                            : "Your Mido's House Multiworld room named “";
+                                            : cal_event.race.mw_room_name(&event, team.id);
+                                            : "” is now open. You can find it at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen. Please note that you are ";
+                                            strong : "required";
+                                            : " to use this room.";
                                         }
-                                        TeamConfig::Pictionary => @unimplemented
-                                        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::NightAndDay => {
-                                            @if let Series::TriforceBlitz = event.series {
-                                                : form_field("pieces", &mut errors, html! {
-                                                    label(for = "pieces") : "Number of Triforce Pieces found:";
-                                                    input(type = "number", min = "0", max = tfb::piece_count(event.team_config), name = "pieces", value? = ctx.field_value("pieces"));
-                                                });
-                                                : form_field("time1", &mut errors, html! {
-                                                    label(for = "time1") : "Time at which you found the most recent piece:";
-                                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
-                                                    label(class = "help") : "(If you did not find any, leave this field blank.)";
-                                                });
+                                    }
+                                    p : "After playing the async, fill out the form below.";
+                                    : full_form(uri!(submit_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
+                                        @match event.team_config {
+                                            TeamConfig::Solo => {
+                                                @if let Series::TriforceBlitz = event.series {
+                                                    : form_field("pieces", &mut errors, html! {
+                                                        label(for = "pieces") : "Number of Triforce Pieces found:";
+                                                        input(type = "number", min = "0", max = tfb::piece_count(event.team_config), name = "pieces", value? = ctx.field_value("pieces"));
+                                                    });
+                                                    : form_field("time1", &mut errors, html! {
+                                                        label(for = "time1") : "Time at which you found the most recent piece:";
+                                                        input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If you did not find any, leave this field blank.)";
+                                                    });
+                                                } else {
+                                                    : form_field("time1", &mut errors, html! {
+                                                        label(for = "time1") : "Finishing Time:";
+                                                        input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If you did not finish, leave this field blank.)";
+                                                    });
+                                                }
                                                 : form_field("vod1", &mut errors, html! {
-                                                    label(for = "vod1") : "Player 1 VoD:";
+                                                    label(for = "vod1") : "VoD:";
                                                     input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
                                                     label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
                                                 });
-                                                : form_field("vod2", &mut errors, html! {
-                                                    label(for = "vod2") : "Player 2 VoD:";
-                                                    input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
-                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
-                                                });
-                                            } else {
+                                            }
+                                            TeamConfig::Pictionary => @unimplemented
+                                            TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::NightAndDay => {
+                                                @if let Series::TriforceBlitz = event.series {
+                                                    : form_field("pieces", &mut errors, html! {
+                                                        label(for = "pieces") : "Number of Triforce Pieces found:";
+                                                        input(type = "number", min = "0", max = tfb::piece_count(event.team_config), name = "pieces", value? = ctx.field_value("pieces"));
+                                                    });
+                                                    : form_field("time1", &mut errors, html! {
+                                                        label(for = "time1") : "Time at which you found the most recent piece:";
+                                                        input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If you did not find any, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod1", &mut errors, html! {
+                                                        label(for = "vod1") : "Player 1 VoD:";
+                                                        input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                    : form_field("vod2", &mut errors, html! {
+                                                        label(for = "vod2") : "Player 2 VoD:";
+                                                        input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                } else {
+                                                    : form_field("time1", &mut errors, html! {
+                                                        label(for = "time1") : "Player 1 Finishing Time:";
+                                                        input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod1", &mut errors, html! {
+                                                        label(for = "vod1") : "Player 1 VoD:";
+                                                        input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                    : form_field("time2", &mut errors, html! {
+                                                        label(for = "time2") : "Player 2 Finishing Time:";
+                                                        input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod2", &mut errors, html! {
+                                                        label(for = "vod2") : "Player 2 VoD:";
+                                                        input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                }
+                                            }
+                                            TeamConfig::Multiworld => {
                                                 : form_field("time1", &mut errors, html! {
-                                                    label(for = "time1") : "Player 1 Finishing Time:";
+                                                    label(for = "time1", class = "power") : "Player 1 Finishing Time:";
                                                     input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
                                                     label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
                                                 });
                                                 : form_field("vod1", &mut errors, html! {
-                                                    label(for = "vod1") : "Player 1 VoD:";
+                                                    label(for = "vod1", class = "power") : "Player 1 VoD:";
                                                     input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
-                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
                                                 });
                                                 : form_field("time2", &mut errors, html! {
-                                                    label(for = "time2") : "Player 2 Finishing Time:";
+                                                    label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
                                                     input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
                                                     label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
                                                 });
                                                 : form_field("vod2", &mut errors, html! {
-                                                    label(for = "vod2") : "Player 2 VoD:";
+                                                    label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
                                                     input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
-                                                    label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                                });
+                                                : form_field("time3", &mut errors, html! {
+                                                    label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
+                                                    input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
+                                                    label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
+                                                });
+                                                : form_field("vod3", &mut errors, html! {
+                                                    label(for = "vod3", class = "courage") : "Player 3 VoD:";
+                                                    input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
+                                                    label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
                                                 });
                                             }
+                                            TeamConfig::SlugOpen => @unimplemented
                                         }
-                                        TeamConfig::Multiworld => {
-                                            : form_field("time1", &mut errors, html! {
-                                                label(for = "time1", class = "power") : "Player 1 Finishing Time:";
-                                                input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
-                                                label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
-                                            });
-                                            : form_field("vod1", &mut errors, html! {
-                                                label(for = "vod1", class = "power") : "Player 1 VoD:";
-                                                input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
-                                                label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
-                                            });
-                                            : form_field("time2", &mut errors, html! {
-                                                label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
-                                                input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
-                                                label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
-                                            });
-                                            : form_field("vod2", &mut errors, html! {
-                                                label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
-                                                input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
-                                                label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
-                                            });
-                                            : form_field("time3", &mut errors, html! {
-                                                label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
-                                                input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
-                                                label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
-                                            });
-                                            : form_field("vod3", &mut errors, html! {
-                                                label(for = "vod3", class = "courage") : "Player 3 VoD:";
-                                                input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
-                                                label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
-                                            });
-                                        }
-                                        TeamConfig::SlugOpen => @unimplemented
-                                    }
-                                    : form_field("fpa", &mut errors, html! {
-                                        label(for = "fpa") {
-                                            : "If you would like to invoke the ";
-                                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
-                                            : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
-                                        }
-                                        textarea(name = "fpa") : ctx.field_value("fpa");
-                                    });
-                                }, errors, "Submit");
+                                        : form_field("fpa", &mut errors, html! {
+                                            label(for = "fpa") {
+                                                : "If you would like to invoke the ";
+                                                a(href = "https://wiki.ootrandomizer.com/index.php?title=Fair_Play_Agreement") : "Fair Play Agreement";
+                                                : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
+                                            }
+                                            textarea(name = "fpa") : ctx.field_value("fpa");
+                                        });
+                                    }, errors, "Submit");
+                                }
                             }
+                        } else {
+                            p : "This async is not available via the Mido's House website. For details, please contact an organizer.";
                         }
                     } else {
                         @if let Some(start) = cal_event.start() {
@@ -4148,7 +4152,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 players.push(player);
             }
             //TODO report result (like Handler::official_race_finished in racetime_bot::report) if this concludes the race
-            if let Some(organizer_channel) = event.discord_organizer_channel {
+            if event.async_organizer_notifications && let Some(organizer_channel) = event.discord_organizer_channel {
                 let mut message = MessageBuilder::default();
                 message.push("async submitted by ");
                 message.mention_team(&mut transaction, event.discord_guild, &team).await?;

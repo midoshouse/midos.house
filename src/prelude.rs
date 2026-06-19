@@ -238,6 +238,7 @@ pub(crate) use {
             self,
             AsyncKind,
             MatchSource,
+            SchedulingBackend,
             TeamConfig,
             VolunteerRole,
             teams::QualifierKind,

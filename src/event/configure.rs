@@ -26,11 +26,13 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, global: &Glo
                             label(class = "help") : "(If this option is turned off, you can import races by clicking the Import button on the Races tab.)";
                         });
                     }
-                    : form_field("min_schedule_notice", &mut errors, html! {
-                        label(for = "min_schedule_notice") : "Minimum scheduling notice:";
-                        input(type = "text", name = "min_schedule_notice", value = ctx.field_value("min_schedule_notice").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.min_schedule_notice)))); //TODO h:m:s fields?
-                        label(class = "help") : "(Races must be scheduled at least this far in advance. Can be configured to be as low as 0 seconds, but note that if a race is scheduled less than 30 minutes in advance, the room is opened immediately, and if a race is scheduled less than 15 minutes in advance, the seed is posted immediately.)";
-                    });
+                    @if let SchedulingBackend::MidosHouse = event.scheduling_backend(&mut transaction).await? {
+                        : form_field("min_schedule_notice", &mut errors, html! {
+                            label(for = "min_schedule_notice") : "Minimum scheduling notice:";
+                            input(type = "text", name = "min_schedule_notice", value = ctx.field_value("min_schedule_notice").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.min_schedule_notice)))); //TODO h:m:s fields?
+                            label(class = "help") : "(Races must be scheduled at least this far in advance. Can be configured to be as low as 0 seconds, but note that if a race is scheduled less than 30 minutes in advance, the room is opened immediately, and if a race is scheduled less than 15 minutes in advance, the seed is posted immediately.)";
+                        });
+                    }
                     @if matches!(event.match_source(), MatchSource::StartGG(_)) || event.discord_race_results_channel.is_some() {
                         : form_field("retime_window", &mut errors, html! {
                             label(for = "retime_window") : "Retime window:";
@@ -48,6 +50,12 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, global: &Glo
                         : form_field("manual_reporting_with_breaks", &mut errors, html! {
                             input(type = "checkbox", id = "manual_reporting_with_breaks", name = "manual_reporting_with_breaks", checked? = ctx.field_value("manual_reporting_with_breaks").map_or(event.manual_reporting_with_breaks, |value| value == "on"));
                             label(for = "manual_reporting_with_breaks") : "Disable automatic result reporting if !breaks command is used";
+                        });
+                    }
+                    @if racetime_bot::Goal::for_event(event.series, &event.event).is_some_and(|goal| !event.team_config.is_racetime_team_format() || goal.is_custom()) && event.discord_organizer_channel.is_some() {
+                        : form_field("async_organizer_notifications", &mut errors, html! {
+                            input(type = "checkbox", id = "async_organizer_notifications", name = "async_organizer_notifications", checked? = ctx.field_value("async_organizer_notifications").map_or(event.async_organizer_notifications, |value| value == "on"));
+                            label(for = "async_organizer_notifications") : "Notify organizers on submission of asynced races";
                         });
                     }
                 }, errors, "Save");
@@ -97,6 +105,7 @@ pub(crate) struct ConfigureForm {
     min_schedule_notice: String,
     retime_window: Option<String>,
     manual_reporting_with_breaks: bool,
+    async_organizer_notifications: bool,
 }
 
 #[rocket::post("/event/<series>/<event>/configure", data = "<form>")]
@@ -134,7 +143,7 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
             if let MatchSource::StartGG(_) = data.match_source() {
                 sqlx::query!("UPDATE events SET auto_import = $1 WHERE series = $2 AND event = $3", value.auto_import, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
-            if let Some(min_schedule_notice) = min_schedule_notice {
+            if let Some(min_schedule_notice) = min_schedule_notice && let SchedulingBackend::MidosHouse = data.scheduling_backend(&mut transaction).await? {
                 sqlx::query!("UPDATE events SET min_schedule_notice = $1 WHERE series = $2 AND event = $3", min_schedule_notice as _, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
             if let Some(retime_window) = retime_window {
@@ -142,6 +151,9 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
             }
             if matches!(data.match_source(), MatchSource::StartGG(_)) || data.discord_race_results_channel.is_some() {
                 sqlx::query!("UPDATE events SET manual_reporting_with_breaks = $1 WHERE series = $2 AND event = $3", value.manual_reporting_with_breaks, data.series as _, &data.event).execute(&mut *transaction).await?;
+            }
+            if racetime_bot::Goal::for_event(data.series, &data.event).is_some_and(|goal| !data.team_config.is_racetime_team_format() || goal.is_custom()) && data.discord_organizer_channel.is_some() {
+                sqlx::query!("UPDATE events SET async_organizer_notifications = $1 WHERE series = $2 AND event = $3", value.async_organizer_notifications, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::info(series, event))))
