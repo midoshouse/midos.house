@@ -1050,6 +1050,7 @@ pub(crate) enum Error {
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] PracticeFavicon(#[from] PracticeFaviconError),
     #[error(transparent)] RaceTime(#[from] racetime_bot::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -1060,6 +1061,8 @@ pub(crate) enum Error {
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("ExactlyOneError while formatting result of last async half")]
+    ExactlyOne,
     #[error("attempted to update non-SpeedGaming race with data from SpeedGaming backend")]
     NonSpeedGamingRace,
     #[error("missing user data for an organizer")]
@@ -1083,6 +1086,7 @@ impl IsNetworkError for Error {
             Self::Json(_) => false,
             Self::OotrWeb(e) => e.is_network_error(),
             Self::Page(e) => e.is_network_error(),
+            Self::PgInterval(_) => false,
             Self::PracticeFavicon(e) => e.is_network_error(),
             Self::RaceTime(e) => e.is_network_error(),
             Self::Reqwest(e) => e.is_network_error(),
@@ -1093,6 +1097,7 @@ impl IsNetworkError for Error {
             Self::TimeFromLocal(_) => false,
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
+            Self::ExactlyOne => false,
             Self::NonSpeedGamingRace => false,
             Self::OrganizerUserData => false,
             Self::RestreamCoordinatorUserData => false,

@@ -27,7 +27,7 @@ use {
 #[cfg(unix)] use async_proto::Protocol;
 #[cfg(windows)] use directories::UserDirs;
 
-mod report;
+pub(crate) mod report;
 
 #[cfg(unix)] pub(crate) const PYTHON: &str = "python3";
 #[cfg(windows)] pub(crate) const PYTHON: &str = "py";

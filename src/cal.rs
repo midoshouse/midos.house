@@ -25,7 +25,13 @@ use {
             Tab,
         },
         prelude::*,
-        racetime_bot::roll_seed_locally,
+        racetime_bot::{
+            report::{
+                TeamLinks,
+                report_1v1,
+            },
+            roll_seed_locally,
+        },
         sheets,
     },
 };
@@ -4151,61 +4157,276 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 }
                 players.push(player);
             }
-            //TODO report result (like Handler::official_race_finished in racetime_bot::report) if this concludes the race
-            if event.async_organizer_notifications && let Some(organizer_channel) = event.discord_organizer_channel {
-                let mut message = MessageBuilder::default();
-                message.push("async submitted by ");
-                message.mention_team(&mut transaction, event.discord_guild, &team).await?;
-                message.push(" who");
-                if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
-                    if let Some(pieces) = value.pieces {
-                        message.push(" finished with a score of ");
-                        message.push(pieces.to_string());
-                        message.push(if pieces == 1 { " piece at " } else { " pieces at " });
+            if cal_event.is_private_async_part() {
+                if event.async_organizer_notifications && let Some(organizer_channel) = event.discord_organizer_channel {
+                    let mut message = MessageBuilder::default();
+                    message.push("async submitted by ");
+                    message.mention_team(&mut transaction, event.discord_guild, &team).await?;
+                    message.push(" who");
+                    if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
+                        if let Some(pieces) = value.pieces {
+                            message.push(" finished with a score of ");
+                            message.push(pieces.to_string());
+                            message.push(if pieces == 1 { " piece at " } else { " pieces at " });
+                        } else {
+                            message.push(" finished with a time of ");
+                        }
+                        message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
                     } else {
-                        message.push(" finished with a time of ");
+                        message.push(" did not finish");
                     }
-                    message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
-                } else {
-                    message.push(" did not finish");
+                    match players.into_iter().zip(&times).zip(&vods).exactly_one() {
+                        Ok(((_, _), vod)) => if vod.is_empty() {
+                            message.push_line("");
+                        } else {
+                            message.push(' ');
+                            message.push_line_safe(vod);
+                        },
+                        Err(data) => {
+                            message.push_line("");
+                            for (i, ((player, time), vod)) in data.enumerate() {
+                                if let Some(player) = User::from_id(&mut *transaction, player).await? {
+                                    message.mention_user(&player);
+                                } else {
+                                    message.push("player ");
+                                    message.push((i + 1).to_string());
+                                }
+                                message.push(": ");
+                                if let Some(time) = *time {
+                                    message.push(English.format_duration(time, false));
+                                } else {
+                                    message.push("DNF");
+                                }
+                                if vod.is_empty() {
+                                    message.push_line("");
+                                } else {
+                                    message.push(' ');
+                                    message.push_line_safe(vod);
+                                }
+                            }
+                        }
+                    }
+                    if !value.fpa.is_empty() {
+                        message.push("FPA call:");
+                        message.quote_rest();
+                        message.push_safe(&value.fpa);
+                    }
+                    organizer_channel.say(discord_ctx!(global), message.build()).await?;
                 }
-                match players.into_iter().zip(&times).zip(&vods).exactly_one() {
-                    Ok(((_, _), vod)) => if vod.is_empty() {
-                        message.push_line("");
-                    } else {
-                        message.push(' ');
-                        message.push_line_safe(vod);
-                    },
-                    Err(data) => {
-                        message.push_line("");
-                        for (i, ((player, time), vod)) in data.enumerate() {
-                            if let Some(player) = User::from_id(&mut *transaction, player).await? {
-                                message.mention_user(&player);
-                            } else {
-                                message.push("player ");
-                                message.push((i + 1).to_string());
+            } else {
+                //TODO deduplicate with Handler::official_race_finished in racetime_bot::report
+                if cal_event.race.fpa_invoked || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM race_async_teams WHERE race = $1 AND fpa IS NOT NULL) AS "exists!""#, cal_event.race.id as _).fetch_one(&mut *transaction).await? {
+                    if let Some(organizer_channel) = event.discord_organizer_channel {
+                        let mut msg = MessageBuilder::default();
+                        msg.push("asynced race finished with FPA call");
+                        if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, Source::StartGG { .. } | Source::StartGGSpeedGamingOnline { .. }) {
+                            msg.push(" — please manually ");
+                            if let Some(results_channel) = event.discord_race_results_channel {
+                                msg.push("post the announcement in ");
+                                msg.mention(&results_channel);
                             }
-                            message.push(": ");
-                            if let Some(time) = *time {
-                                message.push(English.format_duration(time, false));
-                            } else {
-                                message.push("DNF");
+                            if let Some(startgg_report_url) = cal_event.race.startgg_report_url()? {
+                                if event.discord_race_results_channel.is_some() {
+                                    msg.push(" and ");
+                                }
+                                msg.push_named_link_no_preview("report the result on start.gg", startgg_report_url);
                             }
-                            if vod.is_empty() {
-                                message.push_line("");
+                            msg.push(" after adjusting the times");
+                        }
+                        msg.push_line("");
+                        //TODO note to manually initialize high seed for next game's draft (if any) and use `/post-status`
+                        for async_part in cal_event.race.cal_events() {
+                            let active_entrant = async_part.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
+                            let active_team = active_entrant.team().expect("async submitted by non-MH entrant");
+                            msg.mention_entrant_long(&mut transaction, event.discord_guild, active_entrant).await?;
+                            if let Some(team_data) = sqlx::query!("SELECT fpa, pieces FROM race_async_teams WHERE race = $1 AND team = $2", cal_event.race.id as _, active_team.id as _).fetch_optional(&mut *transaction).await? {
+                                let members = active_entrant.member_ids_roles(&mut transaction).await?;
+                                let member_data = sqlx::query!(
+                                    r#"SELECT player AS "player: Id<Users>", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)"#,
+                                    cal_event.race.id as _,
+                                    &members.iter().map(|(member_id, _)| i64::from(*member_id)).collect_vec(),
+                                ).fetch_all(&mut *transaction).await?;
+                                if let Some(times) = member_data.iter().map(|row| row.time).collect::<Option<Vec<_>>>() {
+                                    let sum = times.into_iter().try_fold(Duration::default(), |acc, time| Ok::<_, event::Error>(acc + decode_pginterval(time)?))?;
+                                    if let Some(pieces) = team_data.pieces {
+                                        msg.push(" finished with a score of ");
+                                        msg.push(pieces.to_string());
+                                        msg.push(if pieces == 1 { " piece at " } else { " pieces at " });
+                                    } else {
+                                        msg.push(" finished with a time of ");
+                                    }
+                                    msg.push(English.format_duration(sum / u32::try_from(member_data.len()).expect("too many players in team"), true));
+                                } else {
+                                    msg.push(" did not finish");
+                                }
+                                match member_data.into_iter().exactly_one() {
+                                    Ok(row) => if let Some(vod) = row.vod && !vod.is_empty() {
+                                        msg.push(' ');
+                                        msg.push_line_safe(vod);
+                                    } else {
+                                        msg.push_line("");
+                                    },
+                                    Err(data) => {
+                                        msg.push_line("");
+                                        for (i, row) in data.enumerate() {
+                                            if let Some(player) = User::from_id(&mut *transaction, row.player).await? {
+                                                msg.mention_user(&player);
+                                            } else {
+                                                msg.push("player ");
+                                                msg.push((i + 1).to_string());
+                                            }
+                                            msg.push(": ");
+                                            if let Some(time) = row.time {
+                                                msg.push(English.format_duration(decode_pginterval(time)?, false));
+                                            } else {
+                                                msg.push("DNF");
+                                            }
+                                            if let Some(vod) = row.vod && !vod.is_empty() {
+                                                msg.push(' ');
+                                                msg.push_line_safe(vod);
+                                            } else {
+                                                msg.push_line("");
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(fpa) = team_data.fpa && !fpa.is_empty() {
+                                    msg.push("FPA call:");
+                                    for line in fpa.lines() {
+                                        msg.push_quote_line_safe(line);
+                                    }
+                                }
                             } else {
-                                message.push(' ');
-                                message.push_line_safe(vod);
+                                msg.push_line(" did not submit"); //TODO adjust results post handling to wait until everyone has submitted
+                            }
+                        }
+                        organizer_channel.say(discord_ctx!(global), msg.build()).await?;
+                    }
+                } else {
+                    match cal_event.race.entrants {
+                        Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => unimplemented!(),
+                        Entrants::Two(_) | Entrants::Three(_) => {
+                            let mut entrant_times = HashMap::<_, Vec<_>>::default();
+                            let mut entrant_rooms = HashMap::new();
+                            let mut all_entrants_found = true;
+                            for private_async_part in cal_event.race.cal_events().filter(|cal_event| cal_event.is_private_async_part()) {
+                                let nonactive_entrant = private_async_part.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
+                                if let Some(ref room) = private_async_part.room() {
+                                    let data = global.http_client.get(format!("{}/data", room.to_string()))
+                                        .send().await?
+                                        .detailed_error_for_status().await?
+                                        .json_with_text_in_error::<RaceData>().await?;
+                                    entrant_rooms.insert(nonactive_entrant.clone(), TeamLinks::Room(Url::clone(room)));
+                                    for entrant in &data.entrants {
+                                        entrant_times.entry(nonactive_entrant.clone()).or_default().push(entrant.finish_time);
+                                    }
+                                } else {
+                                    let members = nonactive_entrant.member_ids_roles(&mut transaction).await?;
+                                    let data = sqlx::query!(
+                                        r#"SELECT player AS "player: Id<Users>", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)"#,
+                                        cal_event.race.id as _,
+                                        &members.iter().map(|(member_id, _)| i64::from(*member_id)).collect_vec(),
+                                    ).fetch_all(&mut *transaction).await?;
+                                    if members.iter().all(|(member_id, role)| !event.team_config.role_is_racing(*role) || data.iter().any(|row| row.player == *member_id)) {
+                                        entrant_times.insert(nonactive_entrant.clone(), data.iter().map(|row| Ok::<_, event::Error>(row.time.map(decode_pginterval).transpose()?)).try_collect()?);
+                                        entrant_rooms.insert(nonactive_entrant.clone(), TeamLinks::AsyncForm({
+                                            let mut links = data.into_iter().map(|row| {
+                                                let (_, role) = *members.iter().find(|(member_id, _)| *member_id == row.player).expect("async submission from unexpected player");
+                                                let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
+                                                Ok::<_, event::Error>((role_name, row.vod.map(|vod| vod.parse()).transpose()?))
+                                            }).collect::<Result<Vec<_>, _>>()?;
+                                            links.sort_unstable();
+                                            links
+                                        }));
+                                    } else {
+                                        all_entrants_found = false;
+                                    }
+                                }
+                            }
+                            let active_entrant = cal_event.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
+                            entrant_rooms.insert(active_entrant.clone(), TeamLinks::AsyncForm(event.team_config.roles().iter().zip(&vods).map(|((_, role), vod)| (*role, vod.parse().ok())).collect()));
+                            entrant_times.insert(active_entrant.clone(), times.iter().copied().collect());
+                            let mut teams = Vec::with_capacity(entrant_times.len());
+                            for (entrant, times) in entrant_times {
+                                teams.push((
+                                    entrant.clone(),
+                                    times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
+                                    entrant_rooms.remove(&entrant).expect("each team should have a room"),
+                                ));
+                            }
+                            if value.pieces.is_none() /*TODO implement TFB score lookup */ && all_entrants_found && let Ok(teams) = teams.try_into() {
+                                transaction = report_1v1(transaction, global, &cal_event, &event, false, false, teams).await?;
+                            } else {
+                                if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                    let mut msg = MessageBuilder::default();
+                                    msg.push_line("asynced race finished:");
+                                    //TODO notify organizers to manually initialize high seed for next game's draft (if any) and use `/post-status`
+                                    for async_part in cal_event.race.cal_events() {
+                                        let active_entrant = async_part.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
+                                        let active_team = active_entrant.team().expect("async submitted by non-MH entrant");
+                                        msg.push("* ");
+                                        msg.mention_entrant_long(&mut transaction, event.discord_guild, active_entrant).await?;
+                                        if let Some(team_data) = sqlx::query!("SELECT fpa, pieces FROM race_async_teams WHERE race = $1 AND team = $2", cal_event.race.id as _, active_team.id as _).fetch_optional(&mut *transaction).await? {
+                                            let members = active_entrant.member_ids_roles(&mut transaction).await?;
+                                            let member_data = sqlx::query!(
+                                                r#"SELECT player AS "player: Id<Users>", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)"#,
+                                                cal_event.race.id as _,
+                                                &members.iter().map(|(member_id, _)| i64::from(*member_id)).collect_vec(),
+                                            ).fetch_all(&mut *transaction).await?;
+                                            if let Some(times) = member_data.iter().map(|row| row.time).collect::<Option<Vec<_>>>() {
+                                                let sum = times.into_iter().try_fold(Duration::default(), |acc, time| Ok::<_, event::Error>(acc + decode_pginterval(time)?))?;
+                                                if let Some(pieces) = team_data.pieces {
+                                                    msg.push(" finished with a score of ");
+                                                    msg.push(pieces.to_string());
+                                                    msg.push(if pieces == 1 { " piece at " } else { " pieces at " });
+                                                } else {
+                                                    msg.push(" finished with a time of ");
+                                                }
+                                                msg.push(English.format_duration(sum / u32::try_from(member_data.len()).expect("too many players in team"), true));
+                                            } else {
+                                                msg.push(" did not finish");
+                                            }
+                                            match member_data.into_iter().exactly_one() {
+                                                Ok(row) => if let Some(vod) = row.vod && !vod.is_empty() {
+                                                    msg.push(' ');
+                                                    msg.push_line_safe(vod);
+                                                } else {
+                                                    msg.push_line("");
+                                                },
+                                                Err(data) => {
+                                                    msg.push_line("");
+                                                    for (i, row) in data.enumerate() {
+                                                        if let Some(player) = User::from_id(&mut *transaction, row.player).await? {
+                                                            msg.mention_user(&player);
+                                                        } else {
+                                                            msg.push("player ");
+                                                            msg.push((i + 1).to_string());
+                                                        }
+                                                        msg.push(": ");
+                                                        if let Some(time) = row.time {
+                                                            msg.push(English.format_duration(decode_pginterval(time)?, false));
+                                                        } else {
+                                                            msg.push("DNF");
+                                                        }
+                                                        if let Some(vod) = row.vod && !vod.is_empty() {
+                                                            msg.push(' ');
+                                                            msg.push_line_safe(vod);
+                                                        } else {
+                                                            msg.push_line("");
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            msg.push_line(" did not submit"); //TODO adjust results post handling to wait until everyone has submitted
+                                        }
+                                    }
+                                    results_channel.say(discord_ctx!(global), msg.build()).await?;
+                                }
                             }
                         }
                     }
                 }
-                if !value.fpa.is_empty() {
-                    message.push("FPA call:");
-                    message.quote_rest();
-                    message.push_safe(&value.fpa);
-                }
-                organizer_channel.say(discord_ctx!(global), message.build()).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(race_details(event.series, &*event.event, cal_event.race.id))))
