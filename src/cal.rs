@@ -86,6 +86,11 @@ pub(crate) enum Entrant {
 }
 
 impl Entrant {
+    async fn from_race_and_member(transaction: &mut Transaction<'_, Postgres>, race: &Race, member_id: Id<Users>) -> sqlx::Result<Option<Self>> {
+        let Some(team) = Team::from_event_and_member(transaction, race.series, &race.event, member_id).await? else { return Ok(None) };
+        Ok(race.entrants.to_vec().into_iter().find(|entrant| entrant.team().is_some_and(|iter_team| *iter_team == team)))
+    }
+
     pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>, entrant: &racetime::model::Entrant) -> sqlx::Result<Option<Self>> {
         Ok(if let Some(rtgg_user) = &entrant.user {
             Some(if let Some(mh_user) = User::from_racetime(&mut **transaction, &rtgg_user.id).await?
@@ -4106,21 +4111,10 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
-        let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, me.id).await?;
+        let entrant = Entrant::from_race_and_member(&mut transaction, &race, me.id).await?;
         let cal_event = race.into_async_part_for(&mut transaction, &me).await?;
         if cal_event.is_err() {
             form.context.push_error(form::Error::validation("You don't have an async available for this race."));
-        }
-        if let Some(team) = &team {
-            if let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, id as _, team.id as _).fetch_optional(&mut *transaction).await? {
-                if submitted {
-                    form.context.push_error(form::Error::validation("You have already submitted this async."));
-                }
-            } else {
-                form.context.push_error(form::Error::validation("You haven't requested this async."));
-            }
-        } else {
-            form.context.push_error(form::Error::validation("You haven't entered this event."));
         }
         if let Series::TriforceBlitz = series {
             if let Some(pieces) = value.pieces {
@@ -4131,43 +4125,56 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
             }
         }
-        let times = if let Series::TriforceBlitz = series {
-            let time = if value.time1.is_empty() {
-                None
-            } else if let Some(time) = parse_duration(&value.time1, None) {
-                Some(time)
+        let times = if let Some(entrant) = &entrant && let Some(team) = entrant.team() {
+            if let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, id as _, team.id as _).fetch_optional(&mut *transaction).await? {
+                if submitted {
+                    form.context.push_error(form::Error::validation("You have already submitted this async."));
+                }
+                if let Series::TriforceBlitz = series {
+                    let time = if value.time1.is_empty() {
+                        None
+                    } else if let Some(time) = parse_duration(&value.time1, None) {
+                        Some(time)
+                    } else {
+                        form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
+                        None
+                    };
+                    vec![time; entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).count()]
+                } else {
+                    vec![
+                        if value.time1.is_empty() {
+                            None
+                        } else if let Some(time) = parse_duration(&value.time1, None) {
+                            Some(time)
+                        } else {
+                            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
+                            None
+                        },
+                        if value.time2.is_empty() {
+                            None
+                        } else if let Some(time) = parse_duration(&value.time2, None) {
+                            Some(time)
+                        } else {
+                            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time2"));
+                            None
+                        },
+                        if value.time3.is_empty() {
+                            None
+                        } else if let Some(time) = parse_duration(&value.time3, None) {
+                            Some(time)
+                        } else {
+                            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time3"));
+                            None
+                        },
+                    ]
+                }
             } else {
-                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
-                None
-            };
-            vec![time; event.team_config.roles().len()]
+                form.context.push_error(form::Error::validation("You haven't requested this async."));
+                Vec::default()
+            }
         } else {
-            vec![
-                if value.time1.is_empty() {
-                    None
-                } else if let Some(time) = parse_duration(&value.time1, None) {
-                    Some(time)
-                } else {
-                    form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
-                    None
-                },
-                if value.time2.is_empty() {
-                    None
-                } else if let Some(time) = parse_duration(&value.time2, None) {
-                    Some(time)
-                } else {
-                    form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time2"));
-                    None
-                },
-                if value.time3.is_empty() {
-                    None
-                } else if let Some(time) = parse_duration(&value.time3, None) {
-                    Some(time)
-                } else {
-                    form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time3"));
-                    None
-                },
-            ]
+            form.context.push_error(form::Error::validation("You aren't participating in this race."));
+            Vec::default()
         };
         let vods = vec![
             value.vod1.clone(),
@@ -4183,10 +4190,11 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
             RedirectOrContent::Content(race_details_page(global.db_pool.begin().await?, global, Some(me), uri, csrf.as_ref(), event, race, RaceDetailsContext::SubmitAsync(form.context)).await?)
         } else {
             let cal_event = cal_event.expect("validated");
-            let team = team.expect("validated");
+            let entrant = entrant.expect("validated");
+            let team = entrant.team().expect("validated");
             sqlx::query!("UPDATE race_async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE race = $3 AND team = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), cal_event.race.id as _, team.id as _).execute(&mut *transaction).await?;
             let mut players = Vec::default();
-            for (((role, _), time), vod) in event.team_config.roles().iter().zip(&times).zip(&vods) {
+            for (((_, role), time), vod) in entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).zip(&times).zip(&vods) {
                 let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
                 sqlx::query!("INSERT INTO race_async_players (race, player, time, vod) VALUES ($1, $2, $3, $4)", cal_event.race.id as _, player as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut *transaction).await?;
                 for video in vod.split_whitespace() {
@@ -4200,7 +4208,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 if event.async_organizer_notifications && let Some(organizer_channel) = event.discord_organizer_channel {
                     let mut message = MessageBuilder::default();
                     message.push("async submitted by ");
-                    message.mention_team(&mut transaction, event.discord_guild, &team).await?;
+                    message.mention_entrant_long(&mut transaction, event.discord_guild, &entrant).await?;
                     message.push(" who");
                     if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
                         if let Some(pieces) = value.pieces {
@@ -4383,7 +4391,10 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                                 }
                             }
                             let active_entrant = cal_event.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
-                            entrant_rooms.insert(active_entrant.clone(), TeamLinks::AsyncForm(event.team_config.roles().iter().zip(&vods).map(|((_, role), vod)| (*role, vod.parse().ok())).collect()));
+                            entrant_rooms.insert(active_entrant.clone(), TeamLinks::AsyncForm(entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).zip(&vods).map(|((_, role), vod)| {
+                                let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
+                                (role_name, vod.parse().ok())
+                            }).collect()));
                             entrant_times.insert(active_entrant.clone(), times.iter().copied().collect());
                             let mut teams = Vec::with_capacity(entrant_times.len());
                             for (entrant, times) in entrant_times {
