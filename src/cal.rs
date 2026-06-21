@@ -3851,7 +3851,7 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                                     p : "After playing the async, fill out the form below.";
                                     : full_form(uri!(submit_async(event.series, &*event.event, cal_event.race.id)), csrf, html! {
                                         @match event.team_config {
-                                            TeamConfig::Solo => {
+                                            TeamConfig::Solo | TeamConfig::SlugOpen => {
                                                 @if let Series::TriforceBlitz = event.series {
                                                     : form_field("pieces", &mut errors, html! {
                                                         label(for = "pieces") : "Number of Triforce Pieces found:";
@@ -3952,7 +3952,6 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                                                     label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
                                                 });
                                             }
-                                            TeamConfig::SlugOpen => @unimplemented
                                         }
                                         : form_field("fpa", &mut errors, html! {
                                             label(for = "fpa") {
