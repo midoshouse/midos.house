@@ -664,17 +664,19 @@ impl<'a> Data<'a> {
                 };
                 let rsl_script_path = rsl_preset.script_path().await?;
                 // check RSL script version
-                let rsl_version = Command::new(racetime_bot::PYTHON)
-                    .arg("-c")
-                    .arg("import rslversion; print(rslversion.__version__)")
-                    .current_dir(&rsl_script_path)
-                    .check(racetime_bot::PYTHON).await?
-                    .stdout;
-                let rsl_version = String::from_utf8(rsl_version)?;
-                let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
-                    (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
-                } else {
-                    rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                let supports_plando_filename_base = fs::exists(rsl_script_path.join("rslversion.py")).await? && {
+                    let rsl_version = Command::new(racetime_bot::PYTHON)
+                        .arg("-c")
+                        .arg("import rslversion; print(rslversion.__version__)")
+                        .current_dir(&rsl_script_path)
+                        .check(racetime_bot::PYTHON).await?
+                        .stdout;
+                    let rsl_version = String::from_utf8(rsl_version)?;
+                    if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
+                        (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
+                    } else {
+                        rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                    }
                 };
                 // check required randomizer version
                 let randomizer_version = Command::new(racetime_bot::PYTHON)
@@ -2829,17 +2831,19 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
 
                         let rsl_script_path = preset.script_path().await?;
                         // check RSL script version
-                        let rsl_version = Command::new(racetime_bot::PYTHON)
-                            .arg("-c")
-                            .arg("import rslversion; print(rslversion.__version__)")
-                            .current_dir(&rsl_script_path)
-                            .check(racetime_bot::PYTHON).await?
-                            .stdout;
-                        let rsl_version = String::from_utf8(rsl_version)?;
-                        let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
-                            (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
-                        } else {
-                            rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                        let supports_plando_filename_base = fs::exists(rsl_script_path.join("rslversion.py")).await? && {
+                            let rsl_version = Command::new(racetime_bot::PYTHON)
+                                .arg("-c")
+                                .arg("import rslversion; print(rslversion.__version__)")
+                                .current_dir(&rsl_script_path)
+                                .check(racetime_bot::PYTHON).await?
+                                .stdout;
+                            let rsl_version = String::from_utf8(rsl_version)?;
+                            if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
+                                (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
+                            } else {
+                                rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                            }
                         };
                         // check required randomizer version
                         let randomizer_version = Command::new(racetime_bot::PYTHON)
