@@ -4125,7 +4125,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
             }
         }
-        let times = if let Some(entrant) = &entrant && let Some(team) = entrant.team() {
+        let mut times = if let Some(entrant) = &entrant && let Some(team) = entrant.team() {
             if let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, id as _, team.id as _).fetch_optional(&mut *transaction).await? {
                 if submitted {
                     form.context.push_error(form::Error::validation("You have already submitted this async."));
@@ -4139,7 +4139,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                         form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”. Leave blank to indicate DNF.").with_name("time1"));
                         None
                     };
-                    vec![time; entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).count()]
+                    vec![time; 3]
                 } else {
                     vec![
                         if value.time1.is_empty() {
@@ -4176,7 +4176,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
             form.context.push_error(form::Error::validation("You aren't participating in this race."));
             Vec::default()
         };
-        let vods = vec![
+        let mut vods = vec![
             value.vod1.clone(),
             value.vod2.clone(),
             value.vod3.clone(),
@@ -4192,9 +4192,12 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
             let cal_event = cal_event.expect("validated");
             let entrant = entrant.expect("validated");
             let team = entrant.team().expect("validated");
+            let racing_roles = entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).collect_vec();
+            times.truncate(racing_roles.len());
+            vods.truncate(racing_roles.len());
             sqlx::query!("UPDATE race_async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE race = $3 AND team = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), cal_event.race.id as _, team.id as _).execute(&mut *transaction).await?;
             let mut players = Vec::default();
-            for (((_, role), time), vod) in entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).zip(&times).zip(&vods) {
+            for (((_, role), time), vod) in racing_roles.iter().copied().zip(&times).zip(&vods) {
                 let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
                 sqlx::query!("INSERT INTO race_async_players (race, player, time, vod) VALUES ($1, $2, $3, $4)", cal_event.race.id as _, player as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut *transaction).await?;
                 for video in vod.split_whitespace() {
@@ -4391,7 +4394,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                                 }
                             }
                             let active_entrant = cal_event.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
-                            entrant_rooms.insert(active_entrant.clone(), TeamLinks::AsyncForm(entrant.member_ids_roles(&mut transaction).await?.into_iter().filter(|(_, role)| event.team_config.role_is_racing(*role)).zip(&vods).map(|((_, role), vod)| {
+                            entrant_rooms.insert(active_entrant.clone(), TeamLinks::AsyncForm(racing_roles.iter().copied().zip(&vods).map(|((_, role), vod)| {
                                 let (_, role_name) = *event.team_config.roles().iter().find(|(iter_role, _)| *iter_role == role).expect("unexpected team role");
                                 (role_name, vod.parse().ok())
                             }).collect()));
