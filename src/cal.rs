@@ -3968,6 +3968,8 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                                         });
                                     }, errors, "Submit");
                                 }
+                            } else {
+                                p : "Async submitted successfully.";
                             }
                         } else {
                             p : "This async is not available via the Mido's House website. For details, please contact an organizer.";
@@ -4000,8 +4002,12 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                                     : ". Please wait until then and refresh this page to request the seed.";
                                 }
                             }
+                        } else {
+                            p : "Your async part is not yet scheduled.";
                         }
                     }
+                } else {
+                    p : "This race's entrants are not linked to Mido's House. If you are looking to request the seed for asyncing, please contact an organizer.";
                 }
             } else {
                 p : "No information is available about this race. If you are looking to request the seed for asyncing, please schedule your async part first.";
