@@ -434,7 +434,7 @@ impl Draft {
     }
 
     fn pick_count(&self, kind: Kind) -> u8 {
-        self.skipped_bans + match kind {
+        match kind {
             Kind::S7 => u8::try_from(self.settings.len()).unwrap(),
             Kind::RslS7 => u8::try_from(rsl::FORCE_OFF_SETTINGS.into_iter().filter(|&rsl::ForceOffSetting { name, .. }| self.settings.contains_key(name)).count()).unwrap()
                 + u8::try_from(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).map(|rsl::MultiOptionSetting { name, .. }| self.settings.get(name).map(|value| 1 + value.chars().filter(|c| *c == ',').count()).unwrap_or_default()).sum::<usize>()).unwrap(),
@@ -449,7 +449,7 @@ impl Draft {
             Kind::TournoiFrancoS4 => u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS5 => u8::try_from(fr::S5_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS6 => u8::try_from(fr::S6_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
-        }
+        }.saturating_add(self.skipped_bans)
     }
 
     pub(crate) async fn next_step(&self, kind: Kind, game: Option<i16>, msg_ctx: &mut MessageContext<'_>) -> Result<Step, Error> {
