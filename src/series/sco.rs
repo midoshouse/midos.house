@@ -36,7 +36,7 @@ impl Format {
     pub(crate) fn display_name(&self) -> &'static str {
         match self {
             Self::League => "League S9",
-            Self::Sgl => "SGL 2025",
+            Self::Sgl => "SGL 2026",
             Self::Saws => "SAWS Beginner",
             Self::Bingo => "Bingo SDG Settings",
             Self::Ice => "Ice%",
@@ -83,7 +83,7 @@ impl Format {
     pub(crate) async fn single_settings(&self, global: &GlobalState, bingo_room_name: Option<&str>) -> Result<Option<(VersionedBranch, seed::Settings, Option<String>)>, SingleSettingsError> {
         let preset = match self {
             Self::League => "League S9",
-            Self::Sgl => "SGL 2025 Tournament",
+            Self::Sgl => "SGL 2026 Tournament",
             Self::Saws => "Standard Anti-Weekly Settings (Beginner)",
             Self::Bingo => "SDG Bingo Tournament 3",
             Self::Ice => "Ice%",
