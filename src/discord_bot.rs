@@ -559,7 +559,7 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
                         let mut settings = collect![as HashMap<_, _>: Cow::Borrowed("sco_format") => Cow::Borrowed(format.slug())];
                         match format.draft_kind() {
                             None => {}
-                            Some(draft::Kind::TournoiFrancoS5) => {
+                            Some(draft::Kind::TournoiFrancoS6) => {
                                 let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM team_members WHERE (team = $1 AND member = $2) OR (team = $3 AND member = $4)", team1.id as _, p1.id as _, team2.id as _, p2.id as _).fetch_all(&mut *transaction).await?;
                                 let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                                 let mq_ok = team_rows.iter().all(|row| row.mq_ok);

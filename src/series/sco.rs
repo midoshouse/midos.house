@@ -63,7 +63,7 @@ impl Format {
 
     pub(crate) fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
-            Self::Franco => Some(draft::Kind::TournoiFrancoS5),
+            Self::Franco => Some(draft::Kind::TournoiFrancoS6),
             Self::League | Self::Sgl | Self::Saws | Self::Bingo | Self::Ice | Self::Mixed | Self::Triforce => None,
         }
     }

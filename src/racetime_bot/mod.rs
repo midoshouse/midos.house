@@ -998,7 +998,7 @@ impl Goal {
             Self::SlugOpen2026 => for format in all::<sco::Format>() {
                 match format.draft_kind() {
                     None => ctx.say(format!("!seed {}: {}", format.slug(), format.display_name())).await?,
-                    Some(draft::Kind::TournoiFrancoS5) => {
+                    Some(draft::Kind::TournoiFrancoS6) => {
                         ctx.say(format!("!seed {}: {} base settings.", format.slug(), format.display_name())).await?;
                         ctx.say(format!("!seed {} random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.", format.slug())).await?;
                         ctx.say(format!("!seed {} draft: Pick the settings here in the chat.", format.slug())).await?;
@@ -1595,7 +1595,7 @@ impl Goal {
                             description: format!("{} seed", format.display_name()),
                         }
                     }
-                    Some(kind @ draft::Kind::TournoiFrancoS5) => {
+                    Some(kind @ draft::Kind::TournoiFrancoS6) => {
                         let all_settings = &fr::S5_SETTINGS[..];
                         let mut args = args.to_owned();
                         let mut mq_dungeons_count = None::<u8>;
