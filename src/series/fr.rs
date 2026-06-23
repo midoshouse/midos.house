@@ -1459,7 +1459,7 @@ pub(crate) fn resolve_s6_draft_settings(picks: &draft::Picks) -> seed::Settings 
         format!("scarecrow_behavior") => if ocarina == "shuffle" {
             json!("free")
         } else {
-            json!("vanilla")
+            json!("fast")
         },
         format!("fast_bunny_hood") => json!(true),
         format!("ruto_already_f1_jabu") => json!(true),
