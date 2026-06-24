@@ -4413,7 +4413,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                                     entrant_rooms.remove(&entrant).expect("each team should have a room"),
                                 ));
                             }
-                            if value.pieces.is_none() /*TODO implement TFB score lookup */ && all_entrants_found && let Ok(teams) = teams.try_into() {
+                            if !event.manual_reporting_for_asyncs && value.pieces.is_none() /*TODO implement TFB score lookup */ && all_entrants_found && let Ok(teams) = teams.try_into() {
                                 transaction = report_1v1(transaction, global, &cal_event, &event, false, false, teams).await?;
                             } else {
                                 if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {

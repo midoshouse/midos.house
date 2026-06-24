@@ -51,11 +51,17 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, global: &Glo
                             input(type = "checkbox", id = "manual_reporting_with_breaks", name = "manual_reporting_with_breaks", checked? = ctx.field_value("manual_reporting_with_breaks").map_or(event.manual_reporting_with_breaks, |value| value == "on"));
                             label(for = "manual_reporting_with_breaks") : "Disable automatic result reporting if !breaks command is used";
                         });
+                        @if event.asyncs_allowed() {
+                            : form_field("manual_reporting_for_asyncs", &mut errors, html! {
+                                input(type = "checkbox", id = "manual_reporting_for_asyncs", name = "manual_reporting_for_asyncs", checked? = ctx.field_value("manual_reporting_for_asyncs").map_or(event.manual_reporting_for_asyncs, |value| value == "on"));
+                                label(for = "manual_reporting_for_asyncs") : "Disable automatic result reporting for asynced races";
+                            });
+                        }
                     }
-                    @if racetime_bot::Goal::for_event(event.series, &event.event).is_some_and(|goal| !event.team_config.is_racetime_team_format() || goal.is_custom()) && event.discord_organizer_channel.is_some() {
+                    @if event.asyncs_allowed() && racetime_bot::Goal::for_event(event.series, &event.event).is_some_and(|goal| !event.team_config.is_racetime_team_format() || goal.is_custom()) && event.discord_organizer_channel.is_some() {
                         : form_field("async_organizer_notifications", &mut errors, html! {
                             input(type = "checkbox", id = "async_organizer_notifications", name = "async_organizer_notifications", checked? = ctx.field_value("async_organizer_notifications").map_or(event.async_organizer_notifications, |value| value == "on"));
-                            label(for = "async_organizer_notifications") : "Notify organizers on submission of asynced races";
+                            label(for = "async_organizer_notifications") : "Notify organizers on submission of private async parts";
                         });
                     }
                 }, errors, "Save");
@@ -105,6 +111,7 @@ pub(crate) struct ConfigureForm {
     min_schedule_notice: String,
     retime_window: Option<String>,
     manual_reporting_with_breaks: bool,
+    manual_reporting_for_asyncs: bool,
     async_organizer_notifications: bool,
 }
 
@@ -151,8 +158,11 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
             }
             if matches!(data.match_source(), MatchSource::StartGG(_)) || data.discord_race_results_channel.is_some() {
                 sqlx::query!("UPDATE events SET manual_reporting_with_breaks = $1 WHERE series = $2 AND event = $3", value.manual_reporting_with_breaks, data.series as _, &data.event).execute(&mut *transaction).await?;
+                if data.asyncs_allowed() {
+                    sqlx::query!("UPDATE events SET manual_reporting_for_asyncs = $1 WHERE series = $2 AND event = $3", value.manual_reporting_for_asyncs, data.series as _, &data.event).execute(&mut *transaction).await?;
+                }
             }
-            if racetime_bot::Goal::for_event(data.series, &data.event).is_some_and(|goal| !data.team_config.is_racetime_team_format() || goal.is_custom()) && data.discord_organizer_channel.is_some() {
+            if data.asyncs_allowed() && racetime_bot::Goal::for_event(data.series, &data.event).is_some_and(|goal| !data.team_config.is_racetime_team_format() || goal.is_custom()) && data.discord_organizer_channel.is_some() {
                 sqlx::query!("UPDATE events SET async_organizer_notifications = $1 WHERE series = $2 AND event = $3", value.async_organizer_notifications, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
             transaction.commit().await?;
