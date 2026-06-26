@@ -1792,9 +1792,12 @@ impl Event {
                 RaceHandleMode::Notify
             } else if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() && (!goal.is_custom() || self.is_public_async_part()) {
                 RaceHandleMode::RaceTime
-            } else {
+            } else if self.race.series != Series::SpoilerLog {
                 // racetime.gg doesn't properly support asyncs, see https://github.com/racetimeGG/racetime-app/issues/8
                 RaceHandleMode::AsyncForm
+            } else {
+                // async handling has been requested to be disabled for these events
+                RaceHandleMode::None
             }
         } else {
             // the organizers of this event didn't request for Mido to handle official races, so we ignore this race even if it would otherwise not be handled on racetime.gg
