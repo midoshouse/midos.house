@@ -375,13 +375,7 @@ impl<'a> Data<'a> {
                     sco::Format::Ice => from_file!("../../assets/event/sco/chests-2026-ice-9.0.14-fenhl.7.riir.6.json"),
                     sco::Format::Mixed => from_file!("../../assets/event/sco/chests-2026-mixed-9.0.14-fenhl.7.riir.6.json"),
                     sco::Format::Franco => from_file!("../../assets/event/fr/chests-5-8.2.64-rob.135.json"),
-                    sco::Format::Triforce => {
-                        //TODO add this preset once settings are decided
-                        if let Environment::Production = Environment::default() {
-                            wheel::night_report(&format!("{}/chests/sco/2026/error", night_path()), Some("no chest appearances specified for SlugCentral Open Triforce Hunt format, using random chests")).await?;
-                        }
-                        ChestAppearances::random()
-                    }
+                    sco::Format::Triforce => from_file!("../../assets/event/sco/chests-2026-triforce-9.1.10-fenhl.2.riir.2.json"),
                 }
             }
             (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
@@ -1146,7 +1140,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::PotsOfTime => pot::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
-        Series::SlugOpen => None, //TODO
+        Series::SlugOpen => sco::info(&mut transaction, &data).await?,
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::SpoilerLog => sl::info(&mut transaction, &data).await?,
