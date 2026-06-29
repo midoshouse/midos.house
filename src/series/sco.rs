@@ -75,8 +75,10 @@ impl Format {
     pub(crate) fn default_race_duration(&self) -> TimeDelta {
         match self {
             Self::Ice => TimeDelta::minutes(30),
-            Self::Sgl | Self::Bingo /*TODO verify */ | Self::Mixed => TimeDelta::hours(3),
-            Self::League | Self::Saws | Self::Franco | Self::Triforce /*TODO verify */ => TimeDelta::hours(3) + TimeDelta::minutes(30),
+            Self::Triforce => TimeDelta::hours(2),
+            Self::Bingo => TimeDelta::hours(2) + TimeDelta::Minutes(30),
+            Self::Sgl | Self::Mixed => TimeDelta::hours(3),
+            Self::League | Self::Saws | Self::Franco => TimeDelta::hours(3) + TimeDelta::minutes(30),
         }
     }
 
