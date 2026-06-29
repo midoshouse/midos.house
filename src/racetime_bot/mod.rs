@@ -4482,9 +4482,9 @@ impl RaceHandler<GlobalState> for Handler {
                                         submit: Some(format!("Roll")),
                                     }),
                                     ("Roll seed (custom settings)", ActionButton::Message {
-                                        message: format!("!seed {} ${{mq}}mq", fr::S5_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                        message: format!("!seed {} ${{mq}}mq", fr::S6_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
                                         help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
-                                        survey: Some(fr::S5_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                        survey: Some(fr::S6_SETTINGS.into_iter().map(|setting| SurveyQuestion {
                                             name: setting.name.to_owned(),
                                             label: setting.display.to_owned(),
                                             default: Some(json!(setting.default)),
