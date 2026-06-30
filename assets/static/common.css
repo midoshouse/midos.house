@@ -207,6 +207,7 @@ button {
     top: calc(100% - 1px);
     width: 50vw;
     justify-content: start;
+    z-index: 2;
 }
 
 [popover]:popover-open + .menu {

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT fpa, pieces FROM race_async_teams WHERE race = $1 AND team = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fpa",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "pieces",
+        "type_info": "Int2"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "532d08a3c8b3f4c4378acfcdab036979bdd0224534df2b17ffbf829a3080eae4"
+}
