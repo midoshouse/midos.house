@@ -1140,7 +1140,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::PotsOfTime => pot::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
-        Series::SlugOpen => sco::info(&mut transaction, &data).await?,
+        Series::SlugOpen => None,
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::SpoilerLog => sl::info(&mut transaction, &data).await?,
