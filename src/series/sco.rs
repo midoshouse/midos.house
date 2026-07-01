@@ -93,7 +93,9 @@ impl Format {
             Self::Franco => return Ok(None), // settings draft
             Self::Triforce => "SlugCentral Open Triforce Hunt",
         };
-        ootr_utils::Branch::DevFenhl.clone_repo(ALLOW_RIIR, true).await?;
+        if bingo_room_name.is_some() || !fs::exists(ootr_utils::Branch::DevFenhl.dir(ALLOW_RIIR)?).await? {
+            ootr_utils::Branch::DevFenhl.clone_repo(ALLOW_RIIR, true).await?;
+        }
         let mut presets = fs::read_json::<HashMap<String, seed::Settings>>(ootr_utils::Branch::DevFenhl.dir(ALLOW_RIIR)?.join("data").join("presets_default.json")).await?;
         let mut settings = presets.remove(preset).ok_or(SingleSettingsError::MissingPreset(*self, preset))?;
         settings.insert(format!("password_lock"), json!(true));
