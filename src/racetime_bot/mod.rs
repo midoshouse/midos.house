@@ -810,7 +810,7 @@ impl Goal {
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::Sgss2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) }, //TODO(OoTR 9.1) update to 9.1
-            Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, //TODO different branch for Franco format
+            Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, // will be overridden per format
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::SpoilerLog2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 0) },
             Self::StandardRuleset => return Err("official seeds should use the event's rando version"),
@@ -4027,7 +4027,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 "Welcome! This is a practice room for the SlugCentral Open 2026. Learn more about the tournament at https://midos.house/event/sco/2026",
                                 true,
                                 vec![
-                                    ("Roll seed (Franco, random settings)", ActionButton::Message {
+                                    ("Roll seed (Franco 2026, random settings)", ActionButton::Message {
                                         message: format!("!seed franco random ${{advanced}} ${{mq}}mq"),
                                         help_text: Some(format!("Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.")),
                                         survey: Some(vec![
@@ -4052,7 +4052,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         ]),
                                         submit: Some(format!("Roll")),
                                     }),
-                                    ("Roll seed (Franco, custom settings)", ActionButton::Message {
+                                    ("Roll seed (Franco 2026, custom settings)", ActionButton::Message {
                                         message: format!("!seed franco {} ${{mq}}mq", fr::S5_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
                                         help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
                                         survey: Some(fr::S5_SETTINGS.into_iter().map(|setting| SurveyQuestion {
@@ -4077,7 +4077,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         })).collect()),
                                         submit: Some(format!("Roll")),
                                     }),
-                                    ("Start settings draft (Franco)", ActionButton::Message {
+                                    ("Start settings draft (Franco 2026)", ActionButton::Message {
                                         message: format!("!seed franco draft ${{advanced}} ${{mq}}mq"),
                                         help_text: Some(format!("Pick the settings here in the chat.")),
                                         survey: Some(vec![

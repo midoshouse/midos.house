@@ -666,7 +666,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Bans a format in the format draft, or a setting in the Franco format's settings draft.")),
+                        .description(description!("Bans a format in the format draft, or a setting in the Franco 2026 format's settings draft.")),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -747,7 +747,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Go first in the settings draft for the Franco format."))
+                        .description(description!("Go first in the settings draft for the Franco 2026 format."))
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
@@ -795,7 +795,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Answers no to a yes/no question in the settings draft for the Franco format.")),
+                        .description(description!("Answers no to a yes/no question in the settings draft for the Franco 2026 format.")),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -819,7 +819,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("pick")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Chooses a format in the format draft, or a setting in the Franco format's settings draft.")),
+                        .description(description!("Chooses a format in the format draft, or a setting in the Franco 2026 format's settings draft.")),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("pick")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -1001,7 +1001,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Go second in the settings draft for the Franco format."))
+                        .description(description!("Go second in the settings draft for the Franco 2026 format."))
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
@@ -1045,7 +1045,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Skips the final pick of the settings draft for the Franco format.")),
+                        .description(description!("Skips the final pick of the settings draft for the Franco 2026 format.")),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -1098,7 +1098,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                     draft::Kind::SlugOpen => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description(description!("Answers yes to a yes/no question in the settings draft for the Franco format.")),
+                        .description(description!("Answers yes to a yes/no question in the settings draft for the Franco 2026 format.")),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 | draft::Kind::TournoiFrancoS6 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)

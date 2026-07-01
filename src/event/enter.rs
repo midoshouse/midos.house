@@ -1141,7 +1141,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                                     th {
                                         : "Allow hardcore settings";
                                         br;
-                                        small(style = "font-weight: normal;") : "in Franco format";
+                                        small(style = "font-weight: normal;") : "in Franco 2026 format";
                                     }
                                     @for team_member in &team_members {
                                         @let field_name = format!("member_hard_settings_ok[{}]", team_member.id);
@@ -1157,7 +1157,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                                     th {
                                         : "Allow Master Quest";
                                         br;
-                                        small(style = "font-weight: normal;") : "in Franco format";
+                                        small(style = "font-weight: normal;") : "in Franco 2026 format";
                                     }
                                     @for team_member in &team_members {
                                         @let field_name = format!("member_mq_ok[{}]", team_member.id);
