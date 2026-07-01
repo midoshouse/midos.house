@@ -259,13 +259,13 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li : "Deadline for registering your team: July 31st 23:59 CEST";
                         li : "Start of Swiss format: August 5th (After “The Wheel”)";
                     }
-                    h2(id = "scheduling") : "Scheduling";
+                    h3(id = "scheduling") : "Scheduling";
                     p {
                         : "Each round of matches will take 2 weeks from the time “The Wheel” has picked and banned the settings. This draw will take place after the start of the tournament each second Wednesday at 6PM EST on ";
                         a(href = "https://www.twitch.tv/slugcentral") : "www.twitch.tv/slugcentral";
                         : ".";
                     }
-                    h2(id = "asynchronous-matches-asyncs") : "Asynchronous Matches (asyncs)";
+                    h3(id = "asynchronous-matches-asyncs") : "Asynchronous Matches (asyncs)";
                     p : "We are allowing asyncs, if no live match is possible.";
                     p : "Here are the guidelines:";
                     ul {
