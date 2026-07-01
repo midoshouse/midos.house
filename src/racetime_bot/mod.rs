@@ -2324,11 +2324,11 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
     };
     let rando_path = match version {
         VersionedBranch::Pinned { ref version } => {
-            version.clone_repo(allow_riir, true).await?;
+            version.clone_repo(allow_riir, false).await?;
             version.dir(allow_riir)?
         }
         VersionedBranch::Latest { branch } => {
-            branch.clone_repo(allow_riir, true).await?;
+            branch.clone_repo(allow_riir, false).await?;
             branch.dir(allow_riir)?
         }
         VersionedBranch::Custom { ref github_username, ref branch } => {
