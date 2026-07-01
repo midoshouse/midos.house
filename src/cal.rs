@@ -4419,7 +4419,12 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                             if !event.manual_reporting_for_asyncs && value.pieces.is_none() /*TODO implement TFB score lookup */ && all_entrants_found && let Ok(teams) = teams.try_into() {
                                 transaction = report_1v1(transaction, global, &cal_event, &event, false, false, teams).await?;
                             } else {
-                                if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                let results_channel = if event.manual_reporting_for_asyncs {
+                                    event.discord_organizer_channel
+                                } else {
+                                    event.discord_race_results_channel.or(event.discord_organizer_channel)
+                                };
+                                if let Some(results_channel) = results_channel {
                                     let mut msg = MessageBuilder::default();
                                     msg.push_line("asynced race finished:");
                                     //TODO notify organizers to manually initialize high seed for next game's draft (if any) and use `/post-status`
