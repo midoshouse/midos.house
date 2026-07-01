@@ -282,9 +282,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : ":";
                     }
                     ul {
-                        p : "No streaming allowed";
-                        p : "Unlisted upload on YouTube. Please note that the result can already be submitted before YouTube has fully processed the upload.";
-                        p : "If your teammate is in VC with you their voice needs to be recorded as well.";
+                        li : "No streaming allowed";
+                        li : "Unlisted upload on YouTube. Please note that the result can already be submitted before YouTube has fully processed the upload.";
+                        li : "If your teammate is in VC with you their voice needs to be recorded as well.";
                     }
                     p {
                         : "If you are the ";
