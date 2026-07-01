@@ -5621,7 +5621,12 @@ impl RaceHandler<GlobalState> for Handler {
 
 pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String, Option<CreateAllowedMentions>)>, Error> {
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await? {
-        RaceHandleMode::None => return Ok(None),
+        RaceHandleMode::None => {
+            if let Some(start) = cal_event.start() && let Some(end) = cal_event.end_mut() {
+                end.get_or_insert_with(|| start + event.series.default_race_duration());
+            }
+            return Ok(None)
+        }
         RaceHandleMode::Notify => Err(Cow::Borrowed("please get your equipment and report to the tournament room")),
         RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, &global.config.racetime_bot.client_id, &global.config.racetime_bot.client_secret, &global.http_client).await {
             Ok((access_token, _)) => {
