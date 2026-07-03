@@ -137,11 +137,10 @@ impl Series {
             Self::SpoilerLog | Self::TriforceBlitz => TimeDelta::hours(2),
             Self::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
-            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
+            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::Mentor | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
             Self::PotsOfTime | Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
             Self::SlugOpen => all::<sco::Format>().map(|format| format.default_race_duration()).max().expect("no formats defined for SlugCentral Open"),
-            Self::Mentor => TimeDelta::hours(4), //TODO
         }
     }
 }
