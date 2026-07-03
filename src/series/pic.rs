@@ -457,7 +457,7 @@ impl<'v> EnterFormDefaults<'v> {
         }
     }
 
-    fn team_name(&self) -> Option<&str> {
+    pub(crate) fn team_name(&self) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value("team_name"),
             Self::Values { .. } => None,
@@ -479,7 +479,7 @@ impl<'v> EnterFormDefaults<'v> {
         self.teammate_text().and_then(|text| text.parse().ok())
     }
 
-    fn teammate_text(&self) -> Option<Cow<'_, str>> {
+    pub(crate) fn teammate_text(&self) -> Option<Cow<'_, str>> {
         match self {
             Self::Context(ctx) => ctx.field_value("teammate").map(Cow::Borrowed),
             &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.to_string())),

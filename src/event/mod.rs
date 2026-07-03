@@ -92,6 +92,7 @@ pub(crate) enum TeamConfig {
     #[sqlx(rename = "night_and_day")]
     NightAndDay,
     Pictionary,
+    Mentor,
     Multiworld,
     SlugOpen,
 }
@@ -118,6 +119,10 @@ impl TeamConfig {
                 (Role::Sheikah, "Runner"),
                 (Role::Gerudo, "Pilot"),
             ],
+            Self::Mentor => &[
+                (Role::Sheikah, "Mentor"),
+                (Role::Gerudo, "Mentee"),
+            ],
             Self::Multiworld => &[
                 (Role::Power, "World 1"),
                 (Role::Wisdom, "World 2"),
@@ -133,7 +138,17 @@ impl TeamConfig {
 
     /// Whether team members with the given role should be invited to race rooms.
     pub(crate) fn role_is_racing(&self, role: Role) -> bool {
-        !matches!(self, Self::Pictionary) || matches!(role, Role::Sheikah)
+        match self {
+            Self::Mentor => matches!(role, Role::Gerudo),
+            Self::Pictionary => matches!(role, Role::Sheikah),
+            | Self::Solo
+            | Self::CoOp
+            | Self::TfbCoOp
+            | Self::NightAndDay
+            | Self::Multiworld
+            | Self::SlugOpen
+                => true,
+        }
     }
 
     pub(crate) fn is_racetime_team_format(&self) -> bool {
@@ -149,6 +164,7 @@ impl TeamConfig {
             | Self::TfbCoOp
             | Self::NightAndDay
             | Self::Pictionary
+            | Self::Mentor
             | Self::Multiworld
                 => true,
         }
@@ -172,6 +188,7 @@ pub(crate) struct Data<'a> {
     hide_teams_tab: bool,
     teams_url: Option<Url>,
     enter_url: Option<Url>,
+    pub(crate) find_team_url: Option<Url>,
     pub(crate) video_url: Option<Url>,
     pub(crate) discord_guild: Option<GuildId>,
     discord_invite_url: Option<Url>,
@@ -233,6 +250,7 @@ impl<'a> Data<'a> {
             hide_teams_tab,
             teams_url,
             enter_url,
+            find_team_url,
             video_url,
             discord_guild AS "discord_guild: PgSnowflake<GuildId>",
             discord_invite_url,
@@ -273,6 +291,7 @@ impl<'a> Data<'a> {
                 hide_teams_tab: row.hide_teams_tab,
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
                 enter_url: row.enter_url.map(|url| url.parse()).transpose()?,
+                find_team_url: row.find_team_url.map(|url| url.parse()).transpose()?,
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
                 discord_guild: row.discord_guild.map(|PgSnowflake(id)| id),
                 discord_invite_url: row.discord_invite_url.map(|url| url.parse()).transpose()?,
@@ -425,6 +444,7 @@ impl<'a> Data<'a> {
             | Series::CopaLatinoamerica
             | Series::EscapeFromKakariko
             | Series::League
+            | Series::Mentor
             | Series::MixedPools
             | Series::Mq
             | Series::Multiworld
@@ -802,6 +822,11 @@ impl<'a> Data<'a> {
                     @if !matches!(self.team_config, TeamConfig::Solo) {
                         @if let Tab::FindTeam = tab {
                             a(class = "button selected", href? = is_subpage.then(|| uri!(find_team(self.series, &*self.event)))) : "Find Teammates";
+                        } else if let Some(ref find_team_url) = self.find_team_url {
+                            a(class = "button", href = find_team_url) {
+                                : favicon(find_team_url);
+                                : "Find Teammates";
+                            }
                         } else {
                             a(class = "button", href = uri!(find_team(self.series, &*self.event))) : "Find Teammates";
                         }
@@ -1132,6 +1157,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::CopaLatinoamerica => latam::info(&mut transaction, &data).await?,
         Series::EscapeFromKakariko => efk::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
+        Series::Mentor => None,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Mq => None,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
@@ -1372,7 +1398,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                         p : "After playing the async, fill out the form below.";
                                         : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
                                             @match data.team_config {
-                                                TeamConfig::Solo => {
+                                                TeamConfig::Solo | TeamConfig::Pictionary | TeamConfig::Mentor => {
                                                     @if let Series::TriforceBlitz = data.series {
                                                         : form_field("pieces", &mut errors, html! {
                                                             label(for = "pieces") : "Number of Triforce Pieces found:";
@@ -1396,7 +1422,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                                         label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
                                                     });
                                                 }
-                                                TeamConfig::Pictionary => @unimplemented
                                                 TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::NightAndDay => {
                                                     @if let Series::TriforceBlitz = data.series {
                                                         : form_field("pieces", &mut errors, html! {
@@ -1555,6 +1580,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                             | Series::CopaDoBrasil
                             | Series::CopaLatinoamerica
                             | Series::EscapeFromKakariko
+                            | Series::Mentor
                             | Series::MixedPools
                             | Series::Mq
                             | Series::PotsOfTime
@@ -1769,6 +1795,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, global: &Glo
             }).await?
         }
         TeamConfig::Pictionary => pic::find_team_form(transaction, global, me, uri, csrf, data, ctx).await?,
+        TeamConfig::Mentor => unimplemented!("expected external find-team form for mentor team config"),
         TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::NightAndDay | TeamConfig::Multiworld | TeamConfig::SlugOpen => mw::find_team_form(transaction, global, me, uri, csrf, data, ctx).await?,
     })
 }

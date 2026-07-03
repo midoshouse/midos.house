@@ -234,6 +234,10 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                         : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
                         : ", ";
                     }
+                    TeamConfig::Mentor => {
+                        : mentor::Role::try_from(member.role).expect("non-Mentor role in Mentor team");
+                        : ", ";
+                    }
                     TeamConfig::Multiworld => {
                         : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
                         : ", ";
@@ -337,6 +341,29 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : event;
                 : " as ";
                 : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
+                @if let Some(teammates) = English.join_html_opt(teammates) {
+                    : " together with ";
+                    : teammates;
+                }
+                : ".";
+            }
+            TeamConfig::Mentor => {
+                @let (creator, creator_role) = creator.ok_or(IntoHtmlError::UnknownUser)?;
+                : creator;
+                : " (";
+                : mentor::Role::try_from(creator_role).expect("non-Mentor role in Mentor team");
+                : ") invited you to join ";
+                : creator.possessive_determiner();
+                : " team";
+                @if let Some(team_name) = team_row.name {
+                    : " “";
+                    : team_name;
+                    : "”";
+                }
+                : " for ";
+                : event;
+                : " as ";
+                : mentor::Role::try_from(my_role).expect("non-Mentor role in Mentor team");
                 @if let Some(teammates) = English.join_html_opt(teammates) {
                     : " together with ";
                     : teammates;

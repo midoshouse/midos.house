@@ -530,9 +530,7 @@ impl Requirement {
                     is_radio: true,
                     html_content: Box::new(move |errors| html! {
                         : form_field("restream_consent_radio", errors, html! {
-                            label(for = "restream_consent_radio") {
-                                : "Let us know whether you are okay with being restreamed:";
-                            }
+                            label(for = "restream_consent_radio") : "Let us know whether you are okay with being restreamed:";
                             br;
                             input(id = "restream_consent_radio-yes", type = "radio", name = "restream_consent_radio", value = "yes", checked? = yes_checked);
                             label(for = "restream_consent_radio-yes") : "Yes";
@@ -1068,6 +1066,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
                     }
                 }
                 TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, global, me, uri, csrf, data, defaults).await?),
+                TeamConfig::Mentor => return Ok(mentor::enter_form(transaction, global, me, uri, csrf, data, defaults).await?),
                 TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::NightAndDay | TeamConfig::Multiworld | TeamConfig::SlugOpen => return Ok(mw::enter_form(transaction, global, me, uri, csrf, data, defaults.into_context()).await?),
             },
         }

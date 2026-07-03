@@ -25,6 +25,7 @@ pub(crate) mod efk;
 pub(crate) mod fr;
 pub(crate) mod latam;
 pub(crate) mod league;
+pub(crate) mod mentor;
 pub(crate) mod mp;
 pub(crate) mod mq;
 pub(crate) mod mw;
@@ -51,6 +52,7 @@ pub(crate) enum Series {
     CopaLatinoamerica,
     EscapeFromKakariko,
     League,
+    Mentor,
     MixedPools,
     Mq,
     Multiworld,
@@ -79,6 +81,7 @@ impl Series {
             Self::CopaLatinoamerica => "latam",
             Self::EscapeFromKakariko => "efk",
             Self::League => "league",
+            Self::Mentor => "mentor",
             Self::MixedPools => "mp",
             Self::Mq => "mq",
             Self::Multiworld => "mw",
@@ -107,6 +110,7 @@ impl Series {
             Self::CopaLatinoamerica => "Copa Latinoamerica",
             Self::EscapeFromKakariko => "Escape from Kakariko",
             Self::League => "League",
+            Self::Mentor => "Mentor Tournaments",
             Self::MixedPools => "Mixed Pools Tournaments",
             Self::Mq => "12 MQ Tournaments",
             Self::Multiworld => "Multiworld Tournaments",
@@ -137,6 +141,7 @@ impl Series {
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
             Self::PotsOfTime | Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
             Self::SlugOpen => all::<sco::Format>().map(|format| format.default_race_duration()).max().expect("no formats defined for SlugCentral Open"),
+            Self::Mentor => TimeDelta::hours(4), //TODO
         }
     }
 }
