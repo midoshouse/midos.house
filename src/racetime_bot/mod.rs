@@ -2068,25 +2068,36 @@ impl GlobalState {
         tokio::spawn(async move {
             let rsl_script_path = preset.script_path().await?;
             // check RSL script version
-            let rsl_version = Command::new(PYTHON)
-                .arg("-c")
-                .arg("import rslversion; print(rslversion.__version__)")
-                .current_dir(&rsl_script_path)
-                .check(PYTHON).await?
-                .stdout;
-            let rsl_version = String::from_utf8(rsl_version)?;
-            let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
-                (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
-            } else {
-                rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+            let supports_plando_filename_base = fs::exists(rsl_script_path.join("rslversion.py")).await? && {
+                let rsl_version = Command::new(PYTHON)
+                    .arg("-c")
+                    .arg("import rslversion; print(rslversion.__version__)")
+                    .current_dir(&rsl_script_path)
+                    .check(PYTHON).await?
+                    .stdout;
+                let rsl_version = String::from_utf8(rsl_version)?;
+                if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
+                    (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
+                } else {
+                    rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
+                }
             };
             // check required randomizer version
-            let randomizer_version = Command::new(PYTHON)
-                .arg("-c")
-                .arg("import rslversion; print(rslversion.randomizer_version)")
-                .current_dir(&rsl_script_path)
-                .check(PYTHON).await?
-                .stdout;
+            let randomizer_version = if fs::exists(rsl_script_path.join("rslversion.py")).await? {
+                Command::new(PYTHON)
+                    .arg("-c")
+                    .arg("import rslversion; print(rslversion.randomizer_version)")
+                    .current_dir(&rsl_script_path)
+                    .check(PYTHON).await?
+                    .stdout
+            } else {
+                Command::new(PYTHON)
+                    .arg("-c")
+                    .arg("import version; print(version.randomizer_version)")
+                    .current_dir(&rsl_script_path)
+                    .check(PYTHON).await?
+                    .stdout
+            };
             let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<rando::Version>()?;
             let web_version = self.ootr_api_client.can_roll_on_web(false, Some(&preset), &VersionedBranch::Pinned { version: randomizer_version.clone() }, world_count, false, unlock_spoiler_log).await;
             // run the RSL script

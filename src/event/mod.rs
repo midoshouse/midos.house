@@ -696,12 +696,21 @@ impl<'a> Data<'a> {
                     }
                 };
                 // check required randomizer version
-                let randomizer_version = Command::new(racetime_bot::PYTHON)
-                    .arg("-c")
-                    .arg("import rslversion; print(rslversion.randomizer_version)")
-                    .current_dir(&rsl_script_path)
-                    .check(racetime_bot::PYTHON).await?
-                    .stdout;
+                let randomizer_version = if fs::exists(rsl_script_path.join("rslversion.py")).await? {
+                    Command::new(racetime_bot::PYTHON)
+                        .arg("-c")
+                        .arg("import rslversion; print(rslversion.randomizer_version)")
+                        .current_dir(&rsl_script_path)
+                        .check(racetime_bot::PYTHON).await?
+                        .stdout
+                } else {
+                    Command::new(racetime_bot::PYTHON)
+                        .arg("-c")
+                        .arg("import version; print(version.randomizer_version)")
+                        .current_dir(&rsl_script_path)
+                        .check(racetime_bot::PYTHON).await?
+                        .stdout
+                };
                 let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<ootr_utils::Version>()?;
                 // run the RSL script
                 let mut rsl_cmd = Command::new(racetime_bot::PYTHON);
