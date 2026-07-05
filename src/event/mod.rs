@@ -642,7 +642,7 @@ impl<'a> Data<'a> {
     pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
         Ok(match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => self.rando_version.clone().map(|rando_version| (rando_version, Cow::Owned(br::s1_settings()))), // support for randomized starting song
-            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "3" | "4" | "5" | "6") => {
+            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") => {
                 #[derive(Deserialize)]
                 struct Plando {
                     settings: seed::Settings,
@@ -661,10 +661,12 @@ impl<'a> Data<'a> {
                         version: Some(Version::new(2, 8, 2)),
                         preset: rsl::Preset::League,
                     }, Some(include_bytes!("../../assets/event/pot/weights-1.json"))),
+                    /*
                     (Series::Rsl, "3") => (rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 1, 0)),
                         preset: rsl::Preset::League,
                     }, None),
+                    */ //TODO support old RSL script versions that didn't report plando output path
                     (Series::Rsl, "4") => (rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 2, 10)),
                         preset: rsl::Preset::League,
@@ -755,7 +757,7 @@ impl<'a> Data<'a> {
     pub(crate) fn has_single_settings(&self) -> bool {
         match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => true,
-            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "3" | "4" | "5" | "6") => true,
+            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") => true,
             (_, _) => self.single_settings.is_some(),
         }
     }
