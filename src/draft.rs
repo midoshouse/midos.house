@@ -335,7 +335,16 @@ impl Draft {
                         Id::from(5779097592179749366_u64), // Clube Athletico Paranaense
                         Id::from(3033012543915648585_u64), // DAChuck
                     ],
-                    Kind::MultiworldS6 => unimplemented!("top 8 seeding not yet determined"),
+                    Kind::MultiworldS6 => [
+                        Id::from(5851256833565865063_u64), // Snack Pack
+                        Id::from(15497920722567454650_u64), // Pandora's Brot
+                        Id::from(13933300181500947095_u64), // Best Viewers
+                        Id::from(17328349094055607264_u64), // Schulzer, Jay and Bobby are here
+                        Id::from(9590179795969423818_u64), // Deku Treez Nuts
+                        Id::from(1769731012689438481_u64), // Les 2 nuts et le stick
+                        Id::from(18134629997251825833_u64), // Valley-Laker Girls
+                        Id::from(8580713554327327004_u64), // Alpha Super Awesome Cool Dynamite Wolf Squadron
+                    ],
                     _ => unreachable!("checked by outer match"),
                 };
                 let mut team_ids = [team1.id, team2.id];
