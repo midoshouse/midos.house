@@ -1552,7 +1552,8 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                             p : "Play the qualifier async to qualify for the tournament.";
                                         }
                                         AsyncKind::Seeding => p : "If you would like to play the seeding async, you can request it here.";
-                                        AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
+                                        AsyncKind::Tiebreaker1 => p : "Play the tiebreaker async for seeding for the bracket stage of the tournament.";
+                                        AsyncKind::Tiebreaker2 => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
                                     }
                                     @match data.series {
                                         Series::CoOp => : coop::async_rules(async_kind);
