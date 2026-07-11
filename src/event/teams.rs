@@ -961,6 +961,12 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
     for &(role, display_name) in roles {
         column_headers.push(html! {
             th(class? = role.css_class().filter(|_| data.team_config.has_distinct_roles())) : display_name;
+            @if let TeamConfig::SlugOpen = data.team_config {
+                th(class? = role.css_class().filter(|_| data.team_config.has_distinct_roles())) {
+                    : display_name;
+                    : "Opt-ins";
+                }
+            }
         });
     }
     match qualifier_kind {
@@ -1090,7 +1096,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                     @match user {
                                         MemberUser::MidosHouse(user) => {
                                             : user;
-                                            @if let Some(ref team) = team {
+                                            @if let Some(team) = &team {
                                                 @if *is_confirmed {
                                                     @if me.as_ref().is_some_and(|me| me == user) && members.iter().any(|member| !member.is_confirmed) {
                                                         : " ";
@@ -1142,6 +1148,21 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                         MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", racetime_host())) : name;
                                         MemberUser::Newcomer => @unreachable // only returned if signups_sorted is called with worst_case_extrapolation = true, which it isn't above
                                         MemberUser::Deleted => em : "deleted user";
+                                    }
+                                }
+                                @if let TeamConfig::SlugOpen = data.team_config {
+                                    td {
+                                        @if let Some(team) = &team && let MemberUser::MidosHouse(user) = user {
+                                            @let row = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM team_members WHERE team = $1 AND member = $2", team.id as _, user.id as _).fetch_one(&mut *transaction).await?;
+                                            @if row.hard_settings_ok {
+                                                : "Hardcore (Franco 2026)";
+                                                br;
+                                            }
+                                            @if row.mq_ok {
+                                                : "MQ (Franco 2026)";
+                                                br;
+                                            }
+                                        }
                                     }
                                 }
                             }
