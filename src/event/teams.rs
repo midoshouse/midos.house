@@ -964,7 +964,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
             @if let TeamConfig::SlugOpen = data.team_config {
                 th(class? = role.css_class().filter(|_| data.team_config.has_distinct_roles())) {
                     : display_name;
-                    : "Opt-ins";
+                    : " Opt-ins";
                 }
             }
         });
