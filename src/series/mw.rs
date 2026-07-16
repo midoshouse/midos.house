@@ -2870,7 +2870,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, g
         table {
             thead {
                 tr {
-                    th : "User";
+                    th : "Name";
                     @if !data.is_single_race() {
                         th : "Timezone/Availability/Commitment";
                         th : "Notes";
