@@ -6191,6 +6191,7 @@ async fn handle_rooms(global: Arc<GlobalState>, shutdown: rocket::Shutdown) -> R
             .host(racetime_host_info())
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION"), " (https://github.com/midoshouse/midos.house)"))
             .scan_races_every(Duration::from_secs(5))
+            .network_timeout(Some(Duration::from_secs(30)))
             .build().await
         {
             Ok(bot) => {

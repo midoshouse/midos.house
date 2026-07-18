@@ -1,5 +1,4 @@
 use {
-    itertools::Position,
     nonempty_collections::nev,
     tokio::sync::RwLockReadGuard,
     crate::{
@@ -100,9 +99,8 @@ impl TeamLinks {
                 } else {
                     msg.push("vods: ");
                     for (pos, (role, vod)) in vods.iter().with_position() {
-                        match pos {
-                            Position::First | Position::Only => {}
-                            Position::Middle | Position::Last => { msg.push(", "); }
+                        if !pos.is_first {
+                            msg.push(", ");
                         }
                         if let Some(vod) = vod {
                             msg.push_named_link_no_preview(*role, vod.as_str());

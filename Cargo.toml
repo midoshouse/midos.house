@@ -2,7 +2,7 @@
 name = "midos-house"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.91" # nixpkgs stable
+rust-version = "1.95" # nixpkgs stable
 
 [profile.dev.build-override]
 opt-level = 3
@@ -33,8 +33,8 @@ production = []
 local = []
 
 [build-dependencies]
-gix = "0.83" # much slower than git2 but avoids a C dependency on openssl-sys
-itertools = "0.14"
+gix = "0.85" # much slower than git2 but avoids a C dependency on openssl-sys
+itertools = "0.15"
 semver = "1"
 thiserror = "2"
 
@@ -55,14 +55,14 @@ derive_more = { version = "2", features = ["display", "from", "from_str"] }
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
-gix = { version = "0.83", features = ["blocking-http-transport-reqwest"] }
+gix = { version = "0.85", features = ["blocking-http-transport-reqwest"] }
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
 hyper = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = { version = "2", features = ["serde"] }
-itertools = "0.14"
+itertools = "0.15"
 kuchiki = "0.8" #TODO unmaintained, replace with `scraper` crate?
 lazy-regex = "3"
 log = "0.4"
@@ -71,12 +71,12 @@ mhstatus = { git = "https://github.com/midoshouse/status.midos.house" }
 #mimalloc = "0.1" # fails to compile on Ubuntu
 noisy_float = "0.2"
 nonempty-collections = "1"
-ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "rocket-forms", features = ["sqlx"] }
-racetime = "0.33"
+ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", features = ["sqlx"] }
+racetime = "0.35"
 rand = "0.10"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "cookies", "form", "gzip", "hickory-dns", "http2", "json", "query", "rustls-no-provider", "stream", "system-proxy", "zstd"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
-rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "forms", features = ["ics", "image", "rocket_csrf"] }
+rocket-util = { git = "https://github.com/fenhl/rocket-util", features = ["ics", "image", "rocket_csrf"] }
 rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "forms" }
 rocket_oauth2 = { git = "https://github.com/fenhl/rocket_oauth2", branch = "forms" }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
@@ -101,7 +101,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 typemap_rev = "0.3" # transitive dependency of serenity
 url = { version = "2", features = ["serde"] }
 uuid = "1"
-wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "night", "racetime", "reqwest", "rocket", "serde_json"] }
+wheel = { git = "https://github.com/fenhl/wheel", features = ["chrono", "night", "racetime", "reqwest", "rocket", "serde_json"] }
 yup-oauth2 = "12"
 
 [target.'cfg(unix)'.dependencies]
