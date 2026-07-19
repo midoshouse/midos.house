@@ -264,6 +264,7 @@ pub(crate) enum Goal {
     LeagueS7,
     LeagueS8,
     LeagueS9,
+    Mentor2026,
     MixedPoolsS1,
     MixedPoolsS2,
     MixedPoolsS3,
@@ -339,6 +340,7 @@ impl Goal {
             Self::LeagueS7 => Ok((Series::League, "7")),
             Self::LeagueS8 => Ok((Series::League, "8")),
             Self::LeagueS9 => Ok((Series::League, "9")),
+            Self::Mentor2026 => Ok((Series::Mentor, "2026")),
             Self::MixedPoolsS1 => Ok((Series::MixedPools, "1")),
             Self::MixedPoolsS2 => Ok((Series::MixedPools, "2")),
             Self::MixedPoolsS3 => Ok((Series::MixedPools, "3")),
@@ -409,6 +411,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::Mentor2026
             | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
@@ -469,6 +472,7 @@ impl Goal {
             Self::LeagueS7 => "League Season 7",
             Self::LeagueS8 => "League Season 8",
             Self::LeagueS9 => "League Season 9",
+            Self::Mentor2026 => "Mentor Tournament 2026",
             Self::MixedPoolsS1 => "1st Mixed Pools Tournament",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MixedPoolsS3 => "3rd Mixed Pools Tournament",
@@ -529,6 +533,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::Mentor2026
             | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
@@ -602,6 +607,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::Mentor2026
             | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
@@ -654,6 +660,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::Mentor2026
             | Self::S6
             | Self::S7
             | Self::S8
@@ -726,6 +733,7 @@ impl Goal {
                 | Self::LeagueS6
                 | Self::LeagueS7
                 | Self::LeagueS8
+                | Self::Mentor2026
                 | Self::MixedPoolsS1
                 | Self::MixedPoolsS2
                 | Self::MixedPoolsS3
@@ -785,6 +793,7 @@ impl Goal {
             Self::LeagueS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::LeagueS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 57) },
             Self::LeagueS9 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 41) },
+            Self::Mentor2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 0) },
             Self::MixedPoolsS1 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 2, 163, 1) },
             Self::MixedPoolsS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17) },
             Self::MixedPoolsS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4) },
@@ -843,6 +852,7 @@ impl Goal {
             Self::LeagueS7 => Some(league::s7_settings()),
             Self::LeagueS8 => Some(league::s8_settings()),
             Self::LeagueS9 => Some(league::s9_settings()),
+            Self::Mentor2026 => Some(mentor::settings_2026()),
             Self::MixedPoolsS1 => Some(mp::s1_settings()),
             Self::MixedPoolsS2 => Some(mp::s2_settings()),
             Self::MixedPoolsS3 => Some(mp::s3_settings()),
@@ -910,6 +920,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::CopaLatinoamerica2025
             | Self::Efk2026
+            | Self::Mentor2026
             | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
@@ -1111,6 +1122,7 @@ impl Goal {
             | Self::LeagueS7
             | Self::LeagueS8
             | Self::LeagueS9
+            | Self::Mentor2026
             | Self::MixedPoolsS1
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
@@ -2941,6 +2953,7 @@ trait SeedHandler {
                     | Goal::LeagueS7
                     | Goal::LeagueS8
                     | Goal::LeagueS9
+                    | Goal::Mentor2026
                     | Goal::MixedPoolsS1
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
@@ -3766,6 +3779,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     ("Roll seed", ActionButton::Message {
                                         message: format!("!seed"),
                                         help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::Mentor2026 => ctx.send_message(
+                                "Welcome! This is a practice room for the 2026 mentor tournament. Learn more about the event at https://midos.house/event/mentor/2026",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the event.")),
                                         survey: None,
                                         submit: None,
                                     }),
@@ -5480,6 +5505,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::LeagueS7
                     | Goal::LeagueS8
                     | Goal::LeagueS9
+                    | Goal::Mentor2026
                     | Goal::MixedPoolsS1
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
