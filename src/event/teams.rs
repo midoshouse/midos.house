@@ -684,10 +684,11 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     AND event = $2
                     AND NOT resigned
                     AND (
-                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        $3
+                        OR EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
                         OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
                     )
-                "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
+                "#, data.series as _, &data.event, is_organizer && !data.is_started(&mut *transaction).await?, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
                     .map_ok(|row| TeamRow {
                         team: Team {
                             id: row.id,
@@ -746,10 +747,11 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 AND event = $2
                 AND NOT resigned
                 AND (
-                    EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                    $3
+                    OR EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
                     OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
                 )
-            "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch_all(&mut **transaction).await?;
+            "#, data.series as _, &data.event, is_organizer && !data.is_started(&mut *transaction).await?, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch_all(&mut **transaction).await?;
             let roles = data.team_config.roles();
             let mut signups = Vec::with_capacity(rows.len());
             for row in rows {
