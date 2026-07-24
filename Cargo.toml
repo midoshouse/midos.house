@@ -33,7 +33,7 @@ production = []
 local = []
 
 [build-dependencies]
-gix = "0.85" # much slower than git2 but avoids a C dependency on openssl-sys
+gix = "0.86" # much slower than git2 but avoids a C dependency on openssl-sys
 itertools = "0.15"
 semver = "1"
 thiserror = "2"
@@ -43,7 +43,7 @@ anyhow = "1"
 async-graphql = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
 async-graphql-rocket = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
 async-trait = "0.1"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 chrono-tz = "0.10"
 clap = { version = "4", features = ["derive"] }
@@ -55,7 +55,7 @@ derive_more = { version = "2", features = ["display", "from", "from_str"] }
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
-gix = { version = "0.85", features = ["blocking-http-transport-reqwest"] }
+gix = { version = "0.86", features = ["blocking-http-transport-reqwest"] }
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
 hyper = "1"
