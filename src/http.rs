@@ -528,7 +528,10 @@ async fn unprocessable_content(request: &Request<'_>) -> Result<(Status, RawHtml
 #[rocket::catch(500)]
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
     if let Environment::Production = Environment::default() {
-        wheel::night_report(&format!("{}/error", night_path()), Some("internal server error")).await?;
+        if let Err(e) = wheel::night_report(&format!("{}/error", night_path()), Some("internal server error")).await {
+            eprintln!("failed to send Night report for internal server error: {e}");
+            eprintln!("debug info: {e:?}");
+        }
     }
     let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
@@ -565,7 +568,10 @@ async fn insufficient_storage(request: &Request<'_>) -> PageResult {
 async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     eprintln!("responding with unexpected HTTP status code {} {} to request {request:?}", status.code, status.reason_lossy());
     if let Environment::Production = Environment::default() {
-        wheel::night_report(&format!("{}/error", night_path()), Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
+        if let Err(e) = wheel::night_report(&format!("{}/error", night_path()), Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await {
+            eprintln!("failed to send Night report for unexpected status code {}: {e}", status.code);
+            eprintln!("debug info: {e:?}");
+        }
     }
     let global = request.guard::<&GlobalState>().await.expect("missing global state");
     let me = request.guard::<User>().await.succeeded();
