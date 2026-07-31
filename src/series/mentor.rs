@@ -1,13 +1,46 @@
-use crate::{
-    event::{
-        Data,
-        Error,
-        Tab,
-        enter,
+use {
+    chrono::Days,
+    derive_more::{
+        Display,
+        FromStr,
     },
-    prelude::*,
-    series::pic::EnterFormDefaults,
+    crate::{
+        event::{
+            Data,
+            Error,
+            Tab,
+            enter,
+        },
+        prelude::*,
+        series::pic::EnterFormDefaults,
+    },
 };
+
+#[derive(FromStr, Display, PartialEq, Eq, Hash, Sequence)]
+pub(crate) enum WeeklyKind {
+    Saturday,
+    Sunday,
+}
+
+impl WeeklyKind {
+    pub(crate) fn cal_id_part(&self) -> &'static str {
+        match self {
+            Self::Saturday => "sat",
+            Self::Sunday => "sun",
+        }
+    }
+
+    pub(crate) fn next_weekly_after(&self, min_time: DateTime<impl TimeZone>) -> DateTime<Utc> {
+        let mut time = match self {
+            Self::Saturday => Utc.with_ymd_and_hms(2026, 8, 1, 22, 0, 0).single().expect("wrong hardcoded datetime"),
+            Self::Sunday => Utc.with_ymd_and_hms(2026, 8, 2, 13, 0, 0).single().expect("wrong hardcoded datetime"),
+        };
+        while time <= min_time {
+            time = time.checked_add_days(Days::new(14)).unwrap();
+        }
+        time
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, FromFormField, UriDisplayQuery)]
 pub(crate) enum Role {
@@ -97,6 +130,23 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
             }
         }
     }).await?)
+}
+
+pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
+    html! {
+        article {
+            p {
+                : "The room for each race will be opened 1 hour before the scheduled starting time. ";
+                @if me.as_ref().is_some_and(|me| me.racetime.is_some()) {
+                    : "You don't need to sign up beforehand.";
+                } else {
+                    : "You will need a ";
+                    a(href = format!("https://{}/", racetime_host())) : "racetime.gg";
+                    : " account to participate.";
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn settings_2026() -> seed::Settings {

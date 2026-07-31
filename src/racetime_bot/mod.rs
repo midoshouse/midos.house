@@ -340,7 +340,7 @@ impl Goal {
             Self::LeagueS7 => Ok((Series::League, "7")),
             Self::LeagueS8 => Ok((Series::League, "8")),
             Self::LeagueS9 => Ok((Series::League, "9")),
-            Self::Mentor2026 => Ok((Series::Mentor, "2026")),
+            Self::Mentor2026 => Err(|series, event| series == Series::Mentor && matches!(event, "2026" | "w")),
             Self::MixedPoolsS1 => Ok((Series::MixedPools, "1")),
             Self::MixedPoolsS2 => Ok((Series::MixedPools, "2")),
             Self::MixedPoolsS3 => Ok((Series::MixedPools, "3")),
