@@ -1017,7 +1017,10 @@ impl Race {
             (Some(game), true) => sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE NOT ignored AND scheduling_thread = $1 AND game = $2"#, PgSnowflake(channel_id) as _, game).fetch_all(&mut **transaction).await?,
         };
         for id in rows {
-            races.push(Self::from_id(&mut *transaction, http_client, id).await?);
+            let race = Self::from_id(&mut *transaction, http_client, id).await?;
+            if include_started || !race.is_ended() { //TODO this only consider asynced races as started if they are ended, also filter out asynced races where all async parts are started
+                races.push(race);
+            }
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
