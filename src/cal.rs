@@ -1562,6 +1562,7 @@ impl PartialOrd for Race {
 impl Ord for Race {
     fn cmp(&self, other: &Self) -> Ordering {
         self.schedule.cmp(&self.entrants, &other.schedule, &other.entrants)
+            .then_with(|| sco::Format::for_race(self).is_none().cmp(&sco::Format::for_race(other).is_none())) // in SlugCentral Open, list split races first
             .then_with(|| self.series.slug().cmp(other.series.slug()))
             .then_with(|| self.event.cmp(&other.event))
             .then_with(|| self.phase.cmp(&other.phase))
