@@ -60,6 +60,7 @@ pub(crate) enum Series {
     Pictionary,
     PotsOfTime,
     Rsl,
+    RupeesOfTime,
     SlugOpen,
     Scrubs,
     SongsOfHope,
@@ -89,6 +90,7 @@ impl Series {
             Self::Pictionary => "pic",
             Self::PotsOfTime => "pot",
             Self::Rsl => "rsl",
+            Self::RupeesOfTime => "rot",
             Self::Scrubs => "scrubs",
             Self::SlugOpen => "sco",
             Self::SongsOfHope => "soh",
@@ -118,6 +120,7 @@ impl Series {
             Self::Pictionary => "Pictionary Spoiler Log Races",
             Self::PotsOfTime => "Pots Of Time",
             Self::Rsl => "Random Settings League",
+            Self::RupeesOfTime => "Rupees Of Time",
             Self::Scrubs => "Scrubs Tournaments",
             Self::SlugOpen => "SlugCentral Open",
             Self::SongsOfHope => "Songs of Hope",
@@ -139,7 +142,7 @@ impl Series {
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
             Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::Mentor | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
-            Self::PotsOfTime | Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
+            Self::PotsOfTime | Self::Rsl | Self::RupeesOfTime => TimeDelta::hours(4) + TimeDelta::minutes(30),
             Self::SlugOpen => all::<sco::Format>().map(|format| format.default_race_duration()).max().expect("no formats defined for SlugCentral Open"),
         }
     }

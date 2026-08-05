@@ -451,6 +451,7 @@ impl<'a> Data<'a> {
             | Series::Multiworld
             | Series::PotsOfTime
             | Series::Rsl
+            | Series::RupeesOfTime
             | Series::Scrubs
             | Series::SlugOpen
             | Series::SongsOfHope
@@ -1177,6 +1178,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::Pictionary => pic::info(global, &mut transaction, &data).await?,
         Series::PotsOfTime => pot::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
+        Series::RupeesOfTime => None,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
         Series::SlugOpen => None,
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
@@ -1598,6 +1600,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                             | Series::Mq
                             | Series::PotsOfTime
                             | Series::Rsl
+                            | Series::RupeesOfTime
                             | Series::SlugOpen
                             | Series::SpoilerLog
                             | Series::Standard

@@ -993,6 +993,7 @@ impl Race {
             | Series::MixedPools
             | Series::Mq
             | Series::PotsOfTime
+            | Series::RupeesOfTime
             | Series::SlugOpen
             | Series::SongsOfHope
             | Series::SpeedGaming
