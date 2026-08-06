@@ -2756,37 +2756,40 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
             content.push_safe(round.clone());
             content.push(' ');
         }
-        content.push("match. Use ");
-        match event.scheduling_backend(&mut transaction).await? {
-            SchedulingBackend::MidosHouse => {
-                content.mention_command(command_ids.schedule, "schedule");
-                if event.asyncs_allowed() {
-                    content.push(" to schedule as a live race or ");
-                    content.mention_command(command_ids.schedule_async, "schedule-async");
-                    content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
+        content.push("match.");
+        if !matches!(event.team_config, TeamConfig::SlugOpen) {
+            content.push(" Use ");
+            match event.scheduling_backend(&mut transaction).await? {
+                SchedulingBackend::MidosHouse => {
+                    content.mention_command(command_ids.schedule, "schedule");
+                    if event.asyncs_allowed() {
+                        content.push(" to schedule as a live race or ");
+                        content.mention_command(command_ids.schedule_async, "schedule-async");
+                        content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
+                    } else {
+                        content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
+                    }
+                    if game_count > 1 {
+                        content.push(" You can use the ");
+                        content.push_mono("game:");
+                        content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                    }
+                }
+                SchedulingBackend::SpeedGamingOnline(speedgaming_slug) =>  {
+                    content.push("<https://speedgaming.org/");
+                    content.push(speedgaming_slug);
+                    if game_count > 1 {
+                        content.push("/submit> to schedule your races.");
+                    } else {
+                        content.push("/submit> to schedule your race.");
+                    }
+                }
+                SchedulingBackend::SpeedGamingInPerson => if game_count > 1 {
+                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
                 } else {
-                    content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
-                }
-                if game_count > 1 {
-                    content.push(" You can use the ");
-                    content.push_mono("game:");
-                    content.push(" parameter with these commands to schedule subsequent games ahead of time.");
-                }
+                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your race.");
+                },
             }
-            SchedulingBackend::SpeedGamingOnline(speedgaming_slug) =>  {
-                content.push("<https://speedgaming.org/");
-                content.push(speedgaming_slug);
-                if game_count > 1 {
-                    content.push("/submit> to schedule your races.");
-                } else {
-                    content.push("/submit> to schedule your race.");
-                }
-            }
-            SchedulingBackend::SpeedGamingInPerson => if game_count > 1 {
-                content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
-            } else {
-                content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your race.");
-            },
         }
     };
     if title.len() > 100 {

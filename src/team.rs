@@ -132,6 +132,10 @@ impl Team {
         Ok(event::Data::new(transaction, self.series, self.event).await?.expect("team for nonexistent event"))
     }
 
+    pub(crate) async fn event(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<event::Data<'_>, event::DataError> {
+        Ok(event::Data::new(transaction, self.series, &self.event).await?.expect("team for nonexistent event"))
+    }
+
     pub(crate) async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id<Users>>> {
         sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 ORDER BY role ASC"#, self.id as _).fetch_all(&mut **transaction).await
     }

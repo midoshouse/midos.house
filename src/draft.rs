@@ -15,6 +15,7 @@ use {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] RslScriptPath(#[from] rsl::ScriptPathError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -27,6 +28,7 @@ pub(crate) enum Error {
 impl IsNetworkError for Error {
     fn is_network_error(&self) -> bool {
         match self {
+            Self::Event(_) => false,
             Self::RslScriptPath(_) => false,
             Self::Sql(_) => false,
             Self::Wheel(e) => e.is_network_error(),
@@ -1429,14 +1431,13 @@ impl Draft {
                     Step {
                         message: match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { transaction, entrants, .. } => {
+                            MessageContext::Discord { transaction, command_ids, entrants, .. } => {
                                 let (mut high_seed, mut low_seed) = entrants.iter().partition::<Vec<_>, _>(|entrant| entrant.team().unwrap().id == self.high_seed);
                                 let Entrant::MidosHouseTeam(high_seed) = high_seed.remove(0) else { unimplemented!("SlugCentral Open draft with non-team entrants") };
                                 let Entrant::MidosHouseTeam(low_seed) = low_seed.remove(0) else { unimplemented!("SlugCentral Open draft with non-team entrants") };
                                 let mut builder = MessageBuilder::default();
-                                builder.push("Format draft completed. Here are your matchups:");
+                                builder.push_line("Format draft completed. Here are your matchups:");
                                 for (format, [high_seed_role, low_seed_role]) in &assignments {
-                                    builder.push_line("");
                                     builder.push(format.display_name());
                                     builder.push(": ");
                                     builder.mention_user(&high_seed.members_roles(&mut *transaction).await?
@@ -1452,6 +1453,29 @@ impl Draft {
                                         .expect("missing format assignment")
                                         .0
                                     );
+                                    builder.push_line("");
+                                }
+                                let event = high_seed.event(&mut *transaction).await?;
+                                builder.push("Use ");
+                                match event.scheduling_backend(&mut *transaction).await? {
+                                    SchedulingBackend::MidosHouse => {
+                                        builder.mention_command(command_ids.schedule, "schedule");
+                                        if event.asyncs_allowed() {
+                                            builder.push(" to schedule as a live race or ");
+                                            builder.mention_command(command_ids.schedule_async, "schedule-async");
+                                            builder.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
+                                        } else {
+                                            builder.push(" to schedule your races. This command takes a Discord timestamp, which you can generate by typing `@time` or at <https://hammertime.cyou/>.");
+                                        }
+                                    }
+                                    SchedulingBackend::SpeedGamingOnline(speedgaming_slug) =>  {
+                                        builder.push("<https://speedgaming.org/");
+                                        builder.push(speedgaming_slug);
+                                        builder.push("/submit> to schedule your races.");
+                                    }
+                                    SchedulingBackend::SpeedGamingInPerson => {
+                                        builder.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
+                                    }
                                 }
                                 builder.build()
                             }
