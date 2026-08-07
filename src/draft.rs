@@ -2973,7 +2973,8 @@ impl Draft {
                     }
                     match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::Claim => {
-                            let had_claim = self.settings.insert(Cow::Owned(format!("{seed}_{}", role.css_class().expect("solo role in SlugCentral Open format"))), Cow::Borrowed(format.slug())).is_some();
+                            let had_claim = all::<mw::Role>().filter(|role| self.settings.contains_key(&*format!("{seed}_{}", event::Role::from(*role).css_class().expect("solo role in SlugCentral Open format")))).count() == 2 // implicit claim by process of elimination
+                                || self.settings.insert(Cow::Owned(format!("{seed}_{}", role.css_class().expect("solo role in SlugCentral Open format"))), Cow::Borrowed(format.slug())).is_some(); // explicit claim
                             Ok(match msg_ctx {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                 MessageContext::Discord { .. } => if had_claim {
