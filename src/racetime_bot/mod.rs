@@ -5671,6 +5671,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                     && let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref())
                     && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?
                     && cal_event.race.game.is_none()
+                    && sco::Format::for_race(&cal_event.race).is_none()
                     && let Some(entrants) = match cal_event.race.entrants {
                         Entrants::Open | Entrants::Count { .. } => Some(None), // no text
                         Entrants::Named(ref entrants) => Some(Some(entrants.clone())),
@@ -5698,12 +5699,19 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                         phase_round
                     }
                 } else {
-                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                    let mut info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                         (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                         (Some(phase), None) => Some(phase.clone()),
                         (None, Some(round)) => Some(round.clone()),
                         (None, None) => None,
                     };
+                    if let Some(format) = sco::Format::for_race(&cal_event.race) {
+                        info_prefix = Some(if let Some(info_prefix) = info_prefix {
+                            format!("{info_prefix} ({})", format.display_name())
+                        } else {
+                            format.display_name().to_owned()
+                        });
+                    }
                     let mut info_user = match cal_event.race.entrants {
                         Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
                         Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),

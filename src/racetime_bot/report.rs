@@ -132,6 +132,7 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                     (None, None) => Some(None), // no phase/round
                 }
                 && cal_event.race.game.is_none()
+                && sco::Format::for_race(&cal_event.race).is_none()
             {
                 let mut builder = MessageBuilder::default();
                 if let Some(phase_round) = phase_round {
@@ -166,23 +167,48 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                     (None, Some(round)) => Some(round.clone()),
                     (None, None) => None,
                 };
-                match (info_prefix, cal_event.race.game) {
-                    (Some(prefix), Some(game)) => {
+                match (info_prefix, cal_event.race.game, sco::Format::for_race(&cal_event.race)) {
+                    (None, None, None) => {}
+                    (None, None, Some(format)) => {
+                        builder.push(format.display_name());
+                        builder.push(": ");
+                    }
+                    (None, Some(game), None) => {
+                        builder.push("game ");
+                        builder.push(game.to_string());
+                        builder.push(": ");
+                    }
+                    (None, Some(game), Some(format)) => {
+                        builder.push("game ");
+                        builder.push(game.to_string());
+                        builder.push(" (");
+                        builder.push(format.display_name());
+                        builder.push("): ");
+                    }
+                    (Some(prefix), None, None) => {
+                        builder.push_safe(prefix);
+                        builder.push(": ");
+                    }
+                    (Some(prefix), None, Some(format)) => {
+                        builder.push_safe(prefix);
+                        builder.push(" (");
+                        builder.push(format.display_name());
+                        builder.push("): ");
+                    }
+                    (Some(prefix), Some(game), None) => {
                         builder.push_safe(prefix);
                         builder.push(", game ");
                         builder.push(game.to_string());
                         builder.push(": ");
                     }
-                    (Some(prefix), None) => {
+                    (Some(prefix), Some(game), Some(format)) => {
                         builder.push_safe(prefix);
-                        builder.push(": ");
-                    }
-                    (None, Some(game)) => {
-                        builder.push("game ");
+                        builder.push(", game ");
                         builder.push(game.to_string());
-                        builder.push(": ");
+                        builder.push(" (");
+                        builder.push(format.display_name());
+                        builder.push("): ");
                     }
-                    (None, None) => {}
                 }
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await?;
                 if winning_room != losing_room {
@@ -251,6 +277,7 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                     (None, None) => Some(None), // no phase/round
                 }
                 && cal_event.race.game.is_none()
+                && sco::Format::for_race(&cal_event.race).is_none()
                 && !breaks_used
             {
                 let mut builder = MessageBuilder::default();
@@ -288,23 +315,48 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                     (None, Some(round)) => Some(round.clone()),
                     (None, None) => None,
                 };
-                match (info_prefix, cal_event.race.game) {
-                    (Some(prefix), Some(game)) => {
+                match (info_prefix, cal_event.race.game, sco::Format::for_race(&cal_event.race)) {
+                    (None, None, None) => {}
+                    (None, None, Some(format)) => {
+                        builder.push(format.display_name());
+                        builder.push(": ");
+                    }
+                    (None, Some(game), None) => {
+                        builder.push("game ");
+                        builder.push(game.to_string());
+                        builder.push(": ");
+                    }
+                    (None, Some(game), Some(format)) => {
+                        builder.push("game ");
+                        builder.push(game.to_string());
+                        builder.push(" (");
+                        builder.push(format.display_name());
+                        builder.push("): ");
+                    }
+                    (Some(prefix), None, None) => {
+                        builder.push_safe(prefix);
+                        builder.push(": ");
+                    }
+                    (Some(prefix), None, Some(format)) => {
+                        builder.push_safe(prefix);
+                        builder.push(" (");
+                        builder.push(format.display_name());
+                        builder.push("): ");
+                    }
+                    (Some(prefix), Some(game), None) => {
                         builder.push_safe(prefix);
                         builder.push(", game ");
                         builder.push(game.to_string());
                         builder.push(": ");
                     }
-                    (Some(prefix), None) => {
+                    (Some(prefix), Some(game), Some(format)) => {
                         builder.push_safe(prefix);
-                        builder.push(": ");
-                    }
-                    (None, Some(game)) => {
-                        builder.push("game ");
+                        builder.push(", game ");
                         builder.push(game.to_string());
-                        builder.push(": ");
+                        builder.push(" (");
+                        builder.push(format.display_name());
+                        builder.push("): ");
                     }
-                    (None, None) => {}
                 }
                 builder.mention_entrant_long(&mut transaction, event.discord_guild, &winner).await?;
                 builder.push(" (");
@@ -532,23 +584,48 @@ async fn report_ffa(global: &GlobalState, cal_event: &cal::Event, event: &event:
             (None, Some(round)) => Some(round.clone()),
             (None, None) => None,
         };
-        match (info_prefix, cal_event.race.game) {
-            (Some(prefix), Some(game)) => {
+        match (info_prefix, cal_event.race.game, sco::Format::for_race(&cal_event.race)) {
+            (None, None, None) => {}
+            (None, None, Some(format)) => {
+                builder.push(format.display_name());
+                builder.push(": ");
+            }
+            (None, Some(game), None) => {
+                builder.push("game ");
+                builder.push(game.to_string());
+                builder.push(": ");
+            }
+            (None, Some(game), Some(format)) => {
+                builder.push("game ");
+                builder.push(game.to_string());
+                builder.push(" (");
+                builder.push(format.display_name());
+                builder.push("): ");
+            }
+            (Some(prefix), None, None) => {
+                builder.push_safe(prefix);
+                builder.push(": ");
+            }
+            (Some(prefix), None, Some(format)) => {
+                builder.push_safe(prefix);
+                builder.push(" (");
+                builder.push(format.display_name());
+                builder.push("): ");
+            }
+            (Some(prefix), Some(game), None) => {
                 builder.push_safe(prefix);
                 builder.push(", game ");
                 builder.push(game.to_string());
                 builder.push(": ");
             }
-            (Some(prefix), None) => {
+            (Some(prefix), Some(game), Some(format)) => {
                 builder.push_safe(prefix);
-                builder.push(": ");
-            }
-            (None, Some(game)) => {
-                builder.push("game ");
+                builder.push(", game ");
                 builder.push(game.to_string());
-                builder.push(": ");
+                builder.push(" (");
+                builder.push(format.display_name());
+                builder.push("): ");
             }
-            (None, None) => {}
         }
         builder.push("race finished: <");
         builder.push(room.as_str());

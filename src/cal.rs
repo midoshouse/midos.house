@@ -1393,7 +1393,13 @@ impl Race {
                 (None, None) => event.display_name.clone(),
             };
             if let Some(game) = self.game {
-                mw_room_name.push_str(&format!(", game {game}"));
+                mw_room_name.push_str(", game ");
+                mw_room_name.push_str(&game.to_string());
+            }
+            if let Some(format) = sco::Format::for_race(self) {
+                mw_room_name.push_str(" (");
+                mw_room_name.push_str(format.display_name());
+                mw_room_name.push(')');
             }
             mw_room_name
         };
@@ -1960,6 +1966,7 @@ impl Event {
             && let (Some(phase), Some(round)) = (self.race.phase.as_ref(), self.race.round.as_ref())
             && let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", self.race.series as _, &self.race.event, phase, round).fetch_optional(&mut **transaction).await?
             && self.race.game.is_none()
+            && sco::Format::for_race(&self.race).is_none()
         {
             match self.race.entrants {
                 Entrants::Open | Entrants::Count { .. } => {
@@ -1991,12 +1998,19 @@ impl Event {
             }
             None //TODO adjust for asyncs
         } else {
-            let info_prefix = match (&self.race.phase, &self.race.round) {
+            let mut info_prefix = match (&self.race.phase, &self.race.round) {
                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                 (Some(phase), None) => Some(phase.clone()),
                 (None, Some(round)) => Some(round.clone()),
                 (None, None) => None,
             };
+            if let Some(format) = sco::Format::for_race(&self.race) {
+                info_prefix = Some(if let Some(info_prefix) = info_prefix {
+                    format!("{info_prefix} ({})", format.display_name())
+                } else {
+                    format.display_name().to_owned()
+                });
+            }
             let allowed_mentions = match self.race.entrants {
                 Entrants::Open | Entrants::Count { .. } => {
                     if let Some(prefix) = info_prefix {
@@ -2248,12 +2262,17 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &G
                         EventKind::Async3 => "-3",
                     },
                 ), dtstamp(now));
-                let summary_prefix = match (&race.phase, &race.round) {
+                let mut summary_prefix = match (&race.phase, &race.round) {
                     (Some(phase), Some(round)) => format!("{} {phase} {round}", event.short_name()),
                     (Some(phase), None) => format!("{} {phase}", event.short_name()),
                     (None, Some(round)) => format!("{} {round}", event.short_name()),
                     (None, None) => event.display_name.clone(),
                 };
+                if let Some(format) = sco::Format::for_race(&race) {
+                    summary_prefix.push_str(" (");
+                    summary_prefix.push_str(format.display_name());
+                    summary_prefix.push(')');
+                }
                 let summary_prefix = match race.entrants {
                     Entrants::Open | Entrants::Count { .. } => summary_prefix,
                     Entrants::Named(ref entrants) => match race_event.kind {
