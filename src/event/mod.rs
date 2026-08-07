@@ -419,6 +419,7 @@ impl<'a> Data<'a> {
             (Series::TriforceBlitz, "4coop") => from_file!("../../assets/event/tfb/chests-4coop-8.2.64-blitz.87.json"),
             (Series::TriforceBlitz, "4") => from_file!("../../assets/event/tfb/chests-4-8.3.23-blitz.93.json"),
             (Series::TriforceBlitz, "5coop") => from_file!("../../assets/event/tfb/chests-5coop-9.0.1-blitz.110.json"),
+            (Series::TriforceBlitz, "5") => from_file!("../../assets/event/tfb/chests-5-9.1.9-blitz.115.json"),
             (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::WeTryToBeBetter, "2") => from_file!("../../assets/event/wttbb/chests-2-8.2.json"),
             (series, event) => {
@@ -955,6 +956,7 @@ impl<'a> Data<'a> {
         };
         let seed_of_the_day_preset_key = match (self.series, &*self.event) {
             (Series::TriforceBlitz, "5coop") => Some("Triforce Blitz S5 Co-op"),
+            (Series::TriforceBlitz, "5") => Some("Triforce Blitz S5"),
             _ => None,
         };
         let practice_race_url = if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
@@ -2974,9 +2976,10 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     "1" => ("Season 1", None),
                     "2" => ("Season 2", None),
                     "3" => ("Season 3", None),
-                    "4" => ("Season 4", Some("Triforce Blitz S4")),
                     "4coop" => ("Season 4", Some("Triforce Blitz S4 Co-op")),
+                    "4" => ("Season 4", Some("Triforce Blitz S4")),
                     "5coop" => ("Season 5 (Co-op)", Some("Triforce Blitz S5 Co-op")),
+                    "5" => ("Season 5 (1v1)", Some("Triforce Blitz S5")),
                     _ => {
                         if let Environment::Production = Environment::default() {
                             wheel::night_report(&format!("{}/error", night_path()), Some(&format!("no TFB preset specified for {}/{event}", series.slug()))).await?;

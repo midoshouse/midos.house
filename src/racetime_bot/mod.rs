@@ -1038,6 +1038,7 @@ impl Goal {
                 ctx.say("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq” / Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
+                ctx.say("!seed s5: Triforce Blitz season 5 1v1 settings").await?;
                 ctx.say("!seed s5coop: Triforce Blitz season 5 co-op settings").await?;
                 ctx.say("!seed midnight: 1v1 variant of Triforce Blitz season 5 co-op settings (night world)").await?;
                 ctx.say("!seed s4: Triforce Blitz season 4 1v1 settings").await?;
@@ -1046,7 +1047,7 @@ impl Goal {
                 ctx.say("!seed jr: Jabu's Revenge").await?;
                 ctx.say("!seed s2: Triforce Blitz season 2 settings").await?;
                 ctx.say("!seed s1: Triforce Blitz season 1 settings").await?;
-                ctx.say("!seed daily <preset>: Triforce Blitz Seed of the Day (where <preset> is one of s5coop or midnight)").await?;
+                ctx.say("!seed daily <preset>: Triforce Blitz Seed of the Day (where <preset> is one of s5, s5coop, or efk)").await?;
             }
             Self::TriforceBlitzProgressionSpoiler => ctx.say("!seed: The current settings for the mode").await?,
         }
@@ -1816,13 +1817,15 @@ impl Goal {
                 [arg] if arg == "s1" => SeedCommandParseResult::Tfb { display_name: "Season 1", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S1 seed") },
                 [arg] if arg == "s2" => SeedCommandParseResult::Tfb { display_name: "Season 2", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
                 [arg] if arg == "s3" => SeedCommandParseResult::Tfb { display_name: "Season 3", preset: None, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
-                [arg] if arg == "s4" => SeedCommandParseResult::Tfb { display_name: "Season 4", preset: Some("Triforce Blitz S4"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
                 [arg] if arg == "s4coop" => SeedCommandParseResult::Tfb { display_name: "Season 4", preset: Some("Triforce Blitz S4 Co-op"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 co-op seed") },
+                [arg] if arg == "s4" => SeedCommandParseResult::Tfb { display_name: "Season 4", preset: Some("Triforce Blitz S4"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
                 [arg] if arg == "s5coop" => SeedCommandParseResult::Tfb { display_name: "Season 5 (Co-op)", preset: Some("Triforce Blitz S5 Co-op"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S5 co-op seed") },
+                [arg] if arg == "s5" => SeedCommandParseResult::Tfb { display_name: "Season 5 (1v1)", preset: Some("Triforce Blitz S5"), unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S5 1v1 seed") },
                 [arg, preset] if arg == "daily" => {
                     let preset_key = match &**preset {
-                        "midnight" => "Triforce Blitz S5 Midnight",
+                        "s5" => "Triforce Blitz S5",
                         "s5coop" => "Triforce Blitz S5 Co-op",
+                        "efk" => "Escape from Kakariko",
                         _ => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "unknown TFB Seed of the Day preset" }),
                     };
                     let response = global.http_client
@@ -4573,17 +4576,9 @@ impl RaceHandler<GlobalState> for Handler {
                                 "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
                                 true,
                                 vec![
-                                    /*
                                     ("Roll S5 1v1 seed", ActionButton::Message {
                                         message: format!("!seed s5"),
                                         help_text: Some(format!("Create a Triforce Blitz season 5 1v1 seed.")),
-                                        survey: None,
-                                        submit: None,
-                                    }),
-                                    */
-                                    ("Roll S5 co-op seed", ActionButton::Message {
-                                        message: format!("!seed s5coop"),
-                                        help_text: Some(format!("Create a Triforce Blitz season 5 co-op seed.")),
                                         survey: None,
                                         submit: None,
                                     }),
@@ -4605,8 +4600,9 @@ impl RaceHandler<GlobalState> for Handler {
                                                 kind: SurveyQuestionKind::Select,
                                                 placeholder: None,
                                                 options: vec![
+                                                    (format!("s5"), format!("S5 1v1")),
                                                     (format!("s5coop"), format!("S5 co-op")),
-                                                    (format!("midnight"), format!("Midnight (1v1)")),
+                                                    (format!("efk"), format!("Escape from Kakariko")),
                                                 ],
                                             },
                                         ]),
@@ -4624,6 +4620,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 kind: SurveyQuestionKind::Select,
                                                 placeholder: None,
                                                 options: vec![
+                                                    (format!("s5coop"), format!("S5 co-op")),
                                                     (format!("s4"), format!("S4 1v1")),
                                                     (format!("s4coop"), format!("S4 co-op")),
                                                     (format!("s3"), format!("S3")),
