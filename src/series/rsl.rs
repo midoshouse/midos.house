@@ -111,7 +111,10 @@ pub(crate) enum VersionedPreset {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ScriptPathError {
     #[error(transparent)] GitConnect(#[from] gix::remote::connect::Error),
-    #[error(transparent)] GitFetch(#[from] gix::remote::fetch::Error),
+    #[error("error fetching {}: {source}", .path.display())] GitFetch {
+        source: gix::remote::fetch::Error,
+        path: PathBuf,
+    },
     #[error(transparent)] GitFindRemote(#[from] gix::remote::find::for_fetch::Error),
     #[error(transparent)] GitOpen(#[from] gix::open::Error),
     #[error(transparent)] GitPrepareFetch(#[from] gix::remote::fetch::prepare::Error),
@@ -202,7 +205,7 @@ impl VersionedPreset {
                         .connect(gix::remote::Direction::Fetch)?
                         .prepare_fetch(gix::progress::Discard, Default::default())?
                         .with_shallow(gix::remote::fetch::Shallow::DepthAtRemote(NonZero::<u32>::MIN))
-                        .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)?;
+                        .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED).map_err(|source| ScriptPathError::GitFetch { source, path: path.to_path_buf() })?;
                     Command::new("git").arg("reset").arg("--hard").arg(format!("origin/{branch_name}")).current_dir(&path).check("git reset").await?; //TODO use gix, blocked on https://github.com/GitoxideLabs/gitoxide/issues/301
                 });
             }
