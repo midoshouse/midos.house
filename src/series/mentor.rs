@@ -36,7 +36,7 @@ impl WeeklyKind {
             Self::Sunday => Utc.with_ymd_and_hms(2026, 8, 2, 13, 0, 0).single().expect("wrong hardcoded datetime"),
         };
         while time <= min_time {
-            time = time.checked_add_days(Days::new(14)).unwrap();
+            time = time.checked_add_days(Days::new(7)).unwrap();
         }
         time
     }
