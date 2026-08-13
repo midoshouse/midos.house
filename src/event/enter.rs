@@ -129,11 +129,11 @@ pub(crate) enum Requirement {
         live_start: DateTime<Utc>,
     },
     /// Must either request and submit at least one of the qualifier seeds as an async, or participate in at least one of the live qualifiers
-    #[serde(rename_all = "camelCase")]
-    TripleQualifier {
-        async_starts: [DateTime<Utc>; 3],
-        async_ends: [DateTime<Utc>; 3],
-        live_starts: [DateTime<Utc>; 3],
+    #[serde(alias = "tripleQualifier", rename_all = "camelCase")]
+    MultiQualifier {
+        async_starts: NEVec<DateTime<Utc>>,
+        async_ends: NEVec<DateTime<Utc>>,
+        live_starts: NEVec<DateTime<Utc>>,
     },
     /// Must place within the top n players after all races in the `Qualifier` phase
     #[serde(rename_all = "camelCase")]
@@ -202,7 +202,7 @@ impl Requirement {
             Self::Rules { .. } => Some(false),
             Self::BooleanChoice { .. } => Some(false),
             Self::RestreamConsent { .. } => Some(false),
-            Self::Qualifier { .. } | Self::TripleQualifier { .. } => Some('checked: {
+            Self::Qualifier { .. } | Self::MultiQualifier { .. } => Some('checked: {
                 if let Some(racetime) = &me.racetime {
                     for race in Race::for_event(transaction, &global.http_client, data).await? {
                         if race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") {
@@ -586,9 +586,12 @@ impl Requirement {
                     }),
                 }
             }
-            &Self::TripleQualifier { async_starts, async_ends, live_starts } => {
+            Self::MultiQualifier { async_starts, async_ends, live_starts } => {
                 let now = Utc::now();
-                let async_available = async_starts.into_iter().zip_eq(async_ends).any(|(async_start, async_end)| now >= async_start && now < async_end);
+                let async_available = async_starts.iter().zip_eq(async_ends).any(|(async_start, async_end)| now >= *async_start && now < *async_end);
+                let async_starts = async_starts.clone();
+                let async_ends = async_ends.clone();
+                let live_starts = live_starts.clone();
                 let series = data.series;
                 let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
                 RequirementStatus {
@@ -596,13 +599,19 @@ impl Requirement {
                     is_radio: false,
                     html_content: Box::new(move |errors| html! {
                         @if is_checked.unwrap() {
-                            : "Play at least one of the 3 qualifier seeds, either live or async.";
+                            : "Play at least one of the ";
+                            : live_starts.len();
+                            : " qualifier seeds, either live or async.";
                             br;
                             : "If you would like to play additional asyncs, enter the event and request them from your status page.";
                         } else if async_available {
-                            : "Play at least one of the 3 qualifier seeds, either live or by requesting as an async using this form: ";
+                            : "Play at least one of the ";
+                            : live_starts.len();
+                            : " qualifier seeds, either live or by requesting as an async using this form: ";
                         } else {
-                            : "Play at least one of the 3 qualifier seeds, either live or async. The form to request an async will appear on this page.";
+                            : "Play at least one of the ";
+                            : live_starts.len();
+                            : " qualifier seeds, either live or async. The form to request an async will appear on this page.";
                         }
                         ol {
                             @for ((async_start, async_end), live_start) in async_starts.into_iter().zip_eq(async_ends).zip(live_starts) {
@@ -762,9 +771,9 @@ impl Requirement {
                     form_ctx.push_error(form::Error::validation("The qualifier seed is not yet available."));
                 }
             }
-            Self::TripleQualifier { async_starts, async_ends, .. } => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
+            Self::MultiQualifier { async_starts, async_ends, .. } => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                 let now = Utc::now();
-                if (*async_starts).into_iter().zip_eq(*async_ends).any(|(async_start, async_end)| now >= async_start && now < async_end) {
+                if async_starts.iter().zip_eq(async_ends).any(|(async_start, async_end)| now >= *async_start && now < *async_end) {
                     if !value.confirm {
                         form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
                     }
@@ -801,7 +810,7 @@ impl Requirement {
                     | Self::BooleanChoice { .. }
                     | Self::RestreamConsent { .. }
                     | Self::Qualifier { .. }
-                    | Self::TripleQualifier { .. }
+                    | Self::MultiQualifier { .. }
                     | Self::External { .. }
                         => unreachable!(),
                 }));
@@ -813,20 +822,20 @@ impl Requirement {
     async fn request_qualifier(&self, transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, me: &User, data: &Data<'_>) -> Result<Option<AsyncKind>, Error> {
         Ok(match self {
             Requirement::Qualifier { .. } => Some(AsyncKind::Qualifier1),
-            Requirement::TripleQualifier { async_starts, async_ends, .. } => {
+            Requirement::MultiQualifier { async_starts, async_ends, .. } => {
                 let now = Utc::now();
                 if self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                     None
                 } else {
-                    (*async_starts).into_iter()
-                        .zip_eq(*async_ends)
+                    async_starts.iter()
+                        .zip_eq(async_ends)
                         .enumerate()
-                        .find(|&(_, (async_start, async_end))| now >= async_start && now < async_end)
+                        .find(|&(_, (&async_start, &async_end))| now >= async_start && now < async_end)
                         .map(|(idx, _)| match idx {
                             0 => AsyncKind::Qualifier1,
                             1 => AsyncKind::Qualifier2,
                             2 => AsyncKind::Qualifier3,
-                            _ => unreachable!("more than 3 qualifiers in Requirement::TripleQualifier"),
+                            _ => unimplemented!("more than 3 qualifiers in Requirement::MultiQualifier"),
                         })
                 }
             }

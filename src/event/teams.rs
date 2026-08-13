@@ -1208,7 +1208,7 @@ pub(crate) async fn list(global: &GlobalState, me: Option<User>, uri: Origin<'_>
                                                         enter::Requirement::BooleanChoice { .. } => {}
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
-                                                        enter::Requirement::TripleQualifier { .. } => {} //TODO
+                                                        enter::Requirement::MultiQualifier { .. } => {} //TODO
                                                         enter::Requirement::QualifierPlacement { num_players, num_players_extended, min_races, need_finish, event, exclude_players } => : {
                                                             let data = if let Some(event) = event {
                                                                 &Data::new(&mut transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
