@@ -71,7 +71,7 @@ mhstatus = { git = "https://github.com/midoshouse/status.midos.house" }
 #mimalloc = "0.1" # fails to compile on Ubuntu
 noisy_float = "0.2"
 nonempty-collections = "1"
-ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", features = ["sqlx"] }
+ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "dev", features = ["sqlx"] }
 racetime = "0.35"
 rand = "0.10"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "cookies", "form", "gzip", "hickory-dns", "http2", "json", "query", "rustls-no-provider", "stream", "system-proxy", "zstd"] }
