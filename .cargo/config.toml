@@ -1,0 +1,13 @@
+include = [
+    # secrets.toml should look like this:
+    # [env]
+    # DATABASE_URL = "postgres://mido:hunter2@midos.house/midos_house"
+    # PGHOST = "midos.house"
+    # PGPASSWORD = "hunter2"
+    { path = "secrets.toml", optional = true },
+]
+
+[build]
+rustflags = [
+    "-C", "target-cpu=native", # for performance
+]
