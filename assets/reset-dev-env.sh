@@ -1,8 +1,7 @@
 #!/bin/sh
 
-env -C /opt/git/github.com/racetimeGG/racetime-app/main git pull
-env -C /opt/git/github.com/racetimeGG/racetime-app/main docker-compose up --build -d
-env -C /opt/git/github.com/racetimeGG/racetime-app/main docker-compose exec racetime.web python manage.py migrate
+set -e
+
 sudo -u postgres psql -c 'DROP DATABASE fados_house;'
 sudo -u postgres psql -c 'CREATE DATABASE fados_house;'
 sh -c 'sudo -u postgres pg_dump -s midos_house | sudo -u postgres psql fados_house'
@@ -30,4 +29,4 @@ sudo -u mido psql fados_house -c "INSERT INTO team_members (team, member, status
 sudo -u mido psql fados_house -c "INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-3742612991024895536, 2728112804012319386, 'confirmed', 'wisdom', TRUE, FALSE);"
 sudo -u mido psql fados_house -c "INSERT INTO team_members (team, member, status, role, hard_settings_ok, mq_ok) VALUES (-3742612991024895536, -2871260142009583217, 'confirmed', 'courage', FALSE, FALSE);"
 sudo -u mido psql fados_house -c "INSERT INTO discord_roles (guild, racetime_team, id) VALUES (987565688820469781, 'slugcentral-open-test-team-1', 1487421659597111539);"
-sudo -u mido psql fados_house -c "insert INTO discord_roles (guild, racetime_team, id) VALUES (987565688820469781, 'slugcentral-open-test-team-2', 1487448439099756737);"
+sudo -u mido psql fados_house -c "INSERT INTO discord_roles (guild, racetime_team, id) VALUES (987565688820469781, 'slugcentral-open-test-team-2', 1487448439099756737);"
