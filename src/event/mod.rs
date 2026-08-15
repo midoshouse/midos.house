@@ -2795,7 +2795,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                                     : "Sorry, the seed could not be rolled because the randomizer reported an error ";
                                     : num_retries;
                                     : " times. Please reload this page to try again. If this error persists, please report it to ";
-                                    : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
+                                    : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
                                     : ".";
                                 }
                             };
@@ -2826,7 +2826,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                                     : "Sorry, the seed could not be rolled because the randomizer reported an error ";
                                     : num_retries;
                                     : " times. Please reload this page to try again. If this error persists, please report it to ";
-                                    : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
+                                    : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
                                     : ".";
                                 }
                             };
@@ -3008,7 +3008,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                             : data.header(&mut transaction, global, me.as_ref(), csrf.as_ref(), Tab::Practice, false).await?;
                             p {
                                 : "Sorry, the seed could not be rolled because the randomizer reported an error. Please reload this page to try again. If this error persists, please report it to ";
-                                : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
+                                : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
                                 : ".";
                             }
                         };

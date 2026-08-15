@@ -3295,7 +3295,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                 article {
                     p {
                         : "Sorry, start.gg integration is currently unavailable. For more information, please contact ";
-                        : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
+                        : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
                         : ".";
                     }
                 }
@@ -4670,7 +4670,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, global: &GlobalState, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, global, me.as_ref(), csrf, Tab::Races, true).await?;
-    let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
+    let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
         full_form(uri!(edit_race_post(event.series, &*event.event, race.id, redirect_to)), csrf, html! {

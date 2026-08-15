@@ -133,7 +133,7 @@ pub(crate) enum PageError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("missing user data for credited user")]
-    UserData,
+    UserData(Id<Users>),
 }
 
 impl<E: Into<PageError>> From<E> for StatusOrError<PageError> {
@@ -150,7 +150,7 @@ impl IsNetworkError for PageError {
             Self::NotificationHtml(e) => e.is_network_error(),
             Self::Sql(_) => false,
             Self::Wheel(e) => e.is_network_error(),
-            Self::UserData => false,
+            Self::UserData(_) => false,
         }
     }
 }
@@ -183,10 +183,10 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, global: &Gl
     } else {
         (None, Some(content))
     };
-    let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
-    let maplestar = User::from_id(&mut *transaction, Id::from(9965798505670301459_u64)).await?.ok_or(PageError::UserData)?;
-    let xopar = User::from_id(&mut *transaction, Id::from(17762941071474623984_u64)).await?.ok_or(PageError::UserData)?;
-    let shirosoluna = User::from_id(&mut *transaction, Id::from(17360179816681037185_u64)).await?.ok_or(PageError::UserData)?;
+    let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
+    let maplestar = User::from_id(&mut *transaction, Id::from(9965798505670301459_u64)).await?.ok_or(PageError::UserData(Id::from(9965798505670301459_u64)))?;
+    let xopar = User::from_id(&mut *transaction, Id::from(17762941071474623984_u64)).await?.ok_or(PageError::UserData(Id::from(17762941071474623984_u64)))?;
+    let shirosoluna = User::from_id(&mut *transaction, Id::from(17360179816681037185_u64)).await?.ok_or(PageError::UserData(Id::from(17360179816681037185_u64)))?;
     transaction.commit().await?;
     Ok(html! {
         : Doctype;
@@ -475,7 +475,7 @@ async fn archive(global: &GlobalState, me: Option<User>, uri: Origin<'_>, sort: 
 #[rocket::get("/new")]
 async fn new_event(global: &GlobalState, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let mut transaction = global.db_pool.begin().await?;
-    let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData)?;
+    let fenhl = User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::UserData(crate::id::FENHL))?;
     page(transaction, global, &me, &uri, PageStyle::new(ChestAppearances::random()), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
