@@ -1,0 +1,14 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0049", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+    "RUSTSEC-2026-0098", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+    "RUSTSEC-2026-0099", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+    "RUSTSEC-2026-0104", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+]
+unmaintained = "none"
+
+[bans]
+multiple-versions = "allow" #TODO
+deny = [
+    #{ crate = "aws-lc-rs", reason = "often fails to compile", use-instead = "ring" }, #TODO
+]

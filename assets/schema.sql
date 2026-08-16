@@ -4,12 +4,13 @@
 
 \restrict NSkHPci93sAFqHtSzSNGsBd7dCxhH7NpHe4WhC8jFzIipftC7A6hpgap0hCfbqM
 
--- Dumped from database version 15.16 (Debian 15.16-0+deb12u1)
--- Dumped by pg_dump version 15.16 (Debian 15.16-0+deb12u1)
+-- Dumped from database version 17.11 (Debian 17.11-0+deb13u1)
+-- Dumped by pg_dump version 17.11 (Debian 17.11-0+deb13u1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -138,7 +139,8 @@ CREATE TYPE public.racetime_pronouns AS ENUM (
     'they',
     'she_they',
     'he_they',
-    'other'
+    'other',
+    'any_all'
 );
 
 
@@ -225,7 +227,8 @@ CREATE TYPE public.team_config AS ENUM (
     'multiworld',
     'tfbcoop',
     'slugopen',
-    'night_and_day'
+    'night_and_day',
+    'mentor'
 );
 
 
@@ -368,11 +371,11 @@ CREATE TABLE public.asyncs (
     tfb_uuid uuid,
     start timestamp with time zone,
     end_time timestamp with time zone,
-    seed_password character(6),
+    seed_password character varying(10),
     is_tfb_dev boolean DEFAULT false NOT NULL,
     bingosync_url text,
     bingo_passphrase character(8),
-    CONSTRAINT asyncs_seed_password_check CHECK ((seed_password ~ '^[Av><^]{6}$'::text)),
+    CONSTRAINT asyncs_seed_password_check CHECK (((seed_password)::text ~ '^[Av><^LRZ]+$'::text)),
     CONSTRAINT matching_hash_nullness CHECK ((((hash1 IS NULL) = (hash2 IS NULL)) AND ((hash1 IS NULL) = (hash3 IS NULL)) AND ((hash1 IS NULL) = (hash4 IS NULL)) AND ((hash1 IS NULL) = (hash5 IS NULL))))
 );
 
@@ -426,7 +429,7 @@ CREATE TABLE public.events (
     discord_invite_url text,
     show_opt_out boolean DEFAULT false NOT NULL,
     retime_window interval DEFAULT '00:00:00'::interval NOT NULL,
-    auto_import boolean DEFAULT false NOT NULL,
+    auto_import boolean DEFAULT true NOT NULL,
     team_config public.team_config NOT NULL,
     challonge_community text,
     speedgaming_slug text,
@@ -437,7 +440,11 @@ CREATE TABLE public.events (
     manual_reporting_with_breaks boolean DEFAULT false NOT NULL,
     emulator_settings_reminder boolean DEFAULT false NOT NULL,
     prevent_late_joins boolean DEFAULT false NOT NULL,
-    speedgaming_in_person_id bigint
+    speedgaming_in_person_id bigint,
+    cleaned_up boolean DEFAULT false NOT NULL,
+    async_organizer_notifications boolean DEFAULT true NOT NULL,
+    manual_reporting_for_asyncs boolean DEFAULT false NOT NULL,
+    find_team_url text
 );
 
 
@@ -604,13 +611,13 @@ CREATE TABLE public.prerolled_seeds (
     hash3 public.hash_icon,
     hash4 public.hash_icon,
     hash5 public.hash_icon,
-    seed_password character(6),
+    seed_password character varying(10),
     progression_spoiler boolean NOT NULL,
     "timestamp" timestamp with time zone,
     bingosync_url text,
     bingo_passphrase character(8),
     CONSTRAINT matching_hash_nullness CHECK ((((hash1 IS NULL) = (hash2 IS NULL)) AND ((hash1 IS NULL) = (hash3 IS NULL)) AND ((hash1 IS NULL) = (hash4 IS NULL)) AND ((hash1 IS NULL) = (hash5 IS NULL)))),
-    CONSTRAINT prerolled_seeds_seed_password_check CHECK ((seed_password ~ '^[Av><^]{6}$'::text))
+    CONSTRAINT prerolled_seeds_seed_password_check CHECK (((seed_password)::text ~ '^[Av><^LRZ]+$'::text))
 );
 
 
@@ -740,7 +747,7 @@ CREATE TABLE public.races (
     async_room3 text,
     async_end3 timestamp with time zone,
     challonge_match text,
-    seed_password character(6),
+    seed_password character varying(10),
     speedgaming_id bigint,
     notified boolean DEFAULT false NOT NULL,
     is_tfb_dev boolean DEFAULT false NOT NULL,
@@ -751,10 +758,13 @@ CREATE TABLE public.races (
     team4 bigint,
     bingosync_url text,
     bingo_passphrase character(8),
+    async_notified1 boolean DEFAULT false NOT NULL,
+    async_notified2 boolean DEFAULT false NOT NULL,
+    async_notified3 boolean DEFAULT false NOT NULL,
     CONSTRAINT async_exclusion CHECK (((start IS NULL) OR ((async_start1 IS NULL) AND (async_start2 IS NULL) AND (async_start3 IS NULL)))),
     CONSTRAINT matching_hash_nullness CHECK ((((hash1 IS NULL) = (hash2 IS NULL)) AND ((hash1 IS NULL) = (hash3 IS NULL)) AND ((hash1 IS NULL) = (hash4 IS NULL)) AND ((hash1 IS NULL) = (hash5 IS NULL)))),
     CONSTRAINT matching_last_edited_nullness CHECK (((last_edited_by IS NULL) = (last_edited_at IS NULL))),
-    CONSTRAINT races_seed_password_check CHECK ((seed_password ~ '^[Av><^]{6}$'::text))
+    CONSTRAINT races_seed_password_check CHECK (((seed_password)::text ~ '^[Av><^LRZ]+$'::text))
 );
 
 
@@ -793,6 +803,21 @@ CREATE TABLE public.rsl_seeds (
 
 
 ALTER TABLE public.rsl_seeds OWNER TO mido;
+
+--
+-- Name: seed_metadata; Type: TABLE; Schema: public; Owner: mido
+--
+
+CREATE TABLE public.seed_metadata (
+    file_stem text NOT NULL,
+    locked_spoiler_log_path text,
+    progression_spoiler boolean NOT NULL,
+    bingosync_url text,
+    bingo_passphrase character(8)
+);
+
+
+ALTER TABLE public.seed_metadata OWNER TO mido;
 
 --
 -- Name: speedgaming_disambiguation_messages; Type: TABLE; Schema: public; Owner: mido
@@ -1039,6 +1064,14 @@ ALTER TABLE ONLY public.races
 
 ALTER TABLE ONLY public.rsl_seeds
     ADD CONSTRAINT rsl_seeds_pkey PRIMARY KEY (room);
+
+
+--
+-- Name: seed_metadata seed_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: mido
+--
+
+ALTER TABLE ONLY public.seed_metadata
+    ADD CONSTRAINT seed_metadata_pkey PRIMARY KEY (file_stem);
 
 
 --
@@ -1419,7 +1452,7 @@ GRANT SELECT ON TABLE public.events TO fenhl;
 -- Name: TABLE mw_versions; Type: ACL; Schema: public; Owner: mido
 --
 
-GRANT ALL ON TABLE public.mw_versions TO fenhl;
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE public.mw_versions TO fenhl;
 
 
 --

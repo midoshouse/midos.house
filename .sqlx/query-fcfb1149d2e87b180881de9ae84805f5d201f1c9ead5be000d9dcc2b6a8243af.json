@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, custom_choices AS \"custom_choices: Json<BTreeSet<String>>\", restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE\n                series = $1\n                AND event = $2\n                AND NOT resigned\n                AND (\n                    EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                    OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n                )\n            ",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, custom_choices as \"custom_choices: Json<BTreeSet<String>>\", restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE\n                    series = $1\n                    AND event = $2\n                    AND NOT resigned\n                    AND (\n                        $3\n                        OR EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)\n                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n                    )\n                ",
   "describe": {
     "columns": [
       {
@@ -63,6 +63,7 @@
       "Left": [
         "Text",
         "Text",
+        "Bool",
         "Int8"
       ]
     },
@@ -78,5 +79,5 @@
       true
     ]
   },
-  "hash": "4de851cddcf6d4dbdf85f48dbe73fd159717265908ffcc091a3f4b3294a154c0"
+  "hash": "fcfb1149d2e87b180881de9ae84805f5d201f1c9ead5be000d9dcc2b6a8243af"
 }
