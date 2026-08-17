@@ -29,9 +29,6 @@ use {
 
 pub(crate) mod report;
 
-#[cfg(unix)] pub(crate) const PYTHON: &str = "python3";
-#[cfg(windows)] pub(crate) const PYTHON: &str = "py";
-
 pub(crate) const CATEGORY: &str = "ootr";
 
 #[derive(Debug, thiserror::Error)]
@@ -2041,7 +2038,7 @@ impl GlobalState {
                 }
             } else {
                 update_tx.send(SeedRollUpdate::Started).await?;
-                match roll_seed_locally(delay_until, version, match unlock_spoiler_log {
+                match roll_seed_locally(&self, delay_until, version, match unlock_spoiler_log {
                     UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
                     UnlockSpoilerLog::Never => password_lock, // spoiler log needs to be generated so the backend can read the password
                 }, settings.clone(), plando).await {
@@ -2099,11 +2096,11 @@ impl GlobalState {
             let rsl_script_path = preset.script_path().await?;
             // check RSL script version
             let supports_plando_filename_base = fs::exists(rsl_script_path.join("rslversion.py")).await? && {
-                let rsl_version = Command::new(PYTHON)
+                let rsl_version = Command::new(&self.config.python)
                     .arg("-c")
                     .arg("import rslversion; print(rslversion.__version__)")
                     .current_dir(&rsl_script_path)
-                    .check(PYTHON).await?
+                    .check(self.config.python.clone()).await?
                     .stdout;
                 let rsl_version = String::from_utf8(rsl_version)?;
                 if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
@@ -2114,18 +2111,18 @@ impl GlobalState {
             };
             // check required randomizer version
             let randomizer_version = if fs::exists(rsl_script_path.join("rslversion.py")).await? {
-                Command::new(PYTHON)
+                Command::new(&self.config.python)
                     .arg("-c")
                     .arg("import rslversion; print(rslversion.randomizer_version)")
                     .current_dir(&rsl_script_path)
-                    .check(PYTHON).await?
+                    .check(self.config.python.clone()).await?
                     .stdout
             } else {
-                Command::new(PYTHON)
+                Command::new(&self.config.python)
                     .arg("-c")
                     .arg("import version; print(version.randomizer_version)")
                     .current_dir(&rsl_script_path)
-                    .check(PYTHON).await?
+                    .check(self.config.python.clone()).await?
                     .stdout
             };
             let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<rando::Version>()?;
@@ -2142,7 +2139,7 @@ impl GlobalState {
                         last_error,
                     })
                 }
-                let mut rsl_cmd = Command::new(PYTHON);
+                let mut rsl_cmd = Command::new(&self.config.python);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
                 if supports_plando_filename_base {
@@ -2350,7 +2347,7 @@ impl GlobalState {
     }
 }
 
-pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
+pub(crate) async fn roll_seed_locally(global: &GlobalState, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
     if delay_until.is_none() { // practice seed
         let fs = systemstat::System::new().mount_at("/").at("/")?;
         if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
@@ -2427,7 +2424,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
             #[cfg(not(windows))] { "ootr-cli" }
         });
         let use_rust_cli = fs::exists(&rust_cli_path).await?;
-        let command_name = if use_rust_cli { "target/release/ootr-cli" } else { PYTHON };
+        let command_name = if use_rust_cli { Cow::Borrowed("target/release/ootr-cli") } else { Cow::Owned(global.config.python.clone()) };
         let mut rando_cmd;
         if use_rust_cli {
             rando_cmd = Command::new(rust_cli_path);
@@ -2440,7 +2437,7 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
                 rando_cmd.arg("--no-log");
             }
         } else {
-            rando_cmd = Command::new(PYTHON);
+            rando_cmd = Command::new(&global.config.python);
             rando_cmd.arg("OoTRandomizer.py");
             rando_cmd.arg("--no_log");
         }
@@ -2450,9 +2447,9 @@ pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, versio
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .at_command(command_name)?;
-        rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(command_name)?;
-        let output = rando_process.wait_with_output().await.at_command(command_name)?;
+            .at_command(command_name.clone())?;
+        rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(command_name.clone())?;
+        let output = rando_process.wait_with_output().await.at_command(command_name.clone())?;
         let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(command_name)? } else {
             last_error = Some(String::from_utf8_lossy(&output.stderr).into_owned());
             continue
@@ -3053,7 +3050,7 @@ trait SeedHandler {
                         self.roll_seed(ctx, format.preroll_seeds(), rando_version, settings, serde_json::Map::default(), bingo_passphrase, goal.unlock_spoiler_log(true, false), English, format.article(), format!("{} seed", format.display_name())).await
                     }
                     Goal::StandardRuleset => {
-                        let (version, settings) = event.single_settings().await?.expect("no settings configured Standard event");
+                        let (version, settings) = event.single_settings(ctx.global()).await?.expect("no settings configured Standard event");
                         let mut settings = settings.into_owned();
                         settings.insert(format!("password_lock"), json!(true));
                         self.roll_seed(ctx, goal.preroll_seeds(), version, settings, serde_json::Map::default(), None, goal.unlock_spoiler_log(true, false), English, "an", match &*event.event {

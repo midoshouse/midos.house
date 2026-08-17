@@ -1363,7 +1363,7 @@ impl Race {
     }
 
     pub(crate) async fn single_settings(&self, global: &GlobalState, event: &event::Data<'_>, generate_bingo_board: bool) -> Result<Option<(VersionedBranch, seed::Settings, Option<String>)>, Error> {
-        Ok(if let Some((version, settings)) = event.single_settings().await? {
+        Ok(if let Some((version, settings)) = event.single_settings(global).await? {
             Some((version, settings.into_owned(), None))
         } else if let Some(draft_kind) = self.draft_kind(&event) {
             let Some(draft) = &self.draft else { return Ok(None) };
@@ -4648,7 +4648,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
             } else {
                 settings.remove("password_lock");
-                let (patch_filename, spoiler_log_path) = match roll_seed_locally(None, rando_version, true, settings.clone(), serde_json::Map::default()).await {
+                let (patch_filename, spoiler_log_path) = match roll_seed_locally(global, None, rando_version, true, settings.clone(), serde_json::Map::default()).await {
                     Ok(x) => x,
                     Err(racetime_bot::RollError::InsufficientStorage) => return Err(StatusOrError::Status(Status::InsufficientStorage)),
                     Err(e) => return Err(e.into()),

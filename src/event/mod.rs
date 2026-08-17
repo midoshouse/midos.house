@@ -643,7 +643,7 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
-    pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
+    pub(crate) async fn single_settings(&self, global: &GlobalState) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
         Ok(match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => self.rando_version.clone().map(|rando_version| (rando_version, Cow::Owned(br::s1_settings()))), // support for randomized starting song
             (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") | (Series::RupeesOfTime, "1") => {
@@ -689,11 +689,11 @@ impl<'a> Data<'a> {
                 let rsl_script_path = rsl_preset.script_path().await?;
                 // check RSL script version
                 let supports_plando_filename_base = fs::exists(rsl_script_path.join("rslversion.py")).await? && {
-                    let rsl_version = Command::new(racetime_bot::PYTHON)
+                    let rsl_version = Command::new(&global.config.python)
                         .arg("-c")
                         .arg("import rslversion; print(rslversion.__version__)")
                         .current_dir(&rsl_script_path)
-                        .check(racetime_bot::PYTHON).await?
+                        .check(global.config.python.clone()).await?
                         .stdout;
                     let rsl_version = String::from_utf8(rsl_version)?;
                     if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
@@ -704,23 +704,23 @@ impl<'a> Data<'a> {
                 };
                 // check required randomizer version
                 let randomizer_version = if fs::exists(rsl_script_path.join("rslversion.py")).await? {
-                    Command::new(racetime_bot::PYTHON)
+                    Command::new(&global.config.python)
                         .arg("-c")
                         .arg("import rslversion; print(rslversion.randomizer_version)")
                         .current_dir(&rsl_script_path)
-                        .check(racetime_bot::PYTHON).await?
+                        .check(global.config.python.clone()).await?
                         .stdout
                 } else {
-                    Command::new(racetime_bot::PYTHON)
+                    Command::new(&global.config.python)
                         .arg("-c")
                         .arg("import version; print(version.randomizer_version)")
                         .current_dir(&rsl_script_path)
-                        .check(racetime_bot::PYTHON).await?
+                        .check(global.config.python.clone()).await?
                         .stdout
                 };
                 let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<ootr_utils::Version>()?;
                 // run the RSL script
-                let mut rsl_cmd = Command::new(racetime_bot::PYTHON);
+                let mut rsl_cmd = Command::new(&global.config.python);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
                 if supports_plando_filename_base {
@@ -2650,7 +2650,7 @@ async fn practice_seed_favicon_url(global: &GlobalState, data: &Data<'_>, sco_fo
         let Some((rando_version, settings, is_bingo)) = (if let Some(sco_format) = sco_format {
             sco_format.single_settings(global, None).await?.map(|(rando_version, settings, bingo_passphrase)| (rando_version, Cow::Owned(settings), bingo_passphrase.is_some()))
         } else {
-            data.single_settings().await?.map(|(rando_version, settings)| (rando_version, settings, false))
+            data.single_settings(global).await?.map(|(rando_version, settings)| (rando_version, settings, false))
         }) else { return Ok(None) };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         if !is_bingo && global.ootr_api_client.can_roll_on_web(true, None, &rando_version, world_count, false, if data.series == Series::SpoilerLog { UnlockSpoilerLog::Progression } else { UnlockSpoilerLog::Now }).await.is_some() {
@@ -2875,11 +2875,11 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                         let rsl_script_path = preset.script_path().await?;
                         // check RSL script version
                         let supports_plando_filename_base = fs::exists(rsl_script_path.join("rslversion.py")).await? && {
-                            let rsl_version = Command::new(racetime_bot::PYTHON)
+                            let rsl_version = Command::new(&global.config.python)
                                 .arg("-c")
                                 .arg("import rslversion; print(rslversion.__version__)")
                                 .current_dir(&rsl_script_path)
-                                .check(racetime_bot::PYTHON).await?
+                                .check(global.config.python.clone()).await?
                                 .stdout;
                             let rsl_version = String::from_utf8(rsl_version)?;
                             if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
@@ -2889,15 +2889,15 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                             }
                         };
                         // check required randomizer version
-                        let randomizer_version = Command::new(racetime_bot::PYTHON)
+                        let randomizer_version = Command::new(&global.config.python)
                             .arg("-c")
                             .arg("import rslversion; print(rslversion.randomizer_version)")
                             .current_dir(&rsl_script_path)
-                            .check(racetime_bot::PYTHON).await?
+                            .check(global.config.python.clone()).await?
                             .stdout;
                         let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<ootr_utils::Version>()?;
                         // run the RSL script
-                        let mut rsl_cmd = Command::new(racetime_bot::PYTHON);
+                        let mut rsl_cmd = Command::new(&global.config.python);
                         rsl_cmd.arg("RandomSettingsGenerator.py");
                         rsl_cmd.arg("--no_log_errors");
                         if supports_plando_filename_base {
@@ -2934,7 +2934,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
                     settings.remove("password_lock");
-                    let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version, true, settings, serde_json::Map::default()).await);
+                    let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version, true, settings, serde_json::Map::default()).await);
                     let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                     if let Some(spoiler_log_path) = spoiler_log_path {
                         fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
@@ -2945,7 +2945,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let (mut settings, plando) = ohko::s1_settings();
                 settings.remove("password_lock");
-                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
+                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version.clone(), true, settings, plando).await);
                 let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
@@ -2955,7 +2955,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let (mut settings, plando) = ohko::s2_settings();
                 settings.remove("password_lock");
-                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
+                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version.clone(), true, settings, plando).await);
                 let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
@@ -2965,7 +2965,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let Some(rando_version) = &data.rando_version else { println!("no randomizer version"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let (mut settings, plando) = latam::settings_2025();
                 settings.remove("password_lock");
-                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(None, rando_version.clone(), true, settings, plando).await);
+                let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version.clone(), true, settings, plando).await);
                 let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
                     fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
@@ -3019,7 +3019,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let Some((rando_version, mut settings, bingo_passphrase)) = (if let Some(sco_format) = sco_format {
                     sco_format.single_settings(global, Some(&format!("{} Practice: {}", data.display_name, sco_format.display_name()))).await?.map(|(rando_version, settings, bingo_passphrase)| (rando_version, Cow::Owned(settings), bingo_passphrase))
                 } else {
-                    data.single_settings().await?.map(|(rando_version, settings)| (rando_version, settings, None))
+                    data.single_settings(global).await?.map(|(rando_version, settings)| (rando_version, settings, None))
                 }) else { println!("no single settings"); return Err(StatusOrError::Status(Status::NotFound)) };
                 let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
                 if bingo_passphrase.is_none() && let Some(web_version) = global.ootr_api_client.can_roll_on_web(false, None, &rando_version, world_count, false, unlock_spoiler_log).await {
@@ -3027,7 +3027,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     RedirectOrContent::Redirect(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
                 } else {
                     settings.to_mut().remove("password_lock");
-                    let (patch_filename, spoiler_log_path) = roll_try!(@no_commit roll_seed_locally(None, rando_version, true, (*settings).clone(), serde_json::Map::default()).await);
+                    let (patch_filename, spoiler_log_path) = roll_try!(@no_commit roll_seed_locally(global, None, rando_version, true, (*settings).clone(), serde_json::Map::default()).await);
                     let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                     if let Some(spoiler_log_path) = spoiler_log_path {
                         fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;

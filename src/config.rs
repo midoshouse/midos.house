@@ -22,6 +22,7 @@ pub(crate) struct Config {
     pub(crate) league_api_key: String,
     pub(crate) ootr_api_key: String,
     pub(crate) ootr_api_key_encryption: String,
+    pub(crate) python: String,
     pub(crate) racetime_bot: ConfigRaceTime,
     #[serde(rename = "racetimeOAuth")]
     pub(crate) racetime_oauth: ConfigRaceTime,
@@ -67,6 +68,7 @@ impl Config {
             league_api_key: String::default(),
             ootr_api_key: String::default(),
             ootr_api_key_encryption: String::default(),
+            python: String::default(),
             racetime_bot: ConfigRaceTime {
                 client_id: String::default(),
                 client_secret: String::default(),
