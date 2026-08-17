@@ -106,6 +106,7 @@ pub(crate) enum VersionedPreset {
         version: Option<(Version, u8)>,
         preset: DevFenhlPreset,
     },
+    RupeesOfTime,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -148,6 +149,7 @@ impl VersionedPreset {
         match self {
             Self::Xopar { version, .. } | Self::XoparCustom { version, .. } => version.as_ref(),
             Self::Fenhl { version, .. } => version.as_ref().map(|(base, _)| base),
+            Self::RupeesOfTime => None,
         }
     }
 
@@ -156,6 +158,7 @@ impl VersionedPreset {
             Self::Xopar { preset, .. } => Either::Left(preset.name()),
             Self::Fenhl { preset, .. } => Either::Left(preset.name()),
             Self::XoparCustom { weights, .. } => Either::Right(weights),
+            Self::RupeesOfTime => Either::Left("league"),
         }
     }
 
@@ -163,6 +166,7 @@ impl VersionedPreset {
         match self {
             Self::Xopar { version, .. } | Self::XoparCustom { version, .. } => version.is_some(),
             Self::Fenhl { version, .. } => version.is_some(),
+            Self::RupeesOfTime => false,
         }
     }
 
@@ -183,6 +187,7 @@ impl VersionedPreset {
                         let path = Path::new("midos-house").join(format!("rsl-{version}"));
                         Cow::Owned(BaseDirectories::new().find_data_file(&path).ok_or(ScriptPathError::NotFound(path))?)
                     }
+                    Self::RupeesOfTime => Cow::Borrowed(Path::new("/opt/git/github.com/fenhl/plando-random-settings/branch/rot")),
                 }
             }
             #[cfg(windows)] {
@@ -200,6 +205,7 @@ impl VersionedPreset {
                     let branch_name = match self {
                         Self::Xopar { .. } | Self::XoparCustom { .. } => "release",
                         Self::Fenhl { .. } => "dev-fenhl",
+                        Self::RupeesOfTime => "rot",
                     };
                     repo.find_fetch_remote(Some("origin".into()))?
                         .connect(gix::remote::Direction::Fetch)?
@@ -220,10 +226,11 @@ impl VersionedPreset {
                     cmd.arg("--depth=1");
                     cmd.arg(format!("https://github.com/{}/plando-random-settings.git", match self {
                         Self::Xopar { .. } | Self::XoparCustom { .. } => "matthewkirby",
-                        Self::Fenhl { .. } => "fenhl",
+                        Self::Fenhl { .. } | Self::RupeesOfTime => "fenhl",
                     }));
                     match self {
                         Self::Xopar { .. } | Self::XoparCustom { .. } => { cmd.arg("--branch=release"); }
+                        Self::RupeesOfTime => { cmd.arg("--branch=rot"); }
                         Self::Fenhl { .. } => {}
                     }
                     cmd.arg(&*path).check("git clone").await?;

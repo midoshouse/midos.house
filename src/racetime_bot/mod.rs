@@ -284,6 +284,7 @@ pub(crate) enum Goal {
     PicRs2,
     PotsOfTime,
     Rsl,
+    RupeesOfTime,
     S6,
     S7,
     S8,
@@ -360,6 +361,7 @@ impl Goal {
             Self::PicRs2 => Ok((Series::Pictionary, "rs2")),
             Self::PotsOfTime => Ok((Series::PotsOfTime, "1")),
             Self::Rsl => Err(|series, _| series == Series::Rsl),
+            Self::RupeesOfTime => Ok((Series::RupeesOfTime, "1")),
             Self::S6 => Ok((Series::Standard, "6")),
             Self::S7 => Ok((Series::Standard, "7")),
             Self::S8 => Err(|series, event| series == Series::Standard && matches!(event, "8" | "8cc")),
@@ -430,6 +432,7 @@ impl Goal {
             | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
+            | Self::RupeesOfTime
             | Self::S6
             | Self::S7
             | Self::S8
@@ -492,6 +495,7 @@ impl Goal {
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::PotsOfTime => "Pots Of Time",
             Self::Rsl => "Random settings league",
+            Self::RupeesOfTime => "Rupees Of Time",
             Self::S6 => "Standard Tournament Season 6",
             Self::S7 => "Standard Tournament Season 7",
             Self::S8 => "Standard Tournament Season 8",
@@ -553,6 +557,7 @@ impl Goal {
             | Self::PicRs2
             | Self::PotsOfTime
             | Self::Rsl
+            | Self::RupeesOfTime
             | Self::S6
             | Self::S7
             | Self::S8
@@ -621,6 +626,7 @@ impl Goal {
             | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
+            | Self::RupeesOfTime
             | Self::S6
             | Self::S8
             | Self::ScrubsS5
@@ -685,6 +691,7 @@ impl Goal {
             | Self::PicRs1
             | Self::PicRs2
             | Self::PotsOfTime
+            | Self::RupeesOfTime
             | Self::Rsl
             | Self::ScrubsS5
             | Self::ScrubsS6
@@ -746,6 +753,7 @@ impl Goal {
                 | Self::MultiworldS5
                 | Self::NineDaysOfSaws
                 | Self::PotsOfTime
+                | Self::RupeesOfTime
                 | Self::Rsl
                 | Self::ScrubsS5
                 | Self::ScrubsS6
@@ -832,7 +840,7 @@ impl Goal {
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
             Self::WeTryToBeBetterS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 0, 11) },
             Self::WeTryToBeBetterS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
-            Self::PicRs1 | Self::PicRs2 | Self::PotsOfTime | Self::Rsl => return Err("randomizer version for this goal must be parsed from RSL script"),
+            Self::PicRs1 | Self::PicRs2 | Self::PotsOfTime | Self::Rsl | Self::RupeesOfTime => return Err("randomizer version for this goal must be parsed from RSL script"),
         })
     }
 
@@ -872,6 +880,7 @@ impl Goal {
             Self::PicRs2 => None, // random settings
             Self::PotsOfTime => None, // random settings
             Self::Rsl => None, // random settings
+            Self::RupeesOfTime => None, // random settings
             Self::S6 => Some(s::s6_settings()),
             Self::S7 => None, // settings draft
             Self::S8 => Some(s::s8_settings()),
@@ -941,6 +950,7 @@ impl Goal {
             | Self::TournamentOfTruthS2
                 => ctx.say("!seed: The settings used for the tournament").await?,
             | Self::PotsOfTime
+            | Self::RupeesOfTime
                 => ctx.say("!seed: The weights used for the tournament").await?,
             | Self::WeTryToBeBetterS1
             | Self::WeTryToBeBetterS2
@@ -1591,6 +1601,11 @@ impl Goal {
                 };
                 SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
+            Self::RupeesOfTime => {
+                let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/rot/weights-1.json"))?;
+                weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
+                SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") }
+            }
             Self::SlugOpen2026 => {
                 let [format, args @ ..] = &*args else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the format is required" }) };
                 let Ok(format) = format.parse::<sco::Format>() else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that SlugCentral Open format" }) };
@@ -2183,8 +2198,7 @@ impl GlobalState {
                         .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
                         .next().ok_or(RollError::RslScriptOutput { regex: "^Plando File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
                     let plando_path = rsl_script_path.join("data").join(plando_filename);
-                    let plando_file = fs::read_to_string(&plando_path).await?;
-                    let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
+                    let settings = fs::read_json::<Plando>(&plando_path).await?.settings;
                     fs::remove_file(plando_path).await?;
                     if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
                         // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
@@ -3022,6 +3036,14 @@ trait SeedHandler {
                         weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
                         self.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
                             version: Some(Version::new(2, 8, 2)),
+                            weights,
+                        }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
+                    }
+                    Goal::RupeesOfTime => {
+                        let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/rot/weights-1.json"))?;
+                        weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
+                        self.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
+                            version: Some(Version::new(2, 9, 0)),
                             weights,
                         }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
@@ -3959,6 +3981,18 @@ impl RaceHandler<GlobalState> for Handler {
                                             },
                                         ]),
                                         submit: Some(format!("Roll")),
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::RupeesOfTime => ctx.send_message(
+                                "Welcome! This is a practice room for the Rupees Of Time tournament. Learn more about the event at https://midos.house/event/rot/1",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Roll a seed with the weights used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
                                     }),
                                 ],
                             ).await?,
@@ -5517,6 +5551,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::NineDaysOfSaws
                     | Goal::PotsOfTime
                     | Goal::Rsl
+                    | Goal::RupeesOfTime
                     | Goal::S6
                     | Goal::S7
                     | Goal::S8

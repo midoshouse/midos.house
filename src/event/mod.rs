@@ -382,6 +382,7 @@ impl<'a> Data<'a> {
             }
             (Series::Rsl, "6") => from_file!("../../assets/event/rsl/chests-6-248f8b5.json"),
             (Series::Rsl, "7") => from_file!("../../assets/event/rsl/chests-7-104253e.json"), //TODO include RSL-Lite, adjust for simulated drafts
+            (Series::RupeesOfTime, "1") => from_file!("../../assets/event/rot/chests-1-de70953.json"),
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, "6") => from_file!("../../assets/event/scrubs/chests-6-8.1.73.json"),
             (Series::Scrubs, "7") => from_file!("../../assets/event/scrubs/chests-7-8.3.30.json"),
@@ -645,7 +646,7 @@ impl<'a> Data<'a> {
     pub(crate) async fn single_settings(&self) -> Result<Option<(VersionedBranch, Cow<'_, seed::Settings>)>, racetime_bot::RollError> {
         Ok(match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => self.rando_version.clone().map(|rando_version| (rando_version, Cow::Owned(br::s1_settings()))), // support for randomized starting song
-            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") => {
+            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") | (Series::RupeesOfTime, "1") => {
                 #[derive(Deserialize)]
                 struct Plando {
                     settings: seed::Settings,
@@ -663,7 +664,7 @@ impl<'a> Data<'a> {
                     (Series::PotsOfTime, "1") => (rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 8, 2)),
                         preset: rsl::Preset::League,
-                    }, Some(include_bytes!("../../assets/event/pot/weights-1.json"))),
+                    }, Some(&include_bytes!("../../assets/event/pot/weights-1.json")[..])),
                     /*
                     (Series::Rsl, "3") => (rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 1, 0)),
@@ -682,6 +683,7 @@ impl<'a> Data<'a> {
                         version: Some(Version::new(2, 5, 11)),
                         preset: rsl::Preset::League,
                     }, None),
+                    (Series::RupeesOfTime, "1") => (rsl::VersionedPreset::RupeesOfTime, Some(&include_bytes!("../../assets/event/rot/weights-1.json")[..])),
                     (_, _) => unreachable!("checked by outer match"),
                 };
                 let rsl_script_path = rsl_preset.script_path().await?;
@@ -747,8 +749,7 @@ impl<'a> Data<'a> {
                     .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
                     .next().ok_or(racetime_bot::RollError::RslScriptOutput { regex: "^Plando File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
                 let plando_path = rsl_script_path.join("data").join(plando_filename);
-                let plando_file = fs::read_to_string(&plando_path).await?;
-                let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
+                let settings = fs::read_json::<Plando>(&plando_path).await?.settings;
                 fs::remove_file(plando_path).await?;
                 Some((VersionedBranch::Pinned { version: randomizer_version }, Cow::Owned(settings)))
             }
@@ -760,7 +761,7 @@ impl<'a> Data<'a> {
     pub(crate) fn has_single_settings(&self) -> bool {
         match (self.series, &*self.event) {
             (Series::CopaDoBrasil, "1") => true,
-            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") => true,
+            (Series::Pictionary, "rs1" | "rs2") | (Series::PotsOfTime, "1") | (Series::Rsl, "4" | "5" | "6") | (Series::RupeesOfTime, "1") => true,
             (_, _) => self.single_settings.is_some(),
         }
     }
@@ -2919,8 +2920,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                             .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
                             .next().ok_or(racetime_bot::RollError::RslScriptOutput { regex: "^Plando File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
                         let plando_path = rsl_script_path.join("data").join(plando_filename);
-                        let plando_file = fs::read_to_string(&plando_path).await?;
-                        let mut settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
+                        let mut settings = fs::read_json::<Plando>(&plando_path).await?.settings;
                         fs::remove_file(plando_path).await?;
                         settings.insert(format!("world_count"), json!(world_count));
                         (VersionedBranch::Pinned { version: randomizer_version }, settings)
