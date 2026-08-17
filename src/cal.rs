@@ -978,6 +978,7 @@ impl Race {
                 "5" => {}
                 "6" => {}
                 "7" => {}
+                "8" => {} //TODO get from Google sheet 1w1AS87VMB7jE-qiFmSYPlCiLh8pf6F5fdYz_I0I8aE8 (configure when the first race is added) or ask Flash for direct integration
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
