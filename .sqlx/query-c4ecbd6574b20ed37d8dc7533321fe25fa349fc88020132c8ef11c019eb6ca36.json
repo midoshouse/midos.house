@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "series: Series",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "organizers",
+            "name": "series"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "event",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "organizers",
+            "name": "event"
+          }
+        }
       }
     ],
     "parameters": {

@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "max_delay",
-        "type_info": "Interval"
+        "type_info": "Interval",
+        "origin": {
+          "Table": {
+            "table": "asyncs",
+            "name": "max_delay"
+          }
+        }
       }
     ],
     "parameters": {

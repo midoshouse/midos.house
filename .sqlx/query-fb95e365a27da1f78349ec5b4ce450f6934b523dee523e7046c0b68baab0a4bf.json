@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "discord_role: PgSnowflake<RoleId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "asyncs",
+            "name": "discord_role"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "discord_channel: PgSnowflake<ChannelId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "asyncs",
+            "name": "discord_channel"
+          }
+        }
       }
     ],
     "parameters": {

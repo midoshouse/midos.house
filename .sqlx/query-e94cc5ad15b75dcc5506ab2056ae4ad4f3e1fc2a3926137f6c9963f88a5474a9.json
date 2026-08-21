@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "sender!: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "sender"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "series!: Series",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "series"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "event!",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "event"
+          }
+        }
       }
     ],
     "parameters": {

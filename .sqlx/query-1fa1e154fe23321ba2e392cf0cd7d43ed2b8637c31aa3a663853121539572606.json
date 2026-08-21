@@ -19,12 +19,24 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "race_volunteers",
+            "name": "language"
+          }
         }
       },
       {
         "ordinal": 1,
         "name": "volunteer: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "race_volunteers",
+            "name": "volunteer"
+          }
+        }
       },
       {
         "ordinal": 2,
@@ -39,6 +51,12 @@
                 "tracker"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "race_volunteers",
+            "name": "role"
           }
         }
       }

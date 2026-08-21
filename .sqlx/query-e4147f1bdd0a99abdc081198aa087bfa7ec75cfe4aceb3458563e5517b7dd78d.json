@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "submitted!",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "race_async_teams",
+            "name": "submitted"
+          }
+        }
       }
     ],
     "parameters": {

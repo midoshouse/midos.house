@@ -6,22 +6,46 @@
       {
         "ordinal": 0,
         "name": "locked_spoiler_log_path",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "seed_metadata",
+            "name": "locked_spoiler_log_path"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "progression_spoiler",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "seed_metadata",
+            "name": "progression_spoiler"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "bingosync_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "seed_metadata",
+            "name": "bingosync_url"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "bingo_passphrase",
-        "type_info": "Bpchar"
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "seed_metadata",
+            "name": "bingo_passphrase"
+          }
+        }
       }
     ],
     "parameters": {

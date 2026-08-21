@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "view_as: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "view_as",
+            "name": "view_as"
+          }
+        }
       }
     ],
     "parameters": {

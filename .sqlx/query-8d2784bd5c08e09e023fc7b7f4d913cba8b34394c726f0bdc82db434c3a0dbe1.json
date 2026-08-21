@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "user_id: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "user_id"
+          }
+        }
       }
     ],
     "parameters": {

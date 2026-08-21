@@ -17,6 +17,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "notifications",
+            "name": "kind"
+          }
         }
       }
     ],

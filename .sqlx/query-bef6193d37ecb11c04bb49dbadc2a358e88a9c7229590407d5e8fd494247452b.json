@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "id: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "team_members",
+            "name": "member"
+          }
+        }
       },
       {
         "ordinal": 1,
@@ -21,6 +27,12 @@
                 "unconfirmed"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "team_members",
+            "name": "status"
           }
         }
       },
@@ -40,6 +52,12 @@
                 "none"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "team_members",
+            "name": "role"
           }
         }
       }

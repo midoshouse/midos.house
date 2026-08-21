@@ -6,242 +6,530 @@
       {
         "ordinal": 0,
         "name": "series: Series",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "series"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "event",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "event"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "challonge_match",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "challonge_match"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "league_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "league_id"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "sheet_timestamp",
-        "type_info": "Timestamp"
+        "type_info": "Timestamp",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "sheet_timestamp"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "startgg_event",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "startgg_event"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "startgg_set: startgg::ID",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "startgg_set"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "speedgaming_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "speedgaming_id"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "speedgaming_onsite_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "speedgaming_onsite_id"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "game",
-        "type_info": "Int2"
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "game"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "team1: Id<Teams>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "team1"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "team2: Id<Teams>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "team2"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "team3: Id<Teams>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "team3"
+          }
+        }
       },
       {
         "ordinal": 13,
         "name": "p1",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p1"
+          }
+        }
       },
       {
         "ordinal": 14,
         "name": "p2",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p2"
+          }
+        }
       },
       {
         "ordinal": 15,
         "name": "p3",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p3"
+          }
+        }
       },
       {
         "ordinal": 16,
         "name": "p1_discord: PgSnowflake<UserId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p1_discord"
+          }
+        }
       },
       {
         "ordinal": 17,
         "name": "p2_discord: PgSnowflake<UserId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p2_discord"
+          }
+        }
       },
       {
         "ordinal": 18,
         "name": "p1_racetime",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p1_racetime"
+          }
+        }
       },
       {
         "ordinal": 19,
         "name": "p2_racetime",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p2_racetime"
+          }
+        }
       },
       {
         "ordinal": 20,
         "name": "p1_twitch",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p1_twitch"
+          }
+        }
       },
       {
         "ordinal": 21,
         "name": "p2_twitch",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "p2_twitch"
+          }
+        }
       },
       {
         "ordinal": 22,
         "name": "total",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "total"
+          }
+        }
       },
       {
         "ordinal": 23,
         "name": "finished",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "finished"
+          }
+        }
       },
       {
         "ordinal": 24,
         "name": "phase",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "phase"
+          }
+        }
       },
       {
         "ordinal": 25,
         "name": "round",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "round"
+          }
+        }
       },
       {
         "ordinal": 26,
         "name": "scheduling_thread: PgSnowflake<ChannelId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "scheduling_thread"
+          }
+        }
       },
       {
         "ordinal": 27,
         "name": "draft_state: Json<Draft>",
-        "type_info": "Jsonb"
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "draft_state"
+          }
+        }
       },
       {
         "ordinal": 28,
         "name": "start",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "start"
+          }
+        }
       },
       {
         "ordinal": 29,
         "name": "async_start1",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_start1"
+          }
+        }
       },
       {
         "ordinal": 30,
         "name": "async_start2",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_start2"
+          }
+        }
       },
       {
         "ordinal": 31,
         "name": "async_start3",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_start3"
+          }
+        }
       },
       {
         "ordinal": 32,
         "name": "end_time",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "end_time"
+          }
+        }
       },
       {
         "ordinal": 33,
         "name": "async_end1",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_end1"
+          }
+        }
       },
       {
         "ordinal": 34,
         "name": "async_end2",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_end2"
+          }
+        }
       },
       {
         "ordinal": 35,
         "name": "async_end3",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_end3"
+          }
+        }
       },
       {
         "ordinal": 36,
         "name": "room",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "room"
+          }
+        }
       },
       {
         "ordinal": 37,
         "name": "async_room1",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_room1"
+          }
+        }
       },
       {
         "ordinal": 38,
         "name": "async_room2",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_room2"
+          }
+        }
       },
       {
         "ordinal": 39,
         "name": "async_room3",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_room3"
+          }
+        }
       },
       {
         "ordinal": 40,
         "name": "schedule_updated_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "schedule_updated_at"
+          }
+        }
       },
       {
         "ordinal": 41,
         "name": "fpa_invoked",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "fpa_invoked"
+          }
+        }
       },
       {
         "ordinal": 42,
         "name": "file_stem",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "file_stem"
+          }
+        }
       },
       {
         "ordinal": 43,
         "name": "locked_spoiler_log_path",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "locked_spoiler_log_path"
+          }
+        }
       },
       {
         "ordinal": 44,
         "name": "web_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "web_id"
+          }
+        }
       },
       {
         "ordinal": 45,
         "name": "web_gen_time",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "web_gen_time"
+          }
+        }
       },
       {
         "ordinal": 46,
         "name": "is_tfb_dev",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "is_tfb_dev"
+          }
+        }
       },
       {
         "ordinal": 47,
         "name": "tfb_uuid",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "tfb_uuid"
+          }
+        }
       },
       {
         "ordinal": 48,
@@ -285,6 +573,12 @@
                 "Big Magic"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "hash1"
           }
         }
       },
@@ -331,6 +625,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "hash2"
+          }
         }
       },
       {
@@ -375,6 +675,12 @@
                 "Big Magic"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "hash3"
           }
         }
       },
@@ -421,6 +727,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "hash4"
+          }
         }
       },
       {
@@ -466,112 +778,244 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "hash5"
+          }
         }
       },
       {
         "ordinal": 53,
         "name": "seed_password",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "seed_password"
+          }
+        }
       },
       {
         "ordinal": 54,
         "name": "bingosync_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "bingosync_url"
+          }
+        }
       },
       {
         "ordinal": 55,
         "name": "bingo_passphrase",
-        "type_info": "Bpchar"
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "bingo_passphrase"
+          }
+        }
       },
       {
         "ordinal": 56,
         "name": "video_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "video_url"
+          }
+        }
       },
       {
         "ordinal": 57,
         "name": "restreamer",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "restreamer"
+          }
+        }
       },
       {
         "ordinal": 58,
         "name": "video_url_fr",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "video_url_fr"
+          }
+        }
       },
       {
         "ordinal": 59,
         "name": "restreamer_fr",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "restreamer_fr"
+          }
+        }
       },
       {
         "ordinal": 60,
         "name": "video_url_de",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "video_url_de"
+          }
+        }
       },
       {
         "ordinal": 61,
         "name": "restreamer_de",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "restreamer_de"
+          }
+        }
       },
       {
         "ordinal": 62,
         "name": "video_url_pt",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "video_url_pt"
+          }
+        }
       },
       {
         "ordinal": 63,
         "name": "restreamer_pt",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "restreamer_pt"
+          }
+        }
       },
       {
         "ordinal": 64,
         "name": "video_url_es",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "video_url_es"
+          }
+        }
       },
       {
         "ordinal": 65,
         "name": "restreamer_es",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "restreamer_es"
+          }
+        }
       },
       {
         "ordinal": 66,
         "name": "last_edited_by: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "last_edited_by"
+          }
+        }
       },
       {
         "ordinal": 67,
         "name": "last_edited_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "last_edited_at"
+          }
+        }
       },
       {
         "ordinal": 68,
         "name": "ignored",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "ignored"
+          }
+        }
       },
       {
         "ordinal": 69,
         "name": "schedule_locked",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "schedule_locked"
+          }
+        }
       },
       {
         "ordinal": 70,
         "name": "notified",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "notified"
+          }
+        }
       },
       {
         "ordinal": 71,
         "name": "async_notified1",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_notified1"
+          }
+        }
       },
       {
         "ordinal": 72,
         "name": "async_notified2",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_notified2"
+          }
+        }
       },
       {
         "ordinal": 73,
         "name": "async_notified3",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "races",
+            "name": "async_notified3"
+          }
+        }
       }
     ],
     "parameters": {

@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "user: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "looking_for_team",
+            "name": "user_id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "availability",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "looking_for_team",
+            "name": "availability"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "notes",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "looking_for_team",
+            "name": "notes"
+          }
+        }
       }
     ],
     "parameters": {

@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "start",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "maintenance_windows",
+            "name": "start"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "end",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "maintenance_windows",
+            "name": "end_time"
+          }
+        }
       }
     ],
     "parameters": {

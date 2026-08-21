@@ -22,13 +22,13 @@ use {
 pub(crate) const FENHL: Id<Users> = Id { inner: 14571800683221815449, _table: PhantomData };
 
 pub(crate) trait Table {
-    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments<'static>>;
+    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments>;
 }
 
 pub(crate) enum Notifications {}
 
 impl Table for Notifications {
-    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments<'static>> {
+    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments> {
         sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM notifications WHERE id = $1) AS "exists!""#, id)
     }
 }
@@ -36,7 +36,7 @@ impl Table for Notifications {
 pub(crate) enum Races {}
 
 impl Table for Races {
-    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments<'static>> {
+    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments> {
         sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, id)
     }
 }
@@ -44,7 +44,7 @@ impl Table for Races {
 pub(crate) enum Teams {}
 
 impl Table for Teams {
-    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments<'static>> {
+    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments> {
         sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE id = $1) AS "exists!""#, id)
     }
 }
@@ -52,7 +52,7 @@ impl Table for Teams {
 pub(crate) enum Users {}
 
 impl Table for Users {
-    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments<'static>> {
+    fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments> {
         sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, id)
     }
 }
@@ -140,11 +140,11 @@ where i64: Decode<'r, DB> {
 
 impl<'q, T: Table, DB: Database> Encode<'q, DB> for Id<T>
 where i64: Encode<'q, DB> {
-    fn encode_by_ref(&self, buf: &mut <DB as Database>::ArgumentBuffer<'q>) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+    fn encode_by_ref(&self, buf: &mut <DB as Database>::ArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
         (self.inner as i64).encode(buf)
     }
 
-    fn encode(self, buf: &mut <DB as Database>::ArgumentBuffer<'q>) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+    fn encode(self, buf: &mut <DB as Database>::ArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
         (self.inner as i64).encode(buf)
     }
 

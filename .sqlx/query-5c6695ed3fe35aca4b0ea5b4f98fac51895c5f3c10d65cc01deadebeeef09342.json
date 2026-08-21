@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "start",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "maintenance_windows",
+            "name": "start"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "end_time",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "maintenance_windows",
+            "name": "end_time"
+          }
+        }
       },
       {
         "ordinal": 2,
@@ -25,6 +37,12 @@
                 "racetime"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "maintenance_windows",
+            "name": "kind"
           }
         }
       }

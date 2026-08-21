@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "goal_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "goal_name"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "file_stem",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "file_stem"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "locked_spoiler_log_path",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "locked_spoiler_log_path"
+          }
+        }
       },
       {
         "ordinal": 3,
@@ -60,6 +78,12 @@
                 "Big Magic"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "hash1"
           }
         }
       },
@@ -106,6 +130,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "hash2"
+          }
         }
       },
       {
@@ -150,6 +180,12 @@
                 "Big Magic"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "hash3"
           }
         }
       },
@@ -196,6 +232,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "hash4"
+          }
         }
       },
       {
@@ -241,27 +283,57 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "hash5"
+          }
         }
       },
       {
         "ordinal": 8,
         "name": "seed_password",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "seed_password"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "progression_spoiler",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "progression_spoiler"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "bingosync_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "bingosync_url"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "bingo_passphrase",
-        "type_info": "Bpchar"
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "prerolled_seeds",
+            "name": "bingo_passphrase"
+          }
+        }
       }
     ],
     "parameters": {

@@ -444,7 +444,8 @@ CREATE TABLE public.events (
     cleaned_up boolean DEFAULT false NOT NULL,
     async_organizer_notifications boolean DEFAULT true NOT NULL,
     manual_reporting_for_asyncs boolean DEFAULT false NOT NULL,
-    find_team_url text
+    find_team_url text,
+    scrubs_id uuid
 );
 
 

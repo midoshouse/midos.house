@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "id: Id<Users>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "team_members",
+            "name": "member"
+          }
+        }
       },
       {
         "ordinal": 1,
@@ -22,17 +28,35 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "team_members",
+            "name": "status"
+          }
         }
       },
       {
         "ordinal": 2,
         "name": "time",
-        "type_info": "Interval"
+        "type_info": "Interval",
+        "origin": {
+          "Table": {
+            "table": "async_players",
+            "name": "time"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "vod",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "async_players",
+            "name": "vod"
+          }
+        }
       }
     ],
     "parameters": {

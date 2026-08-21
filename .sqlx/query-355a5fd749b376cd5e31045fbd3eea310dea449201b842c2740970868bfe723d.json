@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "id: Id<Teams>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "restream_consent",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "restream_consent"
+          }
+        }
       }
     ],
     "parameters": {

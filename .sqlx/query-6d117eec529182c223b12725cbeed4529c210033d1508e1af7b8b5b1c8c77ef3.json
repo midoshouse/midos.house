@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "mapped_phase",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "startgg_phase_round_mappings",
+            "name": "mapped_phase"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "mapped_round",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "startgg_phase_round_mappings",
+            "name": "mapped_round"
+          }
+        }
       }
     ],
     "parameters": {

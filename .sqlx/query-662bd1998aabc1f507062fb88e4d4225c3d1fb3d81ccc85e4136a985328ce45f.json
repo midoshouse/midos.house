@@ -6,112 +6,244 @@
       {
         "ordinal": 0,
         "name": "display_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "display_name"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "short_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "short_name"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "start",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "start"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "end_time",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "end_time"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "url"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "challonge_community",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "challonge_community"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "speedgaming_slug",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "speedgaming_slug"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "speedgaming_in_person_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "speedgaming_in_person_id"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "hide_races_tab",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "hide_races_tab"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "hide_teams_tab",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "hide_teams_tab"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "teams_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "teams_url"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "enter_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "enter_url"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "find_team_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "find_team_url"
+          }
+        }
       },
       {
         "ordinal": 13,
         "name": "video_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "video_url"
+          }
+        }
       },
       {
         "ordinal": 14,
         "name": "discord_guild: PgSnowflake<GuildId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "discord_guild"
+          }
+        }
       },
       {
         "ordinal": 15,
         "name": "discord_invite_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "discord_invite_url"
+          }
+        }
       },
       {
         "ordinal": 16,
         "name": "discord_race_room_channel: PgSnowflake<ChannelId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "discord_race_room_channel"
+          }
+        }
       },
       {
         "ordinal": 17,
         "name": "discord_race_results_channel: PgSnowflake<ChannelId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "discord_race_results_channel"
+          }
+        }
       },
       {
         "ordinal": 18,
         "name": "discord_organizer_channel: PgSnowflake<ChannelId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "discord_organizer_channel"
+          }
+        }
       },
       {
         "ordinal": 19,
         "name": "discord_scheduling_channel: PgSnowflake<ChannelId>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "discord_scheduling_channel"
+          }
+        }
       },
       {
         "ordinal": 20,
         "name": "rando_version: Json<VersionedBranch>",
-        "type_info": "Jsonb"
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "rando_version"
+          }
+        }
       },
       {
         "ordinal": 21,
         "name": "single_settings: Json<seed::Settings>",
-        "type_info": "Jsonb"
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "single_settings"
+          }
+        }
       },
       {
         "ordinal": 22,
@@ -132,77 +264,167 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "team_config"
+          }
         }
       },
       {
         "ordinal": 23,
         "name": "enter_flow: Json<enter::Flow>",
-        "type_info": "Jsonb"
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "enter_flow"
+          }
+        }
       },
       {
         "ordinal": 24,
         "name": "show_opt_out",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "show_opt_out"
+          }
+        }
       },
       {
         "ordinal": 25,
         "name": "show_qualifier_times",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "show_qualifier_times"
+          }
+        }
       },
       {
         "ordinal": 26,
         "name": "default_game_count",
-        "type_info": "Int2"
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "default_game_count"
+          }
+        }
       },
       {
         "ordinal": 27,
         "name": "min_schedule_notice",
-        "type_info": "Interval"
+        "type_info": "Interval",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "min_schedule_notice"
+          }
+        }
       },
       {
         "ordinal": 28,
         "name": "open_stream_delay",
-        "type_info": "Interval"
+        "type_info": "Interval",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "open_stream_delay"
+          }
+        }
       },
       {
         "ordinal": 29,
         "name": "invitational_stream_delay",
-        "type_info": "Interval"
+        "type_info": "Interval",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "invitational_stream_delay"
+          }
+        }
       },
       {
         "ordinal": 30,
         "name": "retime_window",
-        "type_info": "Interval"
+        "type_info": "Interval",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "retime_window"
+          }
+        }
       },
       {
         "ordinal": 31,
         "name": "auto_import",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "auto_import"
+          }
+        }
       },
       {
         "ordinal": 32,
         "name": "emulator_settings_reminder",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "emulator_settings_reminder"
+          }
+        }
       },
       {
         "ordinal": 33,
         "name": "prevent_late_joins",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "prevent_late_joins"
+          }
+        }
       },
       {
         "ordinal": 34,
         "name": "manual_reporting_with_breaks",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "manual_reporting_with_breaks"
+          }
+        }
       },
       {
         "ordinal": 35,
         "name": "manual_reporting_for_asyncs",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "manual_reporting_for_asyncs"
+          }
+        }
       },
       {
         "ordinal": 36,
         "name": "async_organizer_notifications",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "async_organizer_notifications"
+          }
+        }
       },
       {
         "ordinal": 37,
@@ -220,12 +442,24 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "language"
+          }
         }
       },
       {
         "ordinal": 38,
         "name": "listed",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "listed"
+          }
+        }
       }
     ],
     "parameters": {

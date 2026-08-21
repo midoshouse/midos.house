@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "speedgaming_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "speedgaming_onsite_disambiguation_messages",
+            "name": "speedgaming_id"
+          }
+        }
       }
     ],
     "parameters": {

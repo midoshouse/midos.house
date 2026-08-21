@@ -20,6 +20,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "asyncs",
+            "name": "kind"
+          }
         }
       }
     ],

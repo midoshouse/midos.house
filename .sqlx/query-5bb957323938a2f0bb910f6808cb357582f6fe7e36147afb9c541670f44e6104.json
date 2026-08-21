@@ -6,42 +6,90 @@
       {
         "ordinal": 0,
         "name": "id: Id<Teams>",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "series: Series",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "series"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "event",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "event"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "name",
-        "type_info": "Varchar"
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "racetime_slug",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "racetime_slug"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "startgg_id: startgg::ID",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "startgg_id"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "plural_name",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "plural_name"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "restream_consent",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "restream_consent"
+          }
+        }
       },
       {
         "ordinal": 8,
@@ -56,12 +104,24 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "mw_impl"
+          }
         }
       },
       {
         "ordinal": 9,
         "name": "qualifier_rank",
-        "type_info": "Int2"
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "teams",
+            "name": "qualifier_rank"
+          }
+        }
       }
     ],
     "parameters": {
