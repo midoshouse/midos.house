@@ -655,8 +655,8 @@
         "item_pool_value": {
             "plentiful": 5,
             "balanced": 70,
-            "scarce": 20,
-            "minimal": 5,
+            "scarce": 25,
+            "minimal": 0,
             "ludicrous": 0
         },
         "junk_ice_traps": {
