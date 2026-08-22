@@ -222,12 +222,12 @@ pub(crate) async fn install_macos(global: &GlobalState, me: Option<User>, uri: O
         }
         h2 {
             : "Using ";
-            a(href = "https://github.com/LnL7/nix-darwin") : "nix-darwin";
+            a(href = "https://github.com/nix-darwin/nix-darwin") : "nix-darwin";
         }
         ol {
             li {
                 : "Edit your configuration.nix to include the following:";
-                pre : "{ config, pkgs, ... }: {
+                pre : "{
     homebrew = {
         enable = true;
         casks = [
@@ -245,7 +245,7 @@ pub(crate) async fn install_macos(global: &GlobalState, me: Option<User>, uri: O
             }
             li {
                 : "Run ";
-                code : "darwin-rebuild switch";
+                code : "sudo darwin-rebuild switch";
             }
         }
         h2 : "Support";
