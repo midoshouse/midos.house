@@ -288,6 +288,7 @@ pub(crate) enum Goal {
     ScrubsS5,
     ScrubsS6,
     ScrubsS7,
+    ScrubsS8,
     Sgl2023,
     Sgl2024,
     Sgl2025,
@@ -365,6 +366,7 @@ impl Goal {
             Self::ScrubsS5 => Ok((Series::Scrubs, "5")),
             Self::ScrubsS6 => Ok((Series::Scrubs, "6")),
             Self::ScrubsS7 => Ok((Series::Scrubs, "7")),
+            Self::ScrubsS8 => Ok((Series::Scrubs, "8")),
             Self::Sgl2023 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2023")),
             Self::Sgl2024 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2024")),
             Self::Sgl2025 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2025")),
@@ -436,6 +438,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::ScrubsS8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -499,6 +502,7 @@ impl Goal {
             Self::ScrubsS5 => "Scrubs Tournament Season 5",
             Self::ScrubsS6 => "Scrubs Tournament Season 6",
             Self::ScrubsS7 => "Scrubs Tournament Season 7",
+            Self::ScrubsS8 => "Scrubs Tournament Season 8",
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
             Self::Sgl2025 => "SGL 2025",
@@ -561,6 +565,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::ScrubsS8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -629,6 +634,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::ScrubsS8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -693,6 +699,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::ScrubsS8
             | Self::SlugOpen2026 // will be overridden per format
             | Self::SongsOfHope
             | Self::TournamentOfTruthS2
@@ -755,6 +762,7 @@ impl Goal {
                 | Self::ScrubsS5
                 | Self::ScrubsS6
                 | Self::ScrubsS7
+                | Self::ScrubsS8
                 | Self::Sgl2023
                 | Self::Sgl2024
                 | Self::SlugOpen2026
@@ -820,6 +828,7 @@ impl Goal {
             Self::ScrubsS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 175) },
             Self::ScrubsS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::ScrubsS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 64) },
+            Self::ScrubsS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 25) },
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
@@ -884,6 +893,7 @@ impl Goal {
             Self::ScrubsS5 => Some(scrubs::s5_settings()),
             Self::ScrubsS6 => Some(scrubs::s6_settings()),
             Self::ScrubsS7 => Some(scrubs::s7_settings()),
+            Self::ScrubsS8 => Some(scrubs::s8_settings()),
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::Sgl2025 => Some(sgl::settings_2025()),
@@ -938,6 +948,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::ScrubsS8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -1145,6 +1156,7 @@ impl Goal {
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
+            | Self::ScrubsS8
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
@@ -2982,6 +2994,7 @@ trait SeedHandler {
                     | Goal::ScrubsS5
                     | Goal::ScrubsS6
                     | Goal::ScrubsS7
+                    | Goal::ScrubsS8
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
@@ -3710,6 +3723,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::ScrubsS5
                             | Goal::ScrubsS6
                             | Goal::ScrubsS7
+                            | Goal::ScrubsS8
                                 => {
                                     let (series, event) = goal.single_event().expect("goal has no single event");
                                     ctx.send_message(
@@ -5555,6 +5569,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::ScrubsS5
                     | Goal::ScrubsS6
                     | Goal::ScrubsS7
+                    | Goal::ScrubsS8
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
