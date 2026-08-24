@@ -652,38 +652,38 @@ impl<'a> Data<'a> {
                     settings: seed::Settings,
                 }
 
-                let (rsl_preset, custom_override) = match (self.series, &*self.event) {
-                    (Series::Pictionary, "rs1") => (rsl::VersionedPreset::Fenhl {
+                let rsl_preset = match (self.series, &*self.event) {
+                    (Series::Pictionary, "rs1") => rsl::VersionedPreset::Fenhl {
                         version: Some((Version::new(2, 2, 10), 5)),
                         preset: rsl::DevFenhlPreset::Pictionary,
-                    }, None),
-                    (Series::Pictionary, "rs2") => (rsl::VersionedPreset::Fenhl {
+                    },
+                    (Series::Pictionary, "rs2") => rsl::VersionedPreset::Fenhl {
                         version: Some((Version::new(2, 3, 8), 10)),
                         preset: rsl::DevFenhlPreset::Pictionary,
-                    }, None),
-                    (Series::PotsOfTime, "1") => (rsl::VersionedPreset::Xopar {
+                    },
+                    (Series::PotsOfTime, "1") => rsl::VersionedPreset::XoparCustom {
                         version: Some(Version::new(2, 8, 2)),
-                        preset: rsl::Preset::League,
-                    }, Some(&include_bytes!("../../assets/event/pot/weights-1.json")[..])),
+                        weights: serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/pot/weights-1.json"))?,
+                    },
                     /*
-                    (Series::Rsl, "3") => (rsl::VersionedPreset::Xopar {
+                    (Series::Rsl, "3") => rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 1, 0)),
                         preset: rsl::Preset::League,
-                    }, None),
+                    },
                     */ //TODO support old RSL script versions that didn't report plando output path
-                    (Series::Rsl, "4") => (rsl::VersionedPreset::Xopar {
+                    (Series::Rsl, "4") => rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 2, 10)),
                         preset: rsl::Preset::League,
-                    }, None),
-                    (Series::Rsl, "5") => (rsl::VersionedPreset::Xopar {
+                    },
+                    (Series::Rsl, "5") => rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 3, 8)),
                         preset: rsl::Preset::League,
-                    }, None),
-                    (Series::Rsl, "6") => (rsl::VersionedPreset::Xopar {
+                    },
+                    (Series::Rsl, "6") => rsl::VersionedPreset::Xopar {
                         version: Some(Version::new(2, 5, 11)),
                         preset: rsl::Preset::League,
-                    }, None),
-                    (Series::RupeesOfTime, "1") => (rsl::VersionedPreset::RupeesOfTime, Some(&include_bytes!("../../assets/event/rot/weights-1.json")[..])),
+                    },
+                    (Series::RupeesOfTime, "1") => rsl::VersionedPreset::RupeesOfTime { password_lock: false },
                     (_, _) => unreachable!("checked by outer match"),
                 };
                 let rsl_script_path = rsl_preset.script_path().await?;
@@ -727,18 +727,12 @@ impl<'a> Data<'a> {
                     // add a sequence ID to the names of temporary plando files to prevent name collisions
                     rsl_cmd.arg(format!("--plando_filename_base=mh_{}", rsl::SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
                 }
-                if custom_override.is_some() {
-                    rsl_cmd.arg("--override=-");
-                }
                 rsl_cmd.stdin(Stdio::piped());
                 rsl_cmd.arg("--no_seed");
-                let mut rsl_process = rsl_cmd
+                let rsl_process = rsl_cmd
                     .current_dir(&rsl_script_path)
                     .stdout(Stdio::piped())
                     .spawn().at_command("RandomSettingsGenerator.py")?;
-                if let Some(custom_override) = custom_override {
-                    rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(custom_override).await.at_command("RandomSettingsGenerator.py")?;
-                }
                 let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}

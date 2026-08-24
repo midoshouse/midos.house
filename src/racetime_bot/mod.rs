@@ -1610,11 +1610,7 @@ impl Goal {
                 };
                 SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
-            Self::RupeesOfTime => {
-                let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/rot/weights-1.json"))?;
-                weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
-                SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") }
-            }
+            Self::RupeesOfTime => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime { password_lock: true }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::SlugOpen2026 => {
                 let [format, args @ ..] = &*args else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the format is required" }) };
                 let Ok(format) = format.parse::<sco::Format>() else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that SlugCentral Open format" }) };
@@ -3049,14 +3045,7 @@ trait SeedHandler {
                             weights,
                         }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
                     }
-                    Goal::RupeesOfTime => {
-                        let mut weights = serde_json::from_slice::<rsl::Weights>(include_bytes!("../../assets/event/rot/weights-1.json"))?;
-                        weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
-                        self.roll_rsl_seed(ctx, rsl::VersionedPreset::XoparCustom {
-                            version: Some(Version::new(2, 9, 0)),
-                            weights,
-                        }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await
-                    }
+                    Goal::RupeesOfTime => self.roll_rsl_seed(ctx, rsl::VersionedPreset::RupeesOfTime { password_lock: true }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                     Goal::SlugOpen2026 => {
                         let format = sco::Format::for_race(race).expect("SlugCentral Open race should have format set");
                         let (rando_version, settings, bingo_passphrase) = format.single_settings(ctx.global(), Some(bingo_room_name)).await?.expect("should have draft state set");

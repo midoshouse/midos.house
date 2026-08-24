@@ -106,7 +106,9 @@ pub(crate) enum VersionedPreset {
         version: Option<(Version, u8)>,
         preset: DevFenhlPreset,
     },
-    RupeesOfTime,
+    RupeesOfTime {
+        password_lock: bool,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -149,16 +151,22 @@ impl VersionedPreset {
         match self {
             Self::Xopar { version, .. } | Self::XoparCustom { version, .. } => version.as_ref(),
             Self::Fenhl { version, .. } => version.as_ref().map(|(base, _)| base),
-            Self::RupeesOfTime => None,
+            Self::RupeesOfTime { .. } => None,
         }
     }
 
-    pub(crate) fn name_or_weights(&self) -> Either<&'static str, &Weights> {
+    pub(crate) fn name_or_weights(&self) -> Either<&'static str, Cow<'_, Weights>> {
         match self {
             Self::Xopar { preset, .. } => Either::Left(preset.name()),
             Self::Fenhl { preset, .. } => Either::Left(preset.name()),
-            Self::XoparCustom { weights, .. } => Either::Right(weights),
-            Self::RupeesOfTime => Either::Left("league"),
+            Self::XoparCustom { weights, .. } => Either::Right(Cow::Borrowed(weights)),
+            Self::RupeesOfTime { password_lock } => Either::Right({
+                let mut weights = serde_json::from_slice::<Weights>(include_bytes!("../../assets/event/rot/weights-1.json")).expect("invalid hardcoded weights");
+                if *password_lock {
+                    weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
+                }
+                Cow::Owned(weights)
+            }),
         }
     }
 
@@ -166,7 +174,7 @@ impl VersionedPreset {
         match self {
             Self::Xopar { version, .. } | Self::XoparCustom { version, .. } => version.is_some(),
             Self::Fenhl { version, .. } => version.is_some(),
-            Self::RupeesOfTime => false,
+            Self::RupeesOfTime { .. } => false,
         }
     }
 
@@ -187,7 +195,7 @@ impl VersionedPreset {
                         let path = Path::new("midos-house").join(format!("rsl-{version}"));
                         Cow::Owned(BaseDirectories::new().find_data_file(&path).ok_or(ScriptPathError::NotFound(path))?)
                     }
-                    Self::RupeesOfTime => Cow::Borrowed(Path::new("/opt/git/github.com/fenhl/plando-random-settings/branch/rot")),
+                    Self::RupeesOfTime { .. } => Cow::Borrowed(Path::new("/opt/git/github.com/fenhl/plando-random-settings/branch/rot")),
                 }
             }
             #[cfg(windows)] {
@@ -205,7 +213,7 @@ impl VersionedPreset {
                     let branch_name = match self {
                         Self::Xopar { .. } | Self::XoparCustom { .. } => "release",
                         Self::Fenhl { .. } => "dev-fenhl",
-                        Self::RupeesOfTime => "rot",
+                        Self::RupeesOfTime { .. } => "rot",
                     };
                     repo.find_fetch_remote(Some("origin".into()))?
                         .connect(gix::remote::Direction::Fetch)?
@@ -226,11 +234,11 @@ impl VersionedPreset {
                     cmd.arg("--depth=1");
                     cmd.arg(format!("https://github.com/{}/plando-random-settings.git", match self {
                         Self::Xopar { .. } | Self::XoparCustom { .. } => "matthewkirby",
-                        Self::Fenhl { .. } | Self::RupeesOfTime => "fenhl",
+                        Self::Fenhl { .. } | Self::RupeesOfTime { .. } => "fenhl",
                     }));
                     match self {
                         Self::Xopar { .. } | Self::XoparCustom { .. } => { cmd.arg("--branch=release"); }
-                        Self::RupeesOfTime => { cmd.arg("--branch=rot"); }
+                        Self::RupeesOfTime { .. } => { cmd.arg("--branch=rot"); }
                         Self::Fenhl { .. } => {}
                     }
                     cmd.arg(&*path).check("git clone").await?;
@@ -245,7 +253,7 @@ impl VersionedPreset {
     }
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default, Clone, Deserialize, Serialize)]
 pub(crate) struct Weights {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     options: HashMap<String, Json>,
