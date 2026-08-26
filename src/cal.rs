@@ -4522,7 +4522,9 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                                                 cal_event.race.id as _,
                                                 &members.iter().map(|(member_id, _)| i64::from(*member_id)).collect_vec(),
                                             ).fetch_all(&mut *transaction).await?;
-                                            if let Some(times) = member_data.iter().map(|row| row.time).collect::<Option<Vec<_>>>() {
+                                            if member_data.is_empty() {
+                                                panic!("no members with submitted vods, race = {}, players = {}", cal_event.race.id, members.iter().map(|(member_id, _)| member_id).format(", ")); //DEBUG more error context rather than dividing by zero when calculating the average
+                                            } else if let Some(times) = member_data.iter().map(|row| row.time).collect::<Option<Vec<_>>>() {
                                                 let sum = times.into_iter().try_fold(Duration::default(), |acc, time| Ok::<_, event::Error>(acc + decode_pginterval(time)?))?;
                                                 if let Some(pieces) = team_data.pieces {
                                                     msg.push(" finished with a score of ");
