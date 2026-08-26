@@ -386,6 +386,7 @@ impl<'a> Data<'a> {
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, "6") => from_file!("../../assets/event/scrubs/chests-6-8.1.73.json"),
             (Series::Scrubs, "7") => from_file!("../../assets/event/scrubs/chests-7-8.3.30.json"),
+            (Series::Scrubs, "8") => from_file!("../../assets/event/scrubs/chests-8-9.1.25.json"),
             (Series::SlugOpen, "2026") => {
                 let format = all::<sco::Format>().choose(&mut rng()).expect("no formats defined for SlugCentral Open");
                 match format {
