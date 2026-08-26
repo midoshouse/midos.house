@@ -4298,63 +4298,16 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 }
                 players.push(player);
             }
-            if cal_event.is_private_async_part() {
-                if event.async_organizer_notifications && let Some(organizer_channel) = event.discord_organizer_channel {
-                    let mut message = MessageBuilder::default();
-                    message.push("async submitted by ");
-                    message.mention_entrant_long(&mut transaction, event.discord_guild, &entrant).await?;
-                    message.push(" who");
-                    if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
-                        if let Some(pieces) = value.pieces {
-                            message.push(" finished with a score of ");
-                            message.push(pieces.to_string());
-                            message.push(if pieces == 1 { " piece at " } else { " pieces at " });
-                        } else {
-                            message.push(" finished with a time of ");
-                        }
-                        message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
-                    } else {
-                        message.push(" did not finish");
-                    }
-                    match players.into_iter().zip(&times).zip(&vods).exactly_one() {
-                        Ok(((_, _), vod)) => if vod.is_empty() {
-                            message.push_line("");
-                        } else {
-                            message.push(' ');
-                            message.push_line_safe(vod);
-                        },
-                        Err(data) => {
-                            message.push_line("");
-                            for (i, ((player, time), vod)) in data.enumerate() {
-                                if let Some(player) = User::from_id(&mut *transaction, player).await? {
-                                    message.mention_user(&player);
-                                } else {
-                                    message.push("player ");
-                                    message.push((i + 1).to_string());
-                                }
-                                message.push(": ");
-                                if let Some(time) = *time {
-                                    message.push(English.format_duration(time, false));
-                                } else {
-                                    message.push("DNF");
-                                }
-                                if vod.is_empty() {
-                                    message.push_line("");
-                                } else {
-                                    message.push(' ');
-                                    message.push_line_safe(vod);
-                                }
-                            }
-                        }
-                    }
-                    if !value.fpa.is_empty() {
-                        message.push("FPA call:");
-                        message.quote_rest();
-                        message.push_safe(&value.fpa);
-                    }
-                    organizer_channel.say(discord_ctx!(global), message.build()).await?;
+            let mut all_parts_submitted = true;
+            for async_part in cal_event.race.cal_events() {
+                let active_entrant = async_part.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
+                let active_team = active_entrant.team().expect("async submitted by non-MH entrant");
+                if !sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, active_team.id as _).fetch_one(&mut *transaction).await? {
+                    all_parts_submitted = false;
+                    break
                 }
-            } else {
+            }
+            if all_parts_submitted {
                 //TODO deduplicate with Handler::official_race_finished in racetime_bot::report
                 if cal_event.race.fpa_invoked || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM race_async_teams WHERE race = $1 AND fpa IS NOT NULL) AS "exists!""#, cal_event.race.id as _).fetch_one(&mut *transaction).await? {
                     if let Some(organizer_channel) = event.discord_organizer_channel {
@@ -4577,6 +4530,62 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                             }
                         }
                     }
+                }
+            } else {
+                if event.async_organizer_notifications && let Some(organizer_channel) = event.discord_organizer_channel {
+                    let mut message = MessageBuilder::default();
+                    message.push("async submitted by ");
+                    message.mention_entrant_long(&mut transaction, event.discord_guild, &entrant).await?;
+                    message.push(" who");
+                    if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
+                        if let Some(pieces) = value.pieces {
+                            message.push(" finished with a score of ");
+                            message.push(pieces.to_string());
+                            message.push(if pieces == 1 { " piece at " } else { " pieces at " });
+                        } else {
+                            message.push(" finished with a time of ");
+                        }
+                        message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
+                    } else {
+                        message.push(" did not finish");
+                    }
+                    match players.into_iter().zip(&times).zip(&vods).exactly_one() {
+                        Ok(((_, _), vod)) => if vod.is_empty() {
+                            message.push_line("");
+                        } else {
+                            message.push(' ');
+                            message.push_line_safe(vod);
+                        },
+                        Err(data) => {
+                            message.push_line("");
+                            for (i, ((player, time), vod)) in data.enumerate() {
+                                if let Some(player) = User::from_id(&mut *transaction, player).await? {
+                                    message.mention_user(&player);
+                                } else {
+                                    message.push("player ");
+                                    message.push((i + 1).to_string());
+                                }
+                                message.push(": ");
+                                if let Some(time) = *time {
+                                    message.push(English.format_duration(time, false));
+                                } else {
+                                    message.push("DNF");
+                                }
+                                if vod.is_empty() {
+                                    message.push_line("");
+                                } else {
+                                    message.push(' ');
+                                    message.push_line_safe(vod);
+                                }
+                            }
+                        }
+                    }
+                    if !value.fpa.is_empty() {
+                        message.push("FPA call:");
+                        message.quote_rest();
+                        message.push_safe(&value.fpa);
+                    }
+                    organizer_channel.say(discord_ctx!(global), message.build()).await?;
                 }
             }
             transaction.commit().await?;
