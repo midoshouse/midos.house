@@ -1,6 +1,6 @@
 use {
     std::{
-        collections::HashMap,
+        collections::BTreeMap,
         env,
         fs::{
             self,
@@ -31,7 +31,7 @@ enum Error {
     #[error(transparent)] Io(#[from] std::io::Error),
 }
 
-fn check_static_file(cache: &mut HashMap<PathBuf, ObjectId>, repo: &Repository, relative_path: &Path, path: PathBuf) -> Result<(), Error> {
+fn check_static_file(cache: &mut BTreeMap<PathBuf, ObjectId>, repo: &Repository, relative_path: &Path, path: PathBuf) -> Result<(), Error> {
     let mut iter_commit = repo.head_commit()?;
     let commit_id = loop {
         let iter_commit_id = iter_commit.id();
@@ -51,7 +51,7 @@ fn check_static_file(cache: &mut HashMap<PathBuf, ObjectId>, repo: &Repository, 
     Ok(())
 }
 
-fn check_static_dir(cache: &mut HashMap<PathBuf, ObjectId>, repo: &Repository, relative_path: &Path, path: PathBuf) -> Result<(), Error> {
+fn check_static_dir(cache: &mut BTreeMap<PathBuf, ObjectId>, repo: &Repository, relative_path: &Path, path: PathBuf) -> Result<(), Error> {
     for entry in fs::read_dir(&path)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
@@ -66,7 +66,7 @@ fn check_static_dir(cache: &mut HashMap<PathBuf, ObjectId>, repo: &Repository, r
 fn main() -> Result<(), Error> {
     println!("cargo:rerun-if-changed=nonexistent.foo"); // check a nonexistent file to make sure build script is always run (see https://github.com/rust-lang/cargo/issues/4213 and https://github.com/rust-lang/cargo/issues/5663)
     let static_dir = Path::new("assets").join("static");
-    let mut cache = HashMap::default();
+    let mut cache = BTreeMap::default(); // use a BTreeMap to generate consistent code to speed up dev builds
     let repo = gix::open(&env::var_os("CARGO_MANIFEST_DIR").unwrap())?;
     for entry in fs::read_dir(&static_dir)? {
         let entry = entry?;
