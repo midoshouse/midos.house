@@ -4302,7 +4302,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
             for async_part in cal_event.race.cal_events() {
                 let active_entrant = async_part.active_entrants().exactly_one().map_err(|_| event::Error::ExactlyOne)?;
                 let active_team = active_entrant.team().expect("async submitted by non-MH entrant");
-                if !sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, active_team.id as _).fetch_one(&mut *transaction).await? {
+                if sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, active_team.id as _).fetch_optional(&mut *transaction).await?.is_none_or(|submitted| !submitted) {
                     all_parts_submitted = false;
                     break
                 }
