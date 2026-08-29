@@ -728,12 +728,30 @@ impl<'a> Data<'a> {
                     // add a sequence ID to the names of temporary plando files to prevent name collisions
                     rsl_cmd.arg(format!("--plando_filename_base=mh_{}", rsl::SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
                 }
-                rsl_cmd.stdin(Stdio::piped());
+                let mut input = None;
+                if !matches!(rsl_preset, rsl::VersionedPreset::Xopar { preset: rsl::Preset::League, .. }) {
+                    match rsl_preset.name_or_weights() {
+                        Either::Left(name) => {
+                            rsl_cmd.arg(format!(
+                                "--override={}{name}_override.json",
+                                if rsl_preset.base_version().is_none_or(|version| *version >= Version::new(2, 3, 9)) { "weights/" } else { "" },
+                            ));
+                        }
+                        Either::Right(weights) => {
+                            rsl_cmd.arg("--override=-");
+                            rsl_cmd.stdin(Stdio::piped());
+                            input = Some(serde_json::to_vec(&weights)?);
+                        }
+                    }
+                }
                 rsl_cmd.arg("--no_seed");
-                let rsl_process = rsl_cmd
+                let mut rsl_process = rsl_cmd
                     .current_dir(&rsl_script_path)
                     .stdout(Stdio::piped())
                     .spawn().at_command("RandomSettingsGenerator.py")?;
+                if let Some(input) = input {
+                    rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(&input).await.at_command("RandomSettingsGenerator.py")?;
+                }
                 let output = rsl_process.wait_with_output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}
