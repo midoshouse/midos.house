@@ -828,7 +828,7 @@ impl Goal {
             Self::ScrubsS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 175) },
             Self::ScrubsS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::ScrubsS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 64) },
-            Self::ScrubsS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 25) },
+            Self::ScrubsS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 26) },
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
