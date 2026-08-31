@@ -3488,7 +3488,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                             .detailed_error_for_status().await.map_err(AutoImportError::LeagueSchedule)?
                             .json_with_text_in_error::<league::Schedule>().await.map_err(AutoImportError::LeagueSchedule)?;
                         for match_data in schedule.matches {
-                            if match_data.id <= 938 { continue } // seasons 5 to 8
+                            if match_data.id <= 1241 { continue } // seasons 5 to 9
                             let mut new_race = Race {
                                 id: Id::dummy(),
                                 series: event.series,
