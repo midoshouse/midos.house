@@ -166,6 +166,7 @@ pub(crate) async fn add_or_update_race(transaction: &mut Transaction<'_, Postgre
     if let Some(found_race) = races.iter_mut().find(|iter_race| match &race.source {
         Source::Challonge { id } => if let Source::Challonge { id: iter_id } = &iter_race.source { iter_id == id } else { false },
         Source::League { id } => if let Source::League { id: iter_id } = &iter_race.source { iter_id == id } else { false },
+        Source::Scrubs { id } => if let Source::Scrubs { id: iter_id } = &iter_race.source { iter_id == id } else { false },
         Source::StartGG { event, set } => if let Source::StartGG { event: iter_event, set: iter_set } = &iter_race.source { iter_event == event && iter_set == set } else { false },
         Source::StartGGSpeedGamingOnline { event, set, id } => if let Source::StartGGSpeedGamingOnline { event: iter_event, set: iter_set, id: iter_id } = &iter_race.source { iter_event == event && iter_set == set && iter_id == id } else { false },
         Source::SpeedGamingOnline { id } => if let Source::SpeedGamingOnline { id: iter_id } = &iter_race.source { iter_id == id } else { false },

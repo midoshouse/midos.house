@@ -403,7 +403,7 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
         }
         if !event.manual_reporting_for_asyncs || winning_room == losing_room {
             let match_decided = match cal_event.race.source {
-                cal::Source::Manual | cal::Source::Sheet { .. } | cal::Source::SpeedGamingOnline { .. } | cal::Source::SpeedGamingInPerson { .. } => None,
+                cal::Source::Manual | cal::Source::Scrubs { .. } | cal::Source::Sheet { .. } | cal::Source::SpeedGamingOnline { .. } | cal::Source::SpeedGamingInPerson { .. } => None,
                 cal::Source::Challonge { .. } => None, //TODO
                 cal::Source::League { id } => {
                     if let (Some(winner), Some(loser), Some(winning_time), Some(losing_time)) = (

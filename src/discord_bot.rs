@@ -1164,6 +1164,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         )).await?;
                                         return Ok(())
                                     }
+                                    MatchSource::Scrubs(_) => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("Sorry, this command is not available for events sourcing their match schedule from ScrubsCentral")
+                                        )).await?;
+                                        return Ok(())
+                                    }
                                 };
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()

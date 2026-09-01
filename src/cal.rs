@@ -47,6 +47,9 @@ pub(crate) enum Source {
     League {
         id: i32,
     },
+    Scrubs {
+        id: Uuid,
+    },
     Sheet {
         timestamp: NaiveDateTime,
     },
@@ -581,6 +584,7 @@ impl Race {
             event,
             challonge_match,
             league_id,
+            scrubs_id,
             sheet_timestamp,
             startgg_event,
             startgg_set AS "startgg_set: startgg::ID",
@@ -656,6 +660,8 @@ impl Race {
             Source::Challonge { id }
         } else if let Some(id) = row.league_id {
             Source::League { id }
+        } else if let Some(id) = row.scrubs_id {
+            Source::Scrubs { id }
         } else if let Some(timestamp) = row.sheet_timestamp {
             Source::Sheet { timestamp }
         } else if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
@@ -1415,15 +1421,16 @@ impl Race {
     }
 
     pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
-        let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id, speedgaming_onsite_id) = match self.source {
-            Source::Manual => (None, None, None, None, None, None, None),
-            Source::Challonge { ref id } => (Some(id), None, None, None, None, None, None),
-            Source::League { id } => (None, Some(id), None, None, None, None, None),
-            Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None, None, None),
-            Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set), None, None),
-            Source::StartGGSpeedGamingOnline { ref event, ref set, id } => (None, None, None, Some(event), Some(set), Some(id), None),
-            Source::SpeedGamingOnline { id } => (None, None, None, None, None, Some(id), None),
-            Source::SpeedGamingInPerson { id } => (None, None, None, None, None, None, Some(id)),
+        let (challonge_match, league_id, scrubs_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id, speedgaming_onsite_id) = match self.source {
+            Source::Manual => (None, None, None, None, None, None, None, None),
+            Source::Challonge { ref id } => (Some(id), None, None, None, None, None, None, None),
+            Source::League { id } => (None, Some(id), None, None, None, None, None, None),
+            Source::Scrubs { id } => (None, None, Some(id), None, None, None, None, None),
+            Source::Sheet { timestamp } => (None, None, None, Some(timestamp), None, None, None, None),
+            Source::StartGG { ref event, ref set } => (None, None, None, None, Some(event), Some(set), None, None),
+            Source::StartGGSpeedGamingOnline { ref event, ref set, id } => (None, None, None, None, Some(event), Some(set), Some(id), None),
+            Source::SpeedGamingOnline { id } => (None, None, None, None, None, None, Some(id), None),
+            Source::SpeedGamingInPerson { id } => (None, None, None, None, None, None, None, Some(id)),
         };
         let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
         let (start, [async_start1, async_start2, async_start3], end, [async_end1, async_end2, async_end3], room, [async_room1, async_room2, async_room3]) = match self.schedule {
@@ -1443,10 +1450,10 @@ impl Race {
             (None, None)
         };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, video_url_es, restreamer_es, speedgaming_onsite_id, bingosync_url, bingo_passphrase, async_notified1, async_notified2, async_notified3)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,          $69,           $70,                   $71,           $72,              $73,             $74,             $75)
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, video_url_es, restreamer_es, speedgaming_onsite_id, bingosync_url, bingo_passphrase, async_notified1, async_notified2, async_notified3)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,          $69,           $70,                   $71,           $72,              $73,             $74,             $75)
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, video_url_es, restreamer_es, speedgaming_onsite_id, bingosync_url, bingo_passphrase, async_notified1, async_notified2, async_notified3, scrubs_id)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,          $69,           $70,                   $71,           $72,              $73,             $74,             $75,             $76)
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, scheduling_thread, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, ignored, p3,  startgg_event, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, schedule_locked, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, speedgaming_id, notified, is_tfb_dev, fpa_invoked, video_url_es, restreamer_es, speedgaming_onsite_id, bingosync_url, bingo_passphrase, async_notified1, async_notified2, async_notified3, scrubs_id)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,          $69,           $70,                   $71,           $72,              $73,             $74,             $75,             $76)
         ",
             startgg_set as _,
             start,
@@ -1523,6 +1530,7 @@ impl Race {
             self.async_notified1,
             self.async_notified2,
             self.async_notified3,
+            scrubs_id,
         ).execute(&mut **transaction).await?;
         for language in all() {
             if let Some(restreamer) = self.restreamers.get(&language).and_then(as_variant!(Restreamer::MidosHouse)) {
@@ -1835,7 +1843,7 @@ impl Event {
     }
 
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
-        Ok(if let Some(goal) = racetime_bot::Goal::for_event(self.race.series, &self.race.event) {
+        Ok(if let Some(goal) = racetime_bot::Goal::for_event(self.race.series, &self.race.event) && goal != racetime_bot::Goal::ScrubsS8 {
             if self.race.series == Series::SpeedGaming && event.speedgaming_in_person_id.is_some()
                 && let Some(race_start) = self.start()
                 && event.start(transaction).await?.is_some_and(|event_start| event_start <= race_start)
@@ -1852,7 +1860,7 @@ impl Event {
                 RaceHandleMode::None
             }
         } else {
-            // the organizers of this event didn't request for Mido to handle official races, so we ignore this race even if it would otherwise not be handled on racetime.gg
+            // the organizers of this event didn't request for Mido to create official race rooms, so we ignore this race even if it would otherwise not be handled on racetime.gg
             RaceHandleMode::None
         })
     }
@@ -2854,7 +2862,7 @@ pub(crate) async fn race_table(
                                     @match event.match_source() {
                                         MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _))) : "New Race";
                                         //MatchSource::Challonge { .. } => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event))) : "Import"; // disabled due to Challonge pagination bug
-                                        MatchSource::League => {}
+                                        MatchSource::League | MatchSource::Scrubs(_) => {}
                                         MatchSource::StartGG(_) => @if !event.auto_import {
                                             a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event))) : "Import";
                                         }
@@ -3248,6 +3256,11 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                 }
             }
         },
+        MatchSource::Scrubs(_) => html! {
+            article {
+                p : "Races for this event are automatically imported from the ScrubsCentral backend.";
+            }
+        },
         MatchSource::StartGG(event_slug) => if event.auto_import {
             html! {
                 article {
@@ -3387,6 +3400,10 @@ pub(crate) async fn import_races_post(global: &GlobalState, me: User, uri: Origi
                 form.context.push_error(form::Error::validation("Races for this event are automatically imported from league.ootrandomizer.com."));
                 Vec::default()
             }
+            MatchSource::Scrubs(_) => {
+                form.context.push_error(form::Error::validation("Races for this event are automatically imported from the ScrubsCentral backend."));
+                Vec::default()
+            }
             MatchSource::StartGG(event_slug) => {
                 let (races, skips) = startgg::races_to_import(&mut transaction, global, &event, event_slug).await?;
                 if races.is_empty() {
@@ -3442,6 +3459,7 @@ pub(crate) enum AutoImportError {
     #[error(transparent)] IntoEntrant(wheel::Error),
     #[error(transparent)] LeagueSchedule(wheel::Error),
     #[error(transparent)] NightReport(wheel::Error),
+    #[error(transparent)] ScrubsSchedule(wheel::Error),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] SglInPersonSchedule(wheel::Error),
     #[error(transparent)] SglOnlineSchedule(wheel::Error),
@@ -3459,7 +3477,7 @@ impl IsNetworkError for AutoImportError {
             Self::Discord(_) => false,
             Self::Event(e) => e.is_network_error(),
             Self::EventData(_) => false,
-            Self::IntoEntrant(e) | Self::LeagueSchedule(e) | Self::NightReport(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) => e.is_network_error(),
+            Self::IntoEntrant(e) | Self::LeagueSchedule(e) | Self::NightReport(e) | Self::ScrubsSchedule(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) => e.is_network_error(),
             Self::Serenity(_) => false,
             Self::Sql(_) => false,
             Self::StartGG(e) => e.is_network_error(),
@@ -3553,7 +3571,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                                         async_notified1: race.async_notified1,
                                         async_notified2: race.async_notified2,
                                         async_notified3: race.async_notified3,
-                                        ..new_race
+                                        ..new_race //TODO refactor to default to existing race and only update fields derived from League API
                                     };
                                 }
                                 race
@@ -3564,6 +3582,77 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                             }.save(&mut transaction).await?;
                         }
                     },
+                    MatchSource::Scrubs(scrubs_id) => {
+                        let mut races = Vec::default();
+                        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
+                            races.push(Race::from_id(&mut transaction, &global.http_client, id).await?);
+                        }
+                        let scrubs::Qualifiers { qualifiers } = global.http_client.get("https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/qualifiers")
+                            .query(&[("tournamentId", scrubs_id)])
+                            .header("x-api-key", &global.config.scrubs_api_key)
+                            .send().await?
+                            .detailed_error_for_status().await.map_err(AutoImportError::ScrubsSchedule)?
+                            .json_with_text_in_error().await.map_err(AutoImportError::ScrubsSchedule)?;
+                        for qualifier in qualifiers {
+                            let mut new_race = Race {
+                                id: Id::dummy(),
+                                series: event.series,
+                                event: event.event.to_string(),
+                                source: Source::Scrubs { id: qualifier.id },
+                                entrants: Entrants::Open,
+                                phase: Some(format!("Live Qualifier")),
+                                round: Some(qualifier.number.to_string()),
+                                game: None,
+                                scheduling_thread: None,
+                                schedule: RaceSchedule::Live {
+                                    start: qualifier.start_date,
+                                    end: qualifier.end_date,
+                                    room: qualifier.racetime_room_url,
+                                },
+                                schedule_updated_at: None,
+                                fpa_invoked: false,
+                                draft: None,
+                                seed: seed::Data::default(), //TODO get from Scrubs API
+                                video_urls: HashMap::default(),
+                                restreamers: HashMap::default(),
+                                commentators: HashMap::default(),
+                                trackers: HashMap::default(),
+                                last_edited_by: None,
+                                last_edited_at: None,
+                                ignored: false, //TODO check `status` field from Scrubs API? (what are the possible values?)
+                                schedule_locked: false,
+                                notified: false,
+                                async_notified1: false,
+                                async_notified2: false,
+                                async_notified3: false,
+                            };
+                            if let Some(race) = races.iter_mut().find(|race| if let Source::Scrubs { id } = race.source { id == qualifier.id } else { false }) {
+                                if !race.schedule_locked {
+                                    let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
+                                    *race = Race {
+                                        id: race.id,
+                                        schedule: if is_upcoming { new_race.schedule } else { mem::take(&mut race.schedule) },
+                                        schedule_updated_at: race.schedule_updated_at,
+                                        seed: mem::take(&mut race.seed),
+                                        video_urls: mem::take(&mut race.video_urls),
+                                        restreamers: mem::take(&mut race.restreamers),
+                                        last_edited_at: race.last_edited_at,
+                                        last_edited_by: race.last_edited_by,
+                                        notified: race.notified,
+                                        async_notified1: race.async_notified1,
+                                        async_notified2: race.async_notified2,
+                                        async_notified3: race.async_notified3,
+                                        ..new_race //TODO refactor to default to existing race and only update fields derived from Scrubs API
+                                    };
+                                }
+                                race
+                            } else {
+                                new_race.id = Id::<Races>::new(&mut transaction).await?;
+                                races.push(new_race);
+                                races.last_mut().expect("just pushed")
+                            }.save(&mut transaction).await?;
+                        }
+                    }
                     MatchSource::StartGG(event_slug) => if global.config.startgg.is_some() {
                         loop {
                             match startgg::races_to_import(&mut transaction, global, &event, event_slug).await {
@@ -4810,6 +4899,10 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
             Source::League { id } => p {
                 : "league.ootrandomizer.com match ID: ";
                 : id;
+            }
+            Source::Scrubs { id } => p {
+                : "ScrubsCentral race ID: ";
+                : id.to_string();
             }
             Source::Sheet { timestamp } => p {
                 : "Google Form submission timestamp: ";

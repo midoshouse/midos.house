@@ -80,6 +80,7 @@ pub(crate) enum MatchSource<'a> {
         tournament: &'a str,
     },
     League,
+    Scrubs(Uuid),
     StartGG(&'a str),
 }
 
@@ -182,6 +183,7 @@ pub(crate) struct Data<'a> {
     pub(crate) end: Option<DateTime<Utc>>,
     pub(crate) url: Option<Url>,
     challonge_community: Option<String>,
+    scrubs_id: Option<Uuid>,
     pub(crate) speedgaming_slug: Option<String>,
     pub(crate) speedgaming_in_person_id: Option<i64>,
     hide_races_tab: bool,
@@ -244,6 +246,7 @@ impl<'a> Data<'a> {
             end_time,
             url,
             challonge_community,
+            scrubs_id,
             speedgaming_slug,
             speedgaming_in_person_id,
             hide_races_tab,
@@ -285,6 +288,7 @@ impl<'a> Data<'a> {
                 end: row.end_time,
                 url: row.url.map(|url| url.parse()).transpose()?,
                 challonge_community: row.challonge_community,
+                scrubs_id: row.scrubs_id,
                 speedgaming_slug: row.speedgaming_slug,
                 speedgaming_in_person_id: row.speedgaming_in_person_id,
                 hide_races_tab: row.hide_races_tab,
@@ -473,7 +477,9 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) fn match_source(&self) -> MatchSource<'_> {
-        if let Some(ref url) = self.url {
+        if let Some(scrubs_id) = self.scrubs_id {
+            MatchSource::Scrubs(scrubs_id)
+        } else if let Some(ref url) = self.url {
             match url.host_str() {
                 Some("challonge.com" | "www.challonge.com") => MatchSource::Challonge {
                     community: self.challonge_community.as_deref(),
@@ -1246,7 +1252,7 @@ pub(crate) async fn races(global: &GlobalState, me: Option<User>, uri: Origin<'_
     let (can_create, restreams, can_edit) = if let Some(ref me) = me {
         let is_organizer = data.organizers(&mut transaction).await?.contains(me);
         let can_create = is_organizer && match data.match_source() {
-            MatchSource::League => false,
+            MatchSource::League | MatchSource::Scrubs(_) => false,
             MatchSource::Manual | MatchSource::Challonge { .. } | MatchSource::StartGG(_) => true,
         };
         let is_restream_coordinator = data.restream_coordinators(&mut transaction).await?.contains(me);
@@ -1285,7 +1291,7 @@ pub(crate) async fn races(global: &GlobalState, me: Option<User>, uri: Origin<'_
                 @match data.match_source() {
                     MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::create_race(series, event, _))) : "New Race";
                     //MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::import_races(series, event))) : "Import"; // disabled due to Challonge pagination bug
-                    MatchSource::League => {}
+                    MatchSource::League | MatchSource::Scrubs(_) => {}
                     MatchSource::StartGG(_) => @if !data.auto_import {
                         a(class = "button", href = uri!(crate::cal::import_races(series, event))) : "Import";
                     }

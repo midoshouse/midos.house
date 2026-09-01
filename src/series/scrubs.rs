@@ -119,6 +119,21 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
+#[derive(Deserialize)]
+pub(crate) struct Qualifiers {
+    pub(crate) qualifiers: Vec<Qualifier>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Qualifier {
+    pub(crate) id: Uuid,
+    pub(crate) number: u32,
+    pub(crate) start_date: DateTime<Utc>,
+    pub(crate) end_date: Option<DateTime<Utc>>,
+    pub(crate) racetime_room_url: Option<Url>,
+}
+
 pub(crate) fn s5_settings() -> seed::Settings {
     collect![
         format!("bridge") => json!("dungeons"),
