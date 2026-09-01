@@ -751,6 +751,7 @@ impl Goal {
                 | Self::LeagueS6
                 | Self::LeagueS7
                 | Self::LeagueS8
+                | Self::LeagueS10
                 | Self::Mentor2026
                 | Self::MixedPoolsS1
                 | Self::MixedPoolsS2
@@ -786,7 +787,6 @@ impl Goal {
                 | Self::Cc7
                 | Self::CoOpS3
                 | Self::LeagueS9
-                | Self::LeagueS10
                 | Self::MultiworldS6
                 | Self::S6
                 | Self::S7
