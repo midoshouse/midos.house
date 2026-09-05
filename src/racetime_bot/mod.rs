@@ -55,6 +55,7 @@ pub(crate) enum Error {
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] StartRace(#[from] racetime::StartError),
     #[error(transparent)] Url(#[from] url::ParseError),
+    #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("ExactlyOneError while formatting result of last async half")]
     ExactlyOne,
@@ -68,6 +69,8 @@ pub(crate) enum Error {
     },
     #[error("failed to determine settings for SlugCentral Open format")]
     NoSingleSettings,
+    #[error("failed to check ScrubsCentral API for race monitors")]
+    ScrubsMonitor,
 }
 
 impl IsNetworkError for Error {
@@ -89,17 +92,19 @@ impl IsNetworkError for Error {
             Self::SeedData(e) => e.is_network_error(),
             Self::Send(e) => e.is_network_error(),
             Self::Serenity(_) => false,
+            Self::Server(_) => false,
             Self::SlugOpenSingleSettings(e) => e.is_network_error(),
             Self::Sql(_) => false,
             Self::StartGG(e) => e.is_network_error(),
             Self::StartRace(e) => e.is_network_error(),
             Self::Url(_) => false,
+            Self::Utf8(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::ExactlyOne => false,
             Self::GraphQLQueryResponse(_) => false,
             Self::MissingTfbScore { .. } => false,
             Self::NoSingleSettings => false,
-            Self::Server(_) => false,
+            Self::ScrubsMonitor => false,
         }
     }
 }
@@ -4748,6 +4753,41 @@ impl RaceHandler<GlobalState> for Handler {
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref cal_event, ref event, ref restreams, .. }) = this.official_data {
+            if let cal::Source::Scrubs { id } = cal_event.race.source && cal_event.race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") {
+                let mut url = Url::parse("https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/qualifiers").unwrap();
+                url.path_segments_mut().unwrap().push(&id.to_string()).push("monitor");
+                if let scrubs::Monitor { monitor: Some(scrubs::User { racetime_url }) } = ctx.global_state.http_client.get(url)
+                    .header("x-api-key", &ctx.global_state.config.scrubs_api_key)
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error().await?
+                {
+                    let monitor = urlencoding::decode(racetime_url.path_segments().ok_or(Error::ScrubsMonitor)?.nth(1).ok_or(Error::ScrubsMonitor)?)?;
+                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == monitor)) { //TODO keep track of pending changes to the entrant list made in this method and match accordingly, e.g. players who are also monitoring should not be uninvited
+                        match entrant.status.value {
+                            EntrantStatusValue::Requested => {
+                                ctx.accept_request(&monitor).await?;
+                                ctx.add_monitor(&monitor).await?;
+                                ctx.remove_entrant(&monitor).await?;
+                            }
+                            EntrantStatusValue::Invited |
+                            EntrantStatusValue::Declined |
+                            EntrantStatusValue::Ready |
+                            EntrantStatusValue::NotReady |
+                            EntrantStatusValue::InProgress |
+                            EntrantStatusValue::Done |
+                            EntrantStatusValue::Dnf |
+                            EntrantStatusValue::Dq => {
+                                ctx.add_monitor(&monitor).await?;
+                            }
+                        }
+                    } else {
+                        ctx.invite_user(&monitor).await?;
+                        ctx.add_monitor(&monitor).await?;
+                        ctx.remove_entrant(&monitor).await?;
+                    }
+                }
+            }
             if !restreams.is_empty() {
                 let restreams_text = restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned"))).join(" and "); // don't use English.join_str since racetime.gg parses the comma as part of the URL
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {

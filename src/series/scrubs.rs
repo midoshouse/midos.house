@@ -134,6 +134,17 @@ pub(crate) struct Qualifier {
     pub(crate) racetime_room_url: Option<Url>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct Monitor {
+    pub(crate) monitor: Option<User>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct User {
+    pub(crate) racetime_url: Url,
+}
+
 pub(crate) fn s5_settings() -> seed::Settings {
     collect![
         format!("bridge") => json!("dungeons"),

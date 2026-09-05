@@ -28,7 +28,7 @@ pub(crate) struct Config {
     pub(crate) racetime_oauth: ConfigRaceTime,
     // https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/tournaments to check available tournament IDs
     // https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/qualifiers?tournamentId=<id> to get qualifiers
-    // https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/qualifiers/<qual_id>/monitor to get race monitors
+    // https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/qualifiers/<qual_id>/monitor to get race monitors
     // https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/matches?tournamentId=<id> to get 1v1 races
     pub(crate) scrubs_api_key: String,
     pub(crate) secret_key: String,
