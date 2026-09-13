@@ -46,6 +46,7 @@ pub(crate) enum Error {
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] Roll(#[from] RollError),
+    #[error(transparent)] ScrubsImport(#[from] scrubs::ImportError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Send(#[from] racetime::handler::SendError),
     #[error(transparent)] Serenity(#[from] serenity::Error),
@@ -89,6 +90,7 @@ impl IsNetworkError for Error {
             Self::ParseInt(_) => false,
             Self::PgInterval(_) => false,
             Self::Roll(_) => false, //TODO
+            Self::ScrubsImport(e) => e.is_network_error(),
             Self::SeedData(e) => e.is_network_error(),
             Self::Send(e) => e.is_network_error(),
             Self::Serenity(_) => false,
@@ -3506,6 +3508,14 @@ impl RaceHandler<GlobalState> for Handler {
     async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
         let data = ctx.data().await;
         let goal = data.goal.name.parse::<Goal>()?;
+        if let Ok((series, event)) = goal.single_event() {
+            let mut transaction = ctx.global_state.db_pool.begin().await?;
+            let event = event::Data::new(&mut transaction, series, event).await?.expect("missing hardcoded event");
+            if let MatchSource::Scrubs(scrubs_id) = event.match_source() {
+                scrubs::import(&ctx.global_state, &mut transaction, &event, scrubs_id).await?;
+            }
+            transaction.commit().await?;
+        }
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = lock!(new_room_lock = ctx.global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
             let mut transaction = ctx.global_state.db_pool.begin().await?;
             let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", racetime_host(), ctx.data().await.url).parse()?).await? {

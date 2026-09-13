@@ -3459,7 +3459,7 @@ pub(crate) enum AutoImportError {
     #[error(transparent)] IntoEntrant(wheel::Error),
     #[error(transparent)] LeagueSchedule(wheel::Error),
     #[error(transparent)] NightReport(wheel::Error),
-    #[error(transparent)] ScrubsSchedule(wheel::Error),
+    #[error(transparent)] Scrubs(#[from] scrubs::ImportError),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] SglInPersonSchedule(wheel::Error),
     #[error(transparent)] SglOnlineSchedule(wheel::Error),
@@ -3477,7 +3477,8 @@ impl IsNetworkError for AutoImportError {
             Self::Discord(_) => false,
             Self::Event(e) => e.is_network_error(),
             Self::EventData(_) => false,
-            Self::IntoEntrant(e) | Self::LeagueSchedule(e) | Self::NightReport(e) | Self::ScrubsSchedule(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) => e.is_network_error(),
+            Self::IntoEntrant(e) | Self::LeagueSchedule(e) | Self::NightReport(e) | Self::SglInPersonSchedule(e) | Self::SglOnlineSchedule(e) => e.is_network_error(),
+            Self::Scrubs(e) => e.is_network_error(),
             Self::Serenity(_) => false,
             Self::Sql(_) => false,
             Self::StartGG(e) => e.is_network_error(),
@@ -3582,77 +3583,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                             }.save(&mut transaction).await?;
                         }
                     },
-                    MatchSource::Scrubs(scrubs_id) => {
-                        let mut races = Vec::default();
-                        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
-                            races.push(Race::from_id(&mut transaction, &global.http_client, id).await?);
-                        }
-                        let scrubs::Qualifiers { qualifiers } = global.http_client.get("https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/qualifiers")
-                            .query(&[("tournamentId", scrubs_id)])
-                            .header("x-api-key", &global.config.scrubs_api_key)
-                            .send().await?
-                            .detailed_error_for_status().await.map_err(AutoImportError::ScrubsSchedule)?
-                            .json_with_text_in_error().await.map_err(AutoImportError::ScrubsSchedule)?;
-                        for qualifier in qualifiers {
-                            let mut new_race = Race {
-                                id: Id::dummy(),
-                                series: event.series,
-                                event: event.event.to_string(),
-                                source: Source::Scrubs { id: qualifier.id },
-                                entrants: Entrants::Open,
-                                phase: Some(format!("Live Qualifier")),
-                                round: Some(qualifier.number.to_string()),
-                                game: None,
-                                scheduling_thread: None,
-                                schedule: RaceSchedule::Live {
-                                    start: qualifier.start_date,
-                                    end: qualifier.end_date,
-                                    room: qualifier.racetime_room_url,
-                                },
-                                schedule_updated_at: None,
-                                fpa_invoked: false,
-                                draft: None,
-                                seed: seed::Data::default(), //TODO get from Scrubs API
-                                video_urls: HashMap::default(),
-                                restreamers: HashMap::default(),
-                                commentators: HashMap::default(),
-                                trackers: HashMap::default(),
-                                last_edited_by: None,
-                                last_edited_at: None,
-                                ignored: false, //TODO check `status` field from Scrubs API? (what are the possible values?)
-                                schedule_locked: false,
-                                notified: false,
-                                async_notified1: false,
-                                async_notified2: false,
-                                async_notified3: false,
-                            };
-                            if let Some(race) = races.iter_mut().find(|race| if let Source::Scrubs { id } = race.source { id == qualifier.id } else { false }) {
-                                if !race.schedule_locked {
-                                    let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
-                                    *race = Race {
-                                        id: race.id,
-                                        schedule: if is_upcoming { new_race.schedule } else { mem::take(&mut race.schedule) },
-                                        schedule_updated_at: race.schedule_updated_at,
-                                        seed: mem::take(&mut race.seed),
-                                        video_urls: mem::take(&mut race.video_urls),
-                                        restreamers: mem::take(&mut race.restreamers),
-                                        last_edited_at: race.last_edited_at,
-                                        last_edited_by: race.last_edited_by,
-                                        notified: race.notified,
-                                        async_notified1: race.async_notified1,
-                                        async_notified2: race.async_notified2,
-                                        async_notified3: race.async_notified3,
-                                        ..new_race //TODO refactor to default to existing race and only update fields derived from Scrubs API
-                                    };
-                                }
-                                race
-                            } else {
-                                new_race.id = Id::<Races>::new(&mut transaction).await?;
-                                races.push(new_race);
-                                races.last_mut().expect("just pushed")
-                            }.save(&mut transaction).await?;
-                        }
-                    }
+                    MatchSource::Scrubs(scrubs_id) => scrubs::import(global, &mut transaction, &event, scrubs_id).await?,
                     MatchSource::StartGG(event_slug) => if global.config.startgg.is_some() {
                         loop {
                             match startgg::races_to_import(&mut transaction, global, &event, event_slug).await {
