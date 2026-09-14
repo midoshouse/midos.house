@@ -300,6 +300,7 @@ pub(crate) enum Goal {
     Sgl2023,
     Sgl2024,
     Sgl2025,
+    Sgl2026,
     Sgss2026,
     SlugOpen2026,
     SongsOfHope,
@@ -379,6 +380,7 @@ impl Goal {
             Self::Sgl2023 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2023")),
             Self::Sgl2024 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2024")),
             Self::Sgl2025 => Err(|series, event| series == Series::SpeedGaming && event.starts_with("2025")),
+            Self::Sgl2026 => Ok((Series::SpeedGaming, "2026")),
             Self::Sgss2026 => Ok((Series::SpeedGaming, "2026ss")),
             Self::SlugOpen2026 => Ok((Series::SlugOpen, "2026")),
             Self::SongsOfHope => Ok((Series::SongsOfHope, "1")),
@@ -452,6 +454,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::Sgl2026
             | Self::Sgss2026
             | Self::SlugOpen2026
             | Self::SongsOfHope
@@ -517,6 +520,7 @@ impl Goal {
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
             Self::Sgl2025 => "SGL 2025",
+            Self::Sgl2026 => "SpeedGaming Live 2026",
             Self::Sgss2026 => "SpeedGaming Summer Series 2026",
             Self::SlugOpen2026 => "SlugCentral Open 2026",
             Self::SongsOfHope => "Songs of Hope",
@@ -581,6 +585,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::Sgl2026
             | Self::Sgss2026
             | Self::SlugOpen2026
             | Self::SongsOfHope
@@ -651,6 +656,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::Sgl2026
             | Self::Sgss2026
             | Self::SlugOpen2026 // should be overridden by Handler::draft_kind
             | Self::SongsOfHope
@@ -671,6 +677,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::Sgl2026
             | Self::Sgss2026
             | Self::TriforceBlitz
                 => PrerollMode::None,
@@ -799,6 +806,7 @@ impl Goal {
                 | Self::S7
                 | Self::S8
                 | Self::Sgl2025
+                | Self::Sgl2026
                 | Self::Sgss2026
                 | Self::StandardRuleset
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
@@ -848,7 +856,8 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
             Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
-            Self::Sgss2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) }, //TODO(OoTR 9.1) update to 9.1
+            Self::Sgl2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) },
+            Self::Sgss2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 0, 0) },
             Self::SlugOpen2026 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl }, // will be overridden per format
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::SpoilerLog2026 => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 0) },
@@ -914,7 +923,8 @@ impl Goal {
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::Sgl2025 => Some(sgl::settings_2025()),
-            Self::Sgss2026 => Some(sgl::settings_2026()),
+            Self::Sgl2026 => Some(sgl::settings_2026(true)),
+            Self::Sgss2026 => Some(sgl::settings_2026(false)),
             Self::SlugOpen2026 => None, // multiple formats; settings draft
             Self::SongsOfHope => Some(soh::settings()),
             Self::SpoilerLog2026 => Some(sl::settings_2026()),
@@ -970,6 +980,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::Sgl2026
             | Self::Sgss2026
             | Self::SongsOfHope
             | Self::SpoilerLog2026
@@ -1179,6 +1190,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::Sgl2025
+            | Self::Sgl2026
             | Self::Sgss2026
             | Self::SongsOfHope
             | Self::SpoilerLog2026
@@ -3014,6 +3026,7 @@ trait SeedHandler {
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
+                    | Goal::Sgl2026
                     | Goal::Sgss2026
                     | Goal::SongsOfHope
                     | Goal::SpoilerLog2026
@@ -3742,6 +3755,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::ScrubsS6
                             | Goal::ScrubsS7
                             | Goal::ScrubsS8
+                            | Goal::Sgl2026
                                 => {
                                     let (series, event) = goal.single_event().expect("goal has no single event");
                                     ctx.send_message(
@@ -3770,6 +3784,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Pic7
                             | Goal::PicRs1
                             | Goal::PicRs2
+                            | Goal::Sgss2026
                             | Goal::SpoilerLog2026
                                 => {
                                     let (series, event) = goal.single_event().expect("goal has no single event");
@@ -4108,18 +4123,6 @@ impl RaceHandler<GlobalState> for Handler {
                                     ("Roll seed", ActionButton::Message {
                                         message: format!("!seed"),
                                         help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
-                                        survey: None,
-                                        submit: None,
-                                    }),
-                                ],
-                            ).await?,
-                            Goal::Sgss2026 => ctx.send_message(
-                                "Welcome! This is a practice room for the SpeedGaming Summer Series 2026. Learn more about the tournament at https://docs.google.com/document/d/16jSJ3h7KLMApNLpxxr-eYPzaugZkcFyiGRfcditmxwA/edit?tab=t.0#heading=h.elub1v2vj3qs",
-                                true,
-                                vec![
-                                    ("Roll seed", ActionButton::Message {
-                                        message: format!("!seed"),
-                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
                                         survey: None,
                                         submit: None,
                                     }),
@@ -5627,6 +5630,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Sgl2023
                     | Goal::Sgl2024
                     | Goal::Sgl2025
+                    | Goal::Sgl2026
                     | Goal::Sgss2026
                     | Goal::SlugOpen2026
                     | Goal::SongsOfHope
