@@ -3080,7 +3080,7 @@ trait SeedHandler {
                             _ => unimplemented!(),
                         }).await
                     }
-                    Goal::TriforceBlitz => self.roll_tfb_seed(ctx, "Season 5 (Co-op)", Some("Triforce Blitz S5 Co-op"), true, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S5 co-op seed")).await,
+                    Goal::TriforceBlitz => self.roll_tfb_seed(ctx, "Season 5 (1v1)", Some("Triforce Blitz S5"), true, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S5 1v1 seed")).await,
                 },
                 RaceState::Draft { .. } => self.advance_draft(ctx, &state).await?,
                 RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => return Ok(None),
