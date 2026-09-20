@@ -2543,7 +2543,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         send_draft_settings_page(ctx, interaction, "ban", page.parse().unwrap()).await?;
                     } else if let Some(setting) = custom_id.strip_prefix("ban_setting_") {
                         draft_action(ctx, interaction, draft::Action::Ban { setting: setting.to_owned() }).await?;
-                    } else if let Some(format) = custom_id.strip_prefix("claim_format_") {
+                    } else if let Some(format) = custom_id.strip_prefix("claim_format_").or_else(|| custom_id.strip_prefix("draft_format_")) {
                         if let Some(user) = User::from_discord(&ctx.data.read().await.get::<GlobalState>().as_ref().expect("global state missing from Discord context").db_pool, interaction.user.id).await? {
                             draft_action(ctx, interaction, draft::Action::Claim { user, format: format.parse()? }).await?;
                         } else {
