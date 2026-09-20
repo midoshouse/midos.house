@@ -4775,29 +4775,32 @@ impl RaceHandler<GlobalState> for Handler {
                     .detailed_error_for_status().await?
                     .json_with_text_in_error().await?
                 {
-                    let monitor = urlencoding::decode(racetime_url.path_segments().ok_or(Error::ScrubsMonitor)?.nth(1).ok_or(Error::ScrubsMonitor)?)?;
-                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == monitor)) { //TODO keep track of pending changes to the entrant list made in this method and match accordingly, e.g. players who are also monitoring should not be uninvited
-                        match entrant.status.value {
-                            EntrantStatusValue::Requested => {
-                                ctx.accept_request(&monitor).await?;
-                                ctx.add_monitor(&monitor).await?;
-                                ctx.remove_entrant(&monitor).await?;
+                    if let Some(monitor) = user_data(&ctx.global_state.http_client, &urlencoding::decode(racetime_url.path_segments().ok_or(Error::ScrubsMonitor)?.nth(1).ok_or(Error::ScrubsMonitor)?)?).await? {
+                        if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == monitor.id)) { //TODO keep track of pending changes to the entrant list made in this method and match accordingly, e.g. players who are also monitoring should not be uninvited
+                            match entrant.status.value {
+                                EntrantStatusValue::Requested => {
+                                    ctx.accept_request(&monitor.id).await?;
+                                    ctx.add_monitor(&monitor.id).await?;
+                                    ctx.remove_entrant(&monitor.id).await?;
+                                }
+                                EntrantStatusValue::Invited |
+                                EntrantStatusValue::Declined |
+                                EntrantStatusValue::Ready |
+                                EntrantStatusValue::NotReady |
+                                EntrantStatusValue::InProgress |
+                                EntrantStatusValue::Done |
+                                EntrantStatusValue::Dnf |
+                                EntrantStatusValue::Dq => {
+                                    ctx.add_monitor(&monitor.id).await?;
+                                }
                             }
-                            EntrantStatusValue::Invited |
-                            EntrantStatusValue::Declined |
-                            EntrantStatusValue::Ready |
-                            EntrantStatusValue::NotReady |
-                            EntrantStatusValue::InProgress |
-                            EntrantStatusValue::Done |
-                            EntrantStatusValue::Dnf |
-                            EntrantStatusValue::Dq => {
-                                ctx.add_monitor(&monitor).await?;
-                            }
+                        } else {
+                            ctx.invite_user(&monitor.id).await?;
+                            ctx.add_monitor(&monitor.id).await?;
+                            ctx.remove_entrant(&monitor.id).await?;
                         }
                     } else {
-                        ctx.invite_user(&monitor).await?;
-                        ctx.add_monitor(&monitor).await?;
-                        ctx.remove_entrant(&monitor).await?;
+                        ctx.say("sorry, could not invite Scrubs race monitor because the user does not exist").await?;
                     }
                 }
             }
