@@ -293,6 +293,7 @@ pub(crate) enum Goal {
     S6,
     S7,
     S8,
+    S10Test,
     ScrubsS5,
     ScrubsS6,
     ScrubsS7,
@@ -373,6 +374,7 @@ impl Goal {
             Self::S6 => Ok((Series::Standard, "6")),
             Self::S7 => Ok((Series::Standard, "7")),
             Self::S8 => Err(|series, event| series == Series::Standard && matches!(event, "8" | "8cc")),
+            Self::S10Test => Ok((Series::Standard, "10test")),
             Self::ScrubsS5 => Ok((Series::Scrubs, "5")),
             Self::ScrubsS6 => Ok((Series::Scrubs, "6")),
             Self::ScrubsS7 => Ok((Series::Scrubs, "7")),
@@ -447,6 +449,7 @@ impl Goal {
             | Self::S6
             | Self::S7
             | Self::S8
+            | Self::S10Test
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
@@ -513,6 +516,7 @@ impl Goal {
             Self::S6 => "Standard Tournament Season 6",
             Self::S7 => "Standard Tournament Season 7",
             Self::S8 => "Standard Tournament Season 8",
+            Self::S10Test => "Standard Tournament Season 10 Testing",
             Self::ScrubsS5 => "Scrubs Tournament Season 5",
             Self::ScrubsS6 => "Scrubs Tournament Season 6",
             Self::ScrubsS7 => "Scrubs Tournament Season 7",
@@ -578,6 +582,7 @@ impl Goal {
             | Self::S6
             | Self::S7
             | Self::S8
+            | Self::S10Test
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
@@ -649,6 +654,7 @@ impl Goal {
             | Self::RupeesOfTime
             | Self::S6
             | Self::S8
+            | Self::S10Test
             | Self::ScrubsS5
             | Self::ScrubsS6
             | Self::ScrubsS7
@@ -694,6 +700,7 @@ impl Goal {
             | Self::S6
             | Self::S7
             | Self::S8
+            | Self::S10Test
             | Self::SpoilerLog2026
             | Self::StandardRuleset
                 => PrerollMode::Short,
@@ -781,6 +788,7 @@ impl Goal {
                 | Self::PotsOfTime
                 | Self::RupeesOfTime
                 | Self::Rsl
+                | Self::S10Test
                 | Self::ScrubsS5
                 | Self::ScrubsS6
                 | Self::ScrubsS7
@@ -849,6 +857,7 @@ impl Goal {
             Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
             Self::S7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::S8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
+            Self::S10Test => VersionedBranch::Latest { branch: rando::Branch::Dev },
             Self::ScrubsS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 175) },
             Self::ScrubsS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::ScrubsS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 64) },
@@ -916,6 +925,7 @@ impl Goal {
             Self::S6 => Some(s::s6_settings()),
             Self::S7 => None, // settings draft
             Self::S8 => Some(s::s8_settings()),
+            Self::S10Test => Some(s::s10_test_settings_week1()),
             Self::ScrubsS5 => Some(scrubs::s5_settings()),
             Self::ScrubsS6 => Some(scrubs::s6_settings()),
             Self::ScrubsS7 => Some(scrubs::s7_settings()),
@@ -1052,6 +1062,10 @@ impl Goal {
                 ctx.say("!seed draft: Pick the weights here in the chat.").await?;
                 ctx.say("!seed draft lite: Pick the weights here in the chat, but limit picks to RSL-Lite.").await?;
                 ctx.say("“!seed s6”, “!seed s5”, “!seed s4”, or “!seed s3”: Previous seasons' weights").await?;
+            }
+            Self::S10Test => {
+                ctx.say("!seed: The current test settings").await?; //TODO remove after event concludes
+                //ctx.say("!seed week1: Week 1's settings").await?;
             }
             Self::SlugOpen2026 => for format in all::<sco::Format>() {
                 match format.draft_kind() {
@@ -1642,6 +1656,23 @@ impl Goal {
                 SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
             Self::RupeesOfTime => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime { password_lock: true }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
+            Self::S10Test => {
+                let settings = match args {
+                    [] => s::s10_test_settings_week1(), //TODO remove after event concludes
+                    [arg] if arg == "week1" => s::s10_test_settings_week1(),
+                    [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
+                    [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
+                };
+                SeedCommandParseResult::Regular {
+                    rando_version_override: None,
+                    plando: serde_json::Map::default(),
+                    bingo_passphrase: None,
+                    language: English,
+                    article: "an",
+                    description: format!("S10 testing week 1 seed"),
+                    settings, unlock_spoiler_log,
+                }
+            }
             Self::SlugOpen2026 => {
                 let [format, args @ ..] = &*args else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the format is required" }) };
                 let Ok(format) = format.parse::<sco::Format>() else { return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that SlugCentral Open format" }) };
@@ -3019,6 +3050,7 @@ trait SeedHandler {
                     | Goal::Pic7
                     | Goal::S6
                     | Goal::S8
+                    | Goal::S10Test
                     | Goal::ScrubsS5
                     | Goal::ScrubsS6
                     | Goal::ScrubsS7
@@ -3751,6 +3783,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::LeagueS9
                             | Goal::LeagueS10
                             | Goal::S6
+                            | Goal::S10Test
                             | Goal::ScrubsS5
                             | Goal::ScrubsS6
                             | Goal::ScrubsS7
@@ -5626,6 +5659,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::S6
                     | Goal::S7
                     | Goal::S8
+                    | Goal::S10Test
                     | Goal::ScrubsS5
                     | Goal::ScrubsS6
                     | Goal::ScrubsS7
