@@ -3139,13 +3139,17 @@ async fn volunteer_page(mut transaction: Transaction<'_, Postgres>, global: &Glo
     let header = data.header(&mut transaction, global, me.as_ref(), csrf, Tab::Volunteer, false).await?;
     let content = match data.series {
         Series::League => html! {
-            @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;
+            @let contact = if data.event.parse::<usize>().is_ok_and(|event| event < 10) {
+                User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await? // Chuckles501
+            } else {
+                User::from_id(&mut *transaction, Id::from(5560545317058059905_u64)).await? // Oakishi
+            }.ok_or(Error::OrganizerUserData)?;
             article {
                 p {
                     : "If you or an organised restream team want to restream matches, please complete ";
                     a(href = "https://forms.gle/eCJsvdE7CQY7Wofp6") : "this form";
                     : " (only one person from the team needs to complete it), then DM ";
-                    : chuckles;
+                    : contact;
                     : " on Discord.";
                 }
             }
