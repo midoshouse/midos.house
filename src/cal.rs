@@ -881,44 +881,6 @@ impl Race {
         }
         match event.series {
             Series::League => {} // this series is scheduled via the League website, which is auto-imported
-            Series::Mentor => match &*event.event {
-                "w" => for kind in all::<mentor::WeeklyKind>() {
-                    let schedule = RaceSchedule::Live { start: kind.next_weekly_after(now).to_utc(), end: None, room: None };
-                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
-                        let race = Race {
-                            id: Id::new(&mut *transaction).await?,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: Source::Manual,
-                            entrants: Entrants::Open,
-                            phase: None,
-                            round: Some(format!("{kind} Weekly")),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule_updated_at: None,
-                            fpa_invoked: false,
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            commentators: HashMap::default(),
-                            trackers: HashMap::default(),
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: false,
-                            schedule_locked: false,
-                            notified: false,
-                            async_notified1: false,
-                            async_notified2: false,
-                            async_notified3: false,
-                            schedule,
-                        };
-                        race.save(&mut *transaction).await?;
-                        races.push(race);
-                    }
-                },
-                _ => {} // remaining events are scheduled via Mido's House
-            },
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
                 _ => {} // new events are scheduled via Mido's House
@@ -988,6 +950,41 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
+                "10test" => for kind in all::<mentor::WeeklyKind>() {
+                    let schedule = RaceSchedule::Live { start: kind.next_weekly_after(now).to_utc(), end: None, room: None };
+                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
+                        let race = Race {
+                            id: Id::new(&mut *transaction).await?,
+                            series: event.series,
+                            event: event.event.to_string(),
+                            source: Source::Manual,
+                            entrants: Entrants::Open,
+                            phase: None,
+                            round: Some(format!("{kind} Weekly")),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule_updated_at: None,
+                            fpa_invoked: false,
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            commentators: HashMap::default(),
+                            trackers: HashMap::default(),
+                            last_edited_by: None,
+                            last_edited_at: None,
+                            ignored: false,
+                            schedule_locked: false,
+                            notified: false,
+                            async_notified1: false,
+                            async_notified2: false,
+                            async_notified3: false,
+                            schedule,
+                        };
+                        race.save(&mut *transaction).await?;
+                        races.push(race);
+                    }
+                },
                 "w" => {}
                 //TODO add archives of old Standard tournaments and Challenge Cups?
                 _ => {} // new events are scheduled via Mido's House
@@ -997,6 +994,7 @@ impl Race {
             | Series::CopaDoBrasil
             | Series::CopaLatinoamerica
             | Series::EscapeFromKakariko
+            | Series::Mentor
             | Series::MixedPools
             | Series::Mq
             | Series::PotsOfTime
@@ -2361,7 +2359,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &G
                 }
                 cal.add_event(cal_event);
                 match (event.series, &*event.event, &race.phase, &race.round) {
-                    (Series::Mentor, "w", None, Some(round)) => if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
+                    (Series::Standard, "10test", None, Some(round)) => if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
                         if let Ok(kind) = kind.parse::<mentor::WeeklyKind>() {
                             latest_instantiated_weeklies.insert(kind, start);
                         }
