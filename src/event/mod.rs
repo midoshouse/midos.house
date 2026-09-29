@@ -599,7 +599,7 @@ impl<'a> Data<'a> {
         Ok(self.start(transaction).await?.is_some_and(|start| start <= Utc::now()))
     }
 
-    fn is_ended(&self) -> bool {
+    pub(crate) fn is_ended(&self) -> bool {
         self.end.is_some_and(|end| end <= Utc::now())
     }
 
@@ -1195,7 +1195,7 @@ pub(crate) async fn info(global: &GlobalState, me: Option<User>, uri: Origin<'_>
         Series::CopaLatinoamerica => latam::info(&mut transaction, &data).await?,
         Series::EscapeFromKakariko => efk::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
-        Series::Mentor => None,
+        Series::Mentor => mentor::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Mq => None,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,

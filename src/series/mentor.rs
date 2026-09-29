@@ -8,6 +8,7 @@ use {
         event::{
             Data,
             Error,
+            InfoError,
             Tab,
             enter,
         },
@@ -15,6 +16,29 @@ use {
         series::pic::EnterFormDefaults,
     },
 };
+
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
+    Ok(match &*data.event {
+        "2026" => Some(html! {
+            article {
+                p {
+                    : "This event ";
+                    @if data.is_ended() {
+                        : "was";
+                    } else {
+                        : "is";
+                    }
+                    : " organized by ";
+                    : English.join_html_opt(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1bUdZvg5wZzKJ0-JGH4cxw-y8QuwNx3IeT9YMhjJSvoM/edit") : "the event document";
+                    : " for details.";
+                }
+            }
+        }),
+        _ => None,
+    })
+}
 
 #[derive(FromStr, Display, PartialEq, Eq, Hash, Sequence)]
 pub(crate) enum WeeklyKind {
