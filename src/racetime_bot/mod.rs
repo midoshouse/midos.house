@@ -1691,7 +1691,7 @@ impl Goal {
                         }
                     }
                     Some(kind @ draft::Kind::TournoiFrancoS6) => {
-                        let all_settings = &fr::S5_SETTINGS[..];
+                        let all_settings = &fr::S6_SETTINGS[..];
                         let mut args = args.to_owned();
                         let mut mq_dungeons_count = None::<u8>;
                         let mut hard_settings_ok = false;
@@ -1763,10 +1763,7 @@ impl Goal {
                         SeedCommandParseResult::Regular {
                             rando_version_override: kind.rando_version(),
                             settings: match self {
-                                Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
-                                Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
-                                Self::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&settings),
-                                Self::TournoiFrancoS6 => fr::resolve_s6_draft_settings(&settings),
+                                Self::SlugOpen2026 => fr::resolve_s6_draft_settings(&settings),
                                 _ => unreachable!(),
                             },
                             plando: serde_json::Map::default(),
@@ -4191,9 +4188,9 @@ impl RaceHandler<GlobalState> for Handler {
                                         submit: Some(format!("Roll")),
                                     }),
                                     ("Roll seed (Franco 2026, custom settings)", ActionButton::Message {
-                                        message: format!("!seed franco {} ${{mq}}mq", fr::S5_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                        message: format!("!seed franco {} ${{mq}}mq", fr::S6_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
                                         help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
-                                        survey: Some(fr::S5_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                        survey: Some(fr::S6_SETTINGS.into_iter().map(|setting| SurveyQuestion {
                                             name: setting.name.to_owned(),
                                             label: setting.display.to_owned(),
                                             default: Some(json!(setting.default)),
