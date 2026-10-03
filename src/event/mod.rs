@@ -1437,7 +1437,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                         p : "After playing the async, fill out the form below.";
                                         : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
                                             @match data.team_config {
-                                                TeamConfig::Solo | TeamConfig::Pictionary | TeamConfig::Mentor => {
+                                                TeamConfig::Solo | TeamConfig::Pictionary | TeamConfig::Mentor | TeamConfig::SlugOpen => {
                                                     @if let Series::TriforceBlitz = data.series {
                                                         : form_field("pieces", &mut errors, html! {
                                                             label(for = "pieces") : "Number of Triforce Pieces found:";
@@ -1537,7 +1537,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                                                         label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
                                                     });
                                                 }
-                                                TeamConfig::SlugOpen => @unimplemented
                                             }
                                             : form_field("fpa", &mut errors, html! {
                                                 label(for = "fpa") {
@@ -2488,7 +2487,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                 form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
             }
         }
-        let times = if let Series::TriforceBlitz = series {
+        let times = if series == Series::TriforceBlitz || matches!(data.team_config, TeamConfig::SlugOpen) {
             let time = if value.time1.is_empty() {
                 None
             } else if let Some(time) = parse_duration(&value.time1, None) {
