@@ -630,6 +630,12 @@ async fn report_ffa(global: &GlobalState, cal_event: &cal::Event, event: &event:
         builder.push("race finished: <");
         builder.push(room.as_str());
         builder.push('>');
+        if event.series == Series::Standard && event.event == "10test" {
+            builder.push_line("");
+            builder.push("Thank you for participating in the testing weekly. Please make sure to also fill out ");
+            builder.push_named_link("this quick feedback form", "https://docs.google.com/forms/d/e/1FAIpQLSeUJp0gxe4yiLwMF_n2l3XncLjJNb6JAMRIGkz155_EuS3OWQ/viewform");
+            builder.push(". You can also give feedback if you tested these settings outside of the weekly races.");
+        }
         results_channel.say(discord_ctx!(global), builder.build()).await?;
     }
     Ok(())
