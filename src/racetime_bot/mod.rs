@@ -4796,7 +4796,10 @@ impl RaceHandler<GlobalState> for Handler {
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref cal_event, ref event, ref restreams, .. }) = this.official_data {
-            if let cal::Source::Scrubs { id } = cal_event.race.source && cal_event.race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") {
+            if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value
+                && let cal::Source::Scrubs { id } = cal_event.race.source
+                && cal_event.race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier")
+            {
                 let mut url = Url::parse("https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/qualifiers").unwrap();
                 url.path_segments_mut().unwrap().push(&id.to_string()).push("monitor");
                 if let scrubs::Monitor { monitor: Some(scrubs::User { racetime_url }) } = ctx.global_state.http_client.get(url)
@@ -4836,31 +4839,33 @@ impl RaceHandler<GlobalState> for Handler {
             }
             if !restreams.is_empty() {
                 let restreams_text = restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned"))).join(" and "); // don't use English.join_str since racetime.gg parses the comma as part of the URL
-                for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
-                    let data = ctx.data().await;
-                    if data.monitors.iter().find(|monitor| monitor.id == *restreamer).is_some() { continue }
-                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *restreamer)) { //TODO keep track of pending changes to the entrant list made in this method and match accordingly, e.g. players who are also monitoring should not be uninvited
-                        match entrant.status.value {
-                            EntrantStatusValue::Requested => {
-                                ctx.accept_request(restreamer).await?;
-                                ctx.add_monitor(restreamer).await?;
-                                ctx.remove_entrant(restreamer).await?;
+                if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+                    for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
+                        let data = ctx.data().await;
+                        if data.monitors.iter().find(|monitor| monitor.id == *restreamer).is_some() { continue }
+                        if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.as_ref().is_some_and(|user| user.id == *restreamer)) { //TODO keep track of pending changes to the entrant list made in this method and match accordingly, e.g. players who are also monitoring should not be uninvited
+                            match entrant.status.value {
+                                EntrantStatusValue::Requested => {
+                                    ctx.accept_request(restreamer).await?;
+                                    ctx.add_monitor(restreamer).await?;
+                                    ctx.remove_entrant(restreamer).await?;
+                                }
+                                EntrantStatusValue::Invited |
+                                EntrantStatusValue::Declined |
+                                EntrantStatusValue::Ready |
+                                EntrantStatusValue::NotReady |
+                                EntrantStatusValue::InProgress |
+                                EntrantStatusValue::Done |
+                                EntrantStatusValue::Dnf |
+                                EntrantStatusValue::Dq => {
+                                    ctx.add_monitor(restreamer).await?;
+                                }
                             }
-                            EntrantStatusValue::Invited |
-                            EntrantStatusValue::Declined |
-                            EntrantStatusValue::Ready |
-                            EntrantStatusValue::NotReady |
-                            EntrantStatusValue::InProgress |
-                            EntrantStatusValue::Done |
-                            EntrantStatusValue::Dnf |
-                            EntrantStatusValue::Dq => {
-                                ctx.add_monitor(restreamer).await?;
-                            }
+                        } else {
+                            ctx.invite_user(restreamer).await?;
+                            ctx.add_monitor(restreamer).await?;
+                            ctx.remove_entrant(restreamer).await?;
                         }
-                    } else {
-                        ctx.invite_user(restreamer).await?;
-                        ctx.add_monitor(restreamer).await?;
-                        ctx.remove_entrant(restreamer).await?;
                     }
                 }
                 let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
