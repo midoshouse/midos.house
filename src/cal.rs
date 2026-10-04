@@ -2168,8 +2168,13 @@ pub(crate) enum Error {
     UnknownMember,
     #[error("no team with this ID")]
     UnknownTeam,
-    #[error("start.gg team ID {0} is not associated with a Mido's House team")]
-    UnknownTeamStartGG(startgg::ID),
+    #[error("start.gg entrant ID {entrant_id} is not associated with a Mido's House team")]
+    UnknownTeamStartGG {
+        mh_series: Series,
+        mh_event: String,
+        startgg_event: String,
+        entrant_id: startgg::ID,
+    },
     #[error("Unqualified entrant ({racetime_id}) in event ({}/{event}) with SGL-style qualifiers", series.slug())]
     UnqualifiedEntrant {
         series: Series,
@@ -2216,7 +2221,7 @@ impl IsNetworkError for Error {
             Self::StartGGToken => false,
             Self::UnknownMember => false,
             Self::UnknownTeam => false,
-            Self::UnknownTeamStartGG(_) => false,
+            Self::UnknownTeamStartGG { .. } => false,
             Self::UnqualifiedEntrant { .. } => false,
         }
     }
@@ -3591,25 +3596,25 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                                     }
                                     break
                                 }
-                                Err(Error::UnknownTeamStartGG(entrant)) => if let Some(auth_token) = &global.config.startgg {
-                                    let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, auth_token, startgg::team_members_query::Variables { entrant: entrant.clone() }).await?;
+                                Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }) => if let Some(auth_token) = &global.config.startgg {
+                                    let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, auth_token, startgg::team_members_query::Variables { entrant: entrant_id.clone() }).await?;
                                     let startgg::team_members_query::ResponseData {
                                         entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
                                             participants: Some(participants),
                                         }),
-                                    } = response else {return Err(Error::UnknownTeamStartGG(entrant).into()) };
+                                    } = response else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
                                     let Ok(startgg::team_members_query::TeamMembersQueryEntrantParticipants {
                                         user: Some(startgg::team_members_query::TeamMembersQueryEntrantParticipantsUser { //TODO if user is None, this is a participant without a start.gg account, match on display name or DM Fenhl about connecting manually, don't return error
                                             id: Some(user_id),
                                         }),
-                                    }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                    let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                    let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG(entrant).into()) };
-                                    sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant as _, team.id as _).execute(&mut *transaction).await?;
+                                    }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
+                                    let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
+                                    let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
+                                    sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant_id as _, team.id as _).execute(&mut *transaction).await?;
                                     transaction.commit().await?;
                                     transaction = global.db_pool.begin().await?;
                                 } else {
-                                    return Err(Error::UnknownTeamStartGG(entrant).into())
+                                    return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into())
                                 },
                                 Err(e) => return Err(e.into()),
                             }

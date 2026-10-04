@@ -325,8 +325,18 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
                 Some(event_sets_query::EventSetsQueryEventSetsNodesSlots { entrant: Some(event_sets_query::EventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team1) }) }),
                 Some(event_sets_query::EventSetsQueryEventSetsNodesSlots { entrant: Some(event_sets_query::EventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team2) }) }),
             ] = *slots {
-                let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team1.clone()))?;
-                let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team2.clone()))?;
+                let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG {
+                    mh_series: event.series,
+                    mh_event: event.event.to_string(),
+                    startgg_event: event_slug.to_owned(),
+                    entrant_id: team1.clone(),
+                })?;
+                let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG {
+                    mh_series: event.series,
+                    mh_event: event.event.to_string(),
+                    startgg_event: event_slug.to_owned(),
+                    entrant_id: team2.clone(),
+                })?;
                 let best_of = phase_group.as_ref()
                     .and_then(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
                     .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
