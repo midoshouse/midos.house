@@ -120,18 +120,36 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 }
 
 #[derive(Deserialize)]
-pub(crate) struct Qualifiers {
-    pub(crate) qualifiers: Vec<Qualifier>,
+struct Qualifiers {
+    qualifiers: Vec<Qualifier>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Qualifier {
-    pub(crate) id: Uuid,
-    pub(crate) number: u32,
-    pub(crate) start_date: DateTime<Utc>,
-    pub(crate) end_date: Option<DateTime<Utc>>,
-    pub(crate) racetime_room_url: Option<Url>,
+struct Qualifier {
+    id: Uuid,
+    number: u32,
+    start_date: DateTime<Utc>,
+    end_date: Option<DateTime<Utc>>,
+    racetime_room_url: Option<Url>,
+}
+
+#[derive(Deserialize)]
+struct Matches {
+    matches: Vec<Match>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Match {
+    id: Uuid,
+    scheduled_at: DateTime<Utc>,
+    group: String,
+    round: u32,
+    racetime_room_url: Option<Url>,
+    restream_url: Option<Url>,
+    player1_racetime_id: String,
+    player2_racetime_id: String,
 }
 
 #[derive(Deserialize)]
@@ -152,6 +170,9 @@ pub(crate) enum ImportError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("HTTP error{}: {}", if let Some(url) = .0.url() { format!(" at {url}") } else { String::default() }, .0)]
     Http(#[from] reqwest::Error),
+    #[error("no such racetime.gg user ID: {0}")]
+    #[is_network_error = false]
+    UnknownRaceTimeUser(String),
 }
 
 pub(crate) async fn import(global: &GlobalState, transaction: &mut Transaction<'_, Postgres>, event: &Data<'_>, scrubs_id: Uuid) -> Result<(), ImportError> {
@@ -198,7 +219,7 @@ pub(crate) async fn import(global: &GlobalState, transaction: &mut Transaction<'
             async_notified2: false,
             async_notified3: false,
         };
-        if let Some(race) = races.iter_mut().find(|race| if let cal::Source::Scrubs { id } = race.source { id == qualifier.id } else { false }) {
+        if let Some(race) = races.iter_mut().find(|race| if let cal::Source::Scrubs { id } = race.source { id == qualifier.id && race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") } else { false }) {
             if !race.schedule_locked {
                 let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
                 *race = Race {
@@ -207,6 +228,88 @@ pub(crate) async fn import(global: &GlobalState, transaction: &mut Transaction<'
                     schedule_updated_at: race.schedule_updated_at,
                     seed: mem::take(&mut race.seed),
                     video_urls: mem::take(&mut race.video_urls),
+                    restreamers: mem::take(&mut race.restreamers),
+                    last_edited_at: race.last_edited_at,
+                    last_edited_by: race.last_edited_by,
+                    notified: race.notified,
+                    async_notified1: race.async_notified1,
+                    async_notified2: race.async_notified2,
+                    async_notified3: race.async_notified3,
+                    ..new_race //TODO refactor to default to existing race and only update fields derived from Scrubs API
+                };
+            }
+            race
+        } else {
+            new_race.id = Id::<Races>::new(&mut *transaction).await?;
+            races.push(new_race);
+            races.last_mut().expect("just pushed")
+        }.save(&mut *transaction).await?;
+    }
+    let Matches { matches } = global.http_client.get("https://scrubs-tournament-mgmt-web-gamma.vercel.app/api/v1/matches")
+        .query(&[("tournamentId", scrubs_id)])
+        .header("x-api-key", &global.config.scrubs_api_key)
+        .send().await?
+        .detailed_error_for_status().await?
+        .json_with_text_in_error().await?;
+    for scrubs_match in matches {
+        let mut new_race = Race {
+            id: Id::dummy(),
+            series: event.series,
+            event: event.event.to_string(),
+            source: cal::Source::Scrubs { id: scrubs_match.id },
+            entrants: Entrants::Two([
+                {
+                    let rtgg_user = racetime_bot::user_data(&global.http_client, &scrubs_match.player1_racetime_id).await?.ok_or_else(|| ImportError::UnknownRaceTimeUser(scrubs_match.player1_racetime_id.clone()))?;
+                    Entrant::Named {
+                        name: rtgg_user.full_name.clone(),
+                        racetime_id: Some(scrubs_match.player1_racetime_id),
+                        twitch_username: rtgg_user.twitch_name.clone(),
+                    }
+                },
+                {
+                    let rtgg_user = racetime_bot::user_data(&global.http_client, &scrubs_match.player2_racetime_id).await?.ok_or_else(|| ImportError::UnknownRaceTimeUser(scrubs_match.player2_racetime_id.clone()))?;
+                    Entrant::Named {
+                        name: rtgg_user.full_name.clone(),
+                        racetime_id: Some(scrubs_match.player2_racetime_id),
+                        twitch_username: rtgg_user.twitch_name.clone(),
+                    }
+                },
+            ]),
+            phase: Some(scrubs_match.group),
+            round: Some(scrubs_match.round.to_string()),
+            game: None,
+            scheduling_thread: None,
+            schedule: RaceSchedule::Live {
+                start: scrubs_match.scheduled_at,
+                end: None,
+                room: scrubs_match.racetime_room_url,
+            },
+            schedule_updated_at: None,
+            fpa_invoked: false,
+            draft: None,
+            seed: seed::Data::default(),
+            video_urls: scrubs_match.restream_url.map(|url| (English, url)).into_iter().collect(),
+            restreamers: HashMap::default(),
+            commentators: HashMap::default(),
+            trackers: HashMap::default(),
+            last_edited_by: None,
+            last_edited_at: None,
+            ignored: false,
+            schedule_locked: false,
+            notified: false,
+            async_notified1: false,
+            async_notified2: false,
+            async_notified3: false,
+        };
+        if let Some(race) = races.iter_mut().find(|race| if let cal::Source::Scrubs { id } = race.source { id == scrubs_match.id && race.phase.as_ref().is_none_or(|phase| phase != "Live Qualifier") } else { false }) {
+            if !race.schedule_locked {
+                let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
+                *race = Race {
+                    id: race.id,
+                    schedule: if is_upcoming { new_race.schedule } else { mem::take(&mut race.schedule) },
+                    schedule_updated_at: race.schedule_updated_at,
+                    seed: mem::take(&mut race.seed),
+                    video_urls: if is_upcoming { new_race.video_urls } else { mem::take(&mut race.video_urls) },
                     restreamers: mem::take(&mut race.restreamers),
                     last_edited_at: race.last_edited_at,
                     last_edited_by: race.last_edited_by,
