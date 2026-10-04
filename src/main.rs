@@ -150,7 +150,6 @@ struct Args {
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
-    #[error(transparent)] AutoImport(#[from] cal::AutoImportError),
     #[error(transparent)] Base64(#[from] base64::DecodeError),
     #[error(transparent)] Config(#[from] config::Error),
     #[error(transparent)] DiscordCleanup(#[from] discord_bot::CleanupError),
@@ -247,7 +246,17 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
         }
 
         let racetime_task = spawn(racetime_bot::main(global.clone(), rocket.shutdown(), seed_cache_rx));
-        let import_task = spawn(cal::auto_import_races(global.clone(), rocket.shutdown()));
+        let import_task = spawn(cal::auto_import_races(global.clone(), rocket.shutdown()).then(async |res| match res {
+            Ok(()) => Ok::<_, Error>(()),
+            Err(e) => {
+                eprintln!("failed to auto-import races: {e}");
+                eprintln!("debug info: {e:?}");
+                if let Environment::Production = Environment::default() {
+                    wheel::night_report(&format!("{}/autoImportError", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
+                }
+                Ok(())
+            }
+        }));
         let role_cleanup_task = spawn(discord_bot::cleanup_roles(global, rocket.shutdown()));
         let rocket_task = spawn(rocket.launch().map_ok(|Rocket { .. }| ()));
         let discord_task = spawn(discord_builder.run());
