@@ -925,7 +925,7 @@ impl Goal {
             Self::S6 => Some(s::s6_settings()),
             Self::S7 => None, // settings draft
             Self::S8 => Some(s::s8_settings()),
-            Self::S10Test => Some(s::s10_test_settings_week1()),
+            Self::S10Test => Some(s::s10_test_settings_week2()),
             Self::ScrubsS5 => Some(scrubs::s5_settings()),
             Self::ScrubsS6 => Some(scrubs::s6_settings()),
             Self::ScrubsS7 => Some(scrubs::s7_settings()),
@@ -1065,7 +1065,7 @@ impl Goal {
             }
             Self::S10Test => {
                 ctx.say("!seed: The current test settings").await?; //TODO remove after event concludes
-                //ctx.say("!seed week1: Week 1's settings").await?;
+                ctx.say("!seed week1: Week 1's settings").await?;
             }
             Self::SlugOpen2026 => for format in all::<sco::Format>() {
                 match format.draft_kind() {
@@ -1658,8 +1658,9 @@ impl Goal {
             Self::RupeesOfTime => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime { password_lock: true }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::S10Test => {
                 let settings = match args {
-                    [] => s::s10_test_settings_week1(), //TODO remove after event concludes
+                    [] => s::s10_test_settings_week2(), //TODO remove after event concludes
                     [arg] if arg == "week1" => s::s10_test_settings_week1(),
+                    [arg] if arg == "week2" => s::s10_test_settings_week2(),
                     [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
                     [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
                 };
@@ -3780,7 +3781,6 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::LeagueS9
                             | Goal::LeagueS10
                             | Goal::S6
-                            | Goal::S10Test
                             | Goal::ScrubsS5
                             | Goal::ScrubsS6
                             | Goal::ScrubsS7
@@ -4119,6 +4119,34 @@ impl RaceHandler<GlobalState> for Handler {
                                         help_text: Some(format!("Create a seed with the settings used for the tournament.")),
                                         survey: None,
                                         submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::S10Test => ctx.send_message(
+                                "Welcome! This is a practice room for Standard Tournament Season 10 testing. Learn more about the event at https://midos.house/event/s/10test",
+                                true,
+                                vec![
+                                    ("Roll seed (week 2)", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the current test settings.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                    ("Roll seed (previous weeks)", ActionButton::Message {
+                                        message: format!("!seed week${{week}}"),
+                                        help_text: Some(format!("Create a seed with the selected week's test settings.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("week"),
+                                                label: format!("Week"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (1..2).map(|week| (week.to_string(), week.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
                                     }),
                                 ],
                             ).await?,
