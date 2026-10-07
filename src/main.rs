@@ -212,6 +212,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 println!("{} {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), String::read(&mut sock).await?);
             }
             #[cfg(unix)] Subcommand::FollowSubsystemStatus { async_proto: false, .. } => {
+                eprintln!("waiting for subsystem state updates");
                 while let Some(SubsystemStatusUpdate { subsystem, status }) = Option::read(&mut sock).await? {
                     println!("{} status of Mido's House subsystem “{subsystem}” changed to {status:?}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 }

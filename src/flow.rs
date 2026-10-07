@@ -20,7 +20,12 @@ impl ctrlflow::Key for ImportTaskStatus {
     type State = Result<SubsystemStatusKind, BroadcastStreamRecvError>;
 
     fn maintain(&self) -> ctrlflow::Maintenance<Self> {
-        ctrlflow::Maintenance::Stream(Box::new(|_| BroadcastStream::new(IMPORT_TASK_STATUS.subscribe()).expect("import task status sender dropped").boxed()))
+        ctrlflow::Maintenance::Stream(
+            Box::new(|_| BroadcastStream::new(IMPORT_TASK_STATUS.subscribe())
+                .expect("import task status sender dropped")
+                .map(|update| { eprintln!("import task status update: {update:?}"); update })
+                .boxed()
+        ))
     }
 }
 
