@@ -541,7 +541,7 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
     page(global.db_pool.begin().await?, global, &me, &uri, PageStyle::new(ChestAppearances::TOKENS), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
-        p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
+        p : "Sorry, something went wrong. Please notify Fenhl on Discord."; //TODO adjust Night reports to record all report dates, then change this text to indicate whether the error has been reported
     }).await
 }
 
