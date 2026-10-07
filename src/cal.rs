@@ -11,6 +11,7 @@ use {
             URL,
         },
     },
+    mhstatus::SubsystemStatusKind,
     nonempty_collections::NESet,
     reqwest::StatusCode,
     rocket_util::Response,
@@ -3871,6 +3872,7 @@ pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
+        crate::flow::IMPORT_TASK_STATUS.send(SubsystemStatusKind::Operational).allow_unreceived();
         match auto_import_races_inner(&global, shutdown.clone()).await {
             Ok(()) => break Ok(()),
             Err(AutoImportError::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)) | AutoImportError::Event(event::Error::Discord(discord_bot::Error::UninitializedDiscordGuild(guild_id)))) => {
@@ -3892,6 +3894,7 @@ pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket
                         }
                     }
                 }
+                crate::flow::IMPORT_TASK_STATUS.send(SubsystemStatusKind::NetworkError { retry_at: Utc::now() + wait_time }).allow_unreceived();
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }

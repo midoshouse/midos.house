@@ -3,7 +3,13 @@ use {
         ReadError,
         ReadErrorKind,
     },
-    mhstatus::PrepareStopUpdate,
+    futures::stream::FuturesUnordered,
+    infinite_stream::InfiniteStreamExt as _,
+    mhstatus::{
+        PrepareStopUpdate,
+        SubsystemStatusKind,
+        SubsystemStatusUpdate,
+    },
     serde_json::Value as Json,
     tokio::net::UnixListener,
     crate::{
@@ -12,6 +18,7 @@ use {
             Element,
             MULTIWORLD_GUILD,
         },
+        flow::Subsystem,
         prelude::*,
         racetime_bot::{
             CleanShutdownUpdate,
@@ -79,6 +86,10 @@ pub(crate) enum ClientMessage {
         race_id: Id<Races>,
         speedgaming_id: i64,
     },
+    FollowSubsystemStatus {
+        #[clap(long)]
+        async_proto: bool,
+    },
 }
 
 pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalState>) -> wheel::Result<()> {
@@ -90,6 +101,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalSta
             res = listener.accept() => {
                 let (mut sock, _) = res.at_unknown()?;
                 let global = global.clone();
+                let mut shutdown = shutdown.clone();
                 tokio::spawn(async move {
                     loop {
                         match ClientMessage::read(&mut sock).await {
@@ -350,6 +362,29 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalSta
                                 },
                                 Err(e) => e.to_string(),
                             }.write(&mut sock).await.expect("error writing to UNIX socket"),
+                            Ok(ClientMessage::FollowSubsystemStatus { async_proto: _ }) => {
+                                let mut subsystems = all::<Subsystem>().map(|subsystem| (subsystem, global.flow.subscribe(subsystem))).collect::<HashMap<_, _>>();
+                                for (subsystem, subscription) in &mut subsystems {
+                                    Some(SubsystemStatusUpdate {
+                                        subsystem: subsystem.to_string(),
+                                        status: subscription.next().await.unwrap_or(SubsystemStatusKind::Crashed),
+                                    }).write(&mut sock).await.expect("error writing to UNIX socket");
+                                }
+                                loop {
+                                    let mut subsystems = subsystems.iter_mut().map(|(subsystem, subscription)| subscription.next().map(move |res| (subsystem, res))).collect::<FuturesUnordered<_>>();
+                                    select! {
+                                        () = &mut shutdown => break,
+                                        Some((subsystem, res)) = subsystems.next() => {
+                                            Some(SubsystemStatusUpdate {
+                                                subsystem: subsystem.to_string(),
+                                                status: res.unwrap_or(SubsystemStatusKind::Crashed),
+                                            }).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        }
+                                    }
+                                }
+                                None::<SubsystemStatusUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
+                                break
+                            }
                             Err(ReadError { kind: ReadErrorKind::Io(e), .. }) if e.kind() == io::ErrorKind::UnexpectedEof => break,
                             Err(e) => panic!("error reading from UNIX socket: {e} ({e:?})"),
                         }

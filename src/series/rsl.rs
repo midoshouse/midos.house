@@ -113,14 +113,11 @@ pub(crate) enum VersionedPreset {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ScriptPathError {
-    #[error(transparent)] GitConnect(#[from] gix::remote::connect::Error),
+    #[error(transparent)] Git(#[from] gix::Error),
     #[error("error fetching {}: {source}", .path.display())] GitFetch {
-        source: gix::remote::fetch::Error,
+        source: gix::Error,
         path: PathBuf,
     },
-    #[error(transparent)] GitFindRemote(#[from] gix::remote::find::for_fetch::Error),
-    #[error(transparent)] GitOpen(#[from] gix::open::Error),
-    #[error(transparent)] GitPrepareFetch(#[from] gix::remote::fetch::prepare::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)]
     #[error("RSL script not found")]

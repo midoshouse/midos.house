@@ -3,6 +3,7 @@ use crate::prelude::*;
 pub(crate) struct GlobalState {
     pub(crate) clean_shutdown: Arc<Mutex<CleanShutdown>>,
     pub(crate) config: Config,
+    pub(crate) flow: ctrlflow::Runner,
     pub(crate) db_pool: PgPool,
     /// Should not be accessed directly, use the [`discord_ctx!`] macro
     pub(crate) discord_ctx_: RwFuture<DiscordCtx>,
@@ -25,6 +26,7 @@ impl GlobalState {
     ) -> Arc<Self> {
         Arc::new(Self {
             clean_shutdown: Arc::default(),
+            flow: ctrlflow::Runner::default(),
             extra_room_tx: Arc::new(RwLock::new(mpsc::channel(1).0)),
             new_room_lock: Arc::default(),
             config, db_pool, discord_ctx_, http_client, seed_cache_tx, ootr_api_client,
@@ -36,6 +38,7 @@ impl GlobalState {
         Ok(Arc::new(Self {
             clean_shutdown: Arc::default(),
             config: Config::dummy(),
+            flow: ctrlflow::Runner::default(),
             db_pool: PgPool::connect_with(PgConnectOptions::default()
                 .username("mido")
                 .database("fados_house")

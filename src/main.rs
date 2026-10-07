@@ -14,7 +14,7 @@ use {
     crate::prelude::*,
 };
 #[cfg(unix)] use {
-    mhstatus::PrepareStopUpdate,
+    mhstatus::*,
     tokio::{
         io::stdout,
         net::UnixStream,
@@ -31,6 +31,7 @@ mod discord_bot;
 mod draft;
 mod event;
 mod favicon;
+mod flow;
 mod form;
 mod global;
 #[macro_use] mod http;
@@ -210,6 +211,19 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 println!("{} Mido's House: debugging SpeedGaming match", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 println!("{} {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), String::read(&mut sock).await?);
             }
+            #[cfg(unix)] Subcommand::FollowSubsystemStatus { async_proto: false, .. } => {
+                while let Some(SubsystemStatusUpdate { subsystem, status }) = Option::read(&mut sock).await? {
+                    println!("{} status of Mido's House subsystem “{subsystem}” changed to {status:?}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                }
+                println!("{} preparing to stop Mido's House: done", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+            }
+            #[cfg(unix)] Subcommand::FollowSubsystemStatus { async_proto: true, .. } => {
+                let mut stdout = stdout();
+                while let Some(update) = Option::<SubsystemStatusUpdate>::read(&mut sock).await? {
+                    update.write(&mut stdout).await?;
+                    stdout.flush().await?;
+                }
+            }
         }
     } else {
         let config = Config::load().await?;
@@ -254,6 +268,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 if let Environment::Production = Environment::default() {
                     wheel::night_report(&format!("{}/autoImportError", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
                 }
+                flow::IMPORT_TASK_STATUS.send(SubsystemStatusKind::Crashed).allow_unreceived();
                 Ok(())
             }
         }));

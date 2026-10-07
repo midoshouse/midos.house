@@ -33,7 +33,7 @@ production = []
 local = []
 
 [build-dependencies]
-gix = "0.87" # much slower than git2 but avoids a C dependency on openssl-sys
+gix = "0.88" # much slower than git2 but avoids a C dependency on openssl-sys
 itertools = "0.15"
 semver = "1"
 thiserror = "2"
@@ -50,18 +50,20 @@ clap = { version = "4", features = ["derive"] }
 collect-mac = "0.1"
 convert_case = "0.12"
 csv = "1"
+ctrlflow = { git = "https://github.com/fenhl/ctrlflow" }
 derivative = "2"
 derive_more = { version = "2", features = ["display", "from", "from_str"] }
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
-gix = { version = "0.87", features = ["blocking-http-transport-reqwest"] }
+gix = { version = "0.88", features = ["blocking-http-transport-reqwest"] }
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
 hyper = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = { version = "2", features = ["serde"] }
+infinite-stream = "0.2"
 itertools = "0.15"
 kuchiki = "0.8" #TODO unmaintained, replace with `scraper` crate?
 lazy-regex = "3"
@@ -97,6 +99,7 @@ systemstat = "0.2"
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
+tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
 tokio-util = { version = "0.7", features = ["io"] }
 typemap_rev = "0.3" # transitive dependency of serenity
 url = { version = "2", features = ["serde"] }

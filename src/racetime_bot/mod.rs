@@ -2553,9 +2553,7 @@ pub(crate) async fn roll_seed_locally(global: &GlobalState, delay_until: Option<
 pub(crate) enum RollError {
     #[error(transparent)] Clone(#[from] rando::CloneError),
     #[error(transparent)] Dir(#[from] rando::DirError),
-    #[error(transparent)] GitCheckout(#[from] gix::clone::checkout::main_worktree::Error),
-    #[error(transparent)] GitClone(#[from] gix::clone::Error),
-    #[error(transparent)] GitCloneFetch(#[from] gix::clone::fetch::Error),
+    #[error(transparent)] Git(#[from] gix::Error),
     #[error(transparent)] GitValidateRefName(#[from] gix::validate::reference::name::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
