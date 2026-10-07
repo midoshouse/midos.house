@@ -29,6 +29,7 @@ use {
         IoResultExt as _,
     },
 };
+#[cfg(not(windows))] use wheel::fs;
 
 #[derive(Deserialize)]
 struct CargoToml {
@@ -129,8 +130,10 @@ async fn main() -> Result<(), Error> {
             println!("cargo test");
             Command::new("cargo").arg("test").spawn().at_command("cargo test")?.check("cargo test").await?;
 
-            println!("cargo msrv");
-            Command::new("cargo").arg("msrv").arg("verify").spawn().at_command("cargo msrv")?.check("cargo msrv").await?;
+            if !fs::exists("/etc/NIXOS").await? { // not necessary on NixOS since the MSRV policy is to follow nixpkgs
+                println!("cargo msrv");
+                Command::new("cargo").arg("msrv").arg("verify").spawn().at_command("cargo msrv")?.check("cargo msrv").await?;
+            }
 
             println!("cargo sqlx");
             if Command::new("cargo").arg("sqlx").arg("prepare").arg("--check").spawn().at_command("cargo sqlx")?.check("cargo sqlx").await.is_err() {
