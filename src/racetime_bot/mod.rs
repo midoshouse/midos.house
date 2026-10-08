@@ -1657,10 +1657,10 @@ impl Goal {
             }
             Self::RupeesOfTime => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime { password_lock: true }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::S10Test => {
-                let settings = match args {
-                    [] => s::s10_test_settings_week2(), //TODO remove after event concludes
-                    [arg] if arg == "week1" => s::s10_test_settings_week1(),
-                    [arg] if arg == "week2" => s::s10_test_settings_week2(),
+                let (week, settings) = match args {
+                    [] => (2, s::s10_test_settings_week2()), //TODO remove after event concludes
+                    [arg] if arg == "week1" => (1, s::s10_test_settings_week1()),
+                    [arg] if arg == "week2" => (2, s::s10_test_settings_week2()),
                     [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
                     [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
                 };
@@ -1670,7 +1670,7 @@ impl Goal {
                     bingo_passphrase: None,
                     language: English,
                     article: "an",
-                    description: format!("S10 testing week 1 seed"),
+                    description: format!("S10 testing week {week} seed"),
                     settings, unlock_spoiler_log,
                 }
             }
