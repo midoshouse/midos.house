@@ -2311,6 +2311,7 @@ pub(crate) fn s10_test_settings_week2() -> seed::Settings {
             "misc_hint_items": {
                 "dampe_diary": "Light Arrows",
             },
+            "dungeons_woth_limit":   2,
             "dungeons_barren_limit": 1,
             "one_hint_per_goal":     true,
             "named_items_required":  true,
