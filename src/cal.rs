@@ -1713,7 +1713,7 @@ impl Event {
                     buf.push(if let Some(racetime_id) = racetime_id {
                         Ok(racetime_id.clone())
                     } else {
-                        Err(format!("Warning: {} could not be invited. Please contact an organizer to invite them manually.", entrant.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)"))))
+                        Err(format!("Warning: {} could not be invited because their user data doesn't include a racetime.gg account. Please contact an organizer to invite them manually.", entrant.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)"))))
                     });
                 }
             }
