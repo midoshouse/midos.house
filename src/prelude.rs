@@ -122,6 +122,7 @@ pub(crate) use {
             ext::IntoOwned as _,
             uri,
         },
+        outcome::Outcome,
         request::{
             self,
             FromParam,

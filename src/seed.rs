@@ -1,4 +1,5 @@
 use {
+    std::convert::Infallible as Never,
     futures::stream::Stream,
     hyper::header::{
         CONTENT_DISPOSITION,
@@ -437,6 +438,21 @@ pub(crate) enum GetResponse {
     },
 }
 
+pub(crate) struct LogRequestHeaders;
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for LogRequestHeaders {
+    type Error = Never;
+
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        println!("headers for {} {}:", request.method(), request.uri());
+        for header in request.headers().iter() {
+            println!(" {header}");
+        }
+        Outcome::Success(Self)
+    }
+}
+
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum GetError {
     #[error(transparent)] ExtraData(#[from] ExtraDataError),
@@ -455,7 +471,8 @@ impl<E: Into<GetError>> From<E> for StatusOrError<GetError> {
 }
 
 #[rocket::get("/seed/<filename>")]
-pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
+pub(crate) async fn get(log: LogRequestHeaders, global: &GlobalState, me: Option<User>, uri: Origin<'_>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
+    let LogRequestHeaders = log; //DEBUG preparing for potentially precompressing spoiler logs
     let OptSuffix(file_stem, suffix) = filename;
     if !regex_is_match!("^[0-9A-Za-z_-]+$", file_stem) { return Err(StatusOrError::Status(Status::NotFound)) }
     Ok(match suffix {
