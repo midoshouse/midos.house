@@ -1,9 +1,12 @@
 use {
     rand::distr::SampleString as _,
-    rocket::http::{
-        Cookie,
-        CookieJar,
-        SameSite,
+    rocket::{
+        http::{
+            Cookie,
+            CookieJar,
+            SameSite,
+        },
+        outcome::Outcome,
     },
     rocket_oauth2::{
         OAuth2,
