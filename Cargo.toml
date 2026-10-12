@@ -40,6 +40,7 @@ thiserror = "2"
 
 [dependencies]
 anyhow = "1"
+async-compression = { version = "0.4", features = ["tokio", "zstd"] }
 async-graphql = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
 async-graphql-rocket = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
 async-trait = "0.1"
@@ -59,6 +60,7 @@ futures = "0.3"
 gix = { version = "0.88", features = ["blocking-http-transport-reqwest"] }
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
+http = "1"
 hyper = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -98,7 +100,7 @@ sqlx = { version = "0.9", default-features = false, features = ["chrono", "json"
 systemstat = "0.2"
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "net", "parking_lot", "process", "sync", "time"] }
 tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
 tokio-util = { version = "0.7", features = ["io"] }
 typemap_rev = "0.3" # transitive dependency of serenity

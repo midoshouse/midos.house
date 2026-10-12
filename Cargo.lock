@@ -3959,6 +3959,7 @@ name = "midos-house"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-compression",
  "async-graphql",
  "async-graphql-rocket",
  "async-proto",
@@ -3979,6 +3980,7 @@ dependencies = [
  "futures",
  "gix",
  "graphql_client",
+ "http",
  "hyper",
  "ics",
  "image",

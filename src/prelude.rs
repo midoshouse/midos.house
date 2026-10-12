@@ -51,6 +51,7 @@ pub(crate) use {
         },
         time::Duration,
     },
+    async_compression::tokio::write::ZstdEncoder,
     async_trait::async_trait,
     chrono::{
         TimeDelta,
@@ -122,6 +123,7 @@ pub(crate) use {
             ext::IntoOwned as _,
             uri,
         },
+        outcome::Outcome,
         request::{
             self,
             FromParam,

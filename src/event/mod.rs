@@ -2958,7 +2958,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version, true, settings, serde_json::Map::default()).await);
                     let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                     if let Some(spoiler_log_path) = spoiler_log_path {
-                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                        seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                     }
                     RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
                 }
@@ -2969,7 +2969,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version.clone(), true, settings, plando).await);
                 let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
-                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::BattleRoyale && event == "2" {
@@ -2979,7 +2979,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version.clone(), true, settings, plando).await);
                 let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
-                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::CopaLatinoamerica && event == "2025" {
@@ -2989,7 +2989,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 let (patch_filename, spoiler_log_path) = roll_try!(roll_seed_locally(global, None, rando_version.clone(), true, settings, plando).await);
                 let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                 if let Some(spoiler_log_path) = spoiler_log_path {
-                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                 }
                 RedirectOrContent::Redirect(Redirect::to(format!("/seed/{file_stem}")))
             } else if series == Series::TriforceBlitz {
@@ -3051,7 +3051,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                     let (patch_filename, spoiler_log_path) = roll_try!(@no_commit roll_seed_locally(global, None, rando_version, true, (*settings).clone(), serde_json::Map::default()).await);
                     let Some((_, file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) else { println!("no patch file stem"); return Err(StatusOrError::Status(Status::NotFound)) };
                     if let Some(spoiler_log_path) = spoiler_log_path {
-                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                        seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                     }
                     if unlock_spoiler_log == UnlockSpoilerLog::Progression || settings.contains_key("bingosync_url") || bingo_passphrase.is_some() {
                         sqlx::query!("INSERT INTO seed_metadata (file_stem, progression_spoiler, bingosync_url, bingo_passphrase) VALUES ($1, $2, $3, $4)", file_stem, unlock_spoiler_log == UnlockSpoilerLog::Progression, settings.to_mut().remove("bingosync_url").map(|url| as_variant!(url, serde_json::Value::String).expect("settings with non-string Bingosync URL")), bingo_passphrase).execute(&mut *transaction).await?;

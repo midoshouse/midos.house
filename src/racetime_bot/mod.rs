@@ -2679,8 +2679,8 @@ impl SeedRollUpdate {
             }).await?,
             Self::Done { mut seed, rsl_preset, unlock_spoiler_log } => {
                 if let Some(seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path }) = seed.files {
-                    if unlock_spoiler_log == UnlockSpoilerLog::Now && locked_spoiler_log_path.is_some() {
-                        fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    if unlock_spoiler_log == UnlockSpoilerLog::Now && let Some(spoiler_log_path) = &locked_spoiler_log_path {
+                        seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                         *locked_spoiler_log_path = None;
                     }
                     sqlx::query!("INSERT INTO seed_metadata (file_stem, locked_spoiler_log_path, progression_spoiler) VALUES ($1, $2, FALSE) ON CONFLICT (file_stem) DO UPDATE SET locked_spoiler_log_path = $2, progression_spoiler = FALSE", file_stem, *locked_spoiler_log_path as _).execute(&ctx.global_state.db_pool).await?;
@@ -3414,13 +3414,13 @@ impl Handler {
                     if let UnlockSpoilerLog::Progression | UnlockSpoilerLog::After = goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) {
                         match files {
                             seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
-                                fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                                seed::publish_spoiler(file_stem, locked_spoiler_log_path).await?;
                                 sqlx::query!("UPDATE seed_metadata SET locked_spoiler_log_path = NULL WHERE file_stem = $1", file_stem).execute(&ctx.global_state.db_pool).await?;
                             },
                             seed::Files::OotrWeb { id, file_stem, .. } => {
                                 ctx.global_state.ootr_api_client.unlock_spoiler_log(*id).await?;
                                 let spoiler_log = ctx.global_state.ootr_api_client.seed_details(*id).await?.spoiler_log;
-                                fs::write(Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json")), &spoiler_log).await?;
+                                seed::save_spoiler_buf(file_stem, spoiler_log.as_bytes()).await?;
                             }
                             seed::Files::TriforceBlitz { .. } => {} // automatically unlocked by triforceblitz.com
                         }

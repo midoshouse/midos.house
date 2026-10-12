@@ -1,7 +1,9 @@
 use {
+    async_compression::tokio::bufread::ZstdDecoder,
     futures::stream::Stream,
     hyper::header::{
         CONTENT_DISPOSITION,
+        CONTENT_ENCODING,
         LINK,
     },
     rocket::{
@@ -10,11 +12,18 @@ use {
         response::content::RawJson,
     },
     rocket_util::OptSuffix,
+    tokio::io::{
+        AsyncBufRead,
+        AsyncReadExt as _,
+    },
     crate::prelude::*,
 };
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
+
+/// 19 is the maximum compression level that uses a window size ≤ 8 MiB, which is the maximum allowed by the HTTP content coding (https://www.iana.org/assignments/http-parameters)
+pub(crate) const COMPRESSION_LEVEL: async_compression::Level = async_compression::Level::Precise(19);
 
 /// Whether to roll seeds on the `riir` branch instead of `dev-fenhl`. Can be disabled in case of bugs on `riir`.
 pub(crate) const ALLOW_RIIR: bool = false; //TODO investigate bug with weird camera in graveyard and missing shops
@@ -214,7 +223,7 @@ impl Data {
         } else {
             match &self.files {
                 Some(Files::MidosHouse { file_stem, .. } | Files::OotrWeb { file_stem, .. }) => {
-                    let spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json"));
+                    let spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json")); //TODO support compressed spoilers
                     fs::exists(&spoiler_path).await?.then(|| (spoiler_path, true))
                 }
                 None | Some(Files::TriforceBlitz { .. }) => None,
@@ -288,6 +297,26 @@ enum SpoilerStatus {
     Progression(PathBuf),
     Locked,
     NotFound,
+}
+
+pub(crate) async fn save_spoiler_buf(file_stem: &str, mut spoiler_log: impl AsyncBufRead + Unpin) -> wheel::Result {
+    let unlocked_spoiler_log_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json.zst"));
+    io::copy_buf(
+        &mut spoiler_log,
+        &mut ZstdEncoder::with_quality(File::create_new(&unlocked_spoiler_log_path).await?, COMPRESSION_LEVEL),
+    ).await.at(unlocked_spoiler_log_path)?;
+    Ok(())
+}
+
+pub(crate) async fn publish_spoiler(file_stem: &str, locked_spoiler_log_path: impl AsRef<Path>) -> wheel::Result {
+    let locked_spoiler_log_path = locked_spoiler_log_path.as_ref();
+    let unlocked_spoiler_log_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json.zst"));
+    io::copy(
+        &mut File::open(locked_spoiler_log_path).await?,
+        &mut ZstdEncoder::with_quality(File::create_new(&unlocked_spoiler_log_path).await?, COMPRESSION_LEVEL),
+    ).await.at2(locked_spoiler_log_path, unlocked_spoiler_log_path)?;
+    fs::remove_file(locked_spoiler_log_path).await?;
+    Ok(())
 }
 
 pub(crate) async fn table_cell(global: &GlobalState, now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, show_password: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
@@ -423,9 +452,74 @@ pub(crate) async fn table(global: &GlobalState, seeds: impl Stream<Item = Data>,
     })
 }
 
+pub(crate) struct AcceptEncoding {
+    accepts_zstd: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum AcceptEncodingError {
+    #[error("unexpected character in Accept-Encoding header")]
+    Parse(char),
+    #[error("unexpected Accept-Encoding header format")]
+    ParseOther,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for AcceptEncoding {
+    type Error = AcceptEncodingError;
+
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let mut has_header = false;
+        let mut allow_other = false;
+        for mut rest in request.headers().get(http::header::ACCEPT_ENCODING.as_str()) {
+            has_header = true;
+            while let Some(c) = rest.chars().next() {
+                match c {
+                    ' ' | '\t' | ',' => rest = &rest[1..],
+                    '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~' | '0'..='9' | 'A'..='Z' | 'a'..='z' => {
+                        let (_, token, new_rest) = regex_captures!(r"^([!#$%&'*+\-.^_`|~0-9A-Za-z]+)(.*)$", rest).unwrap();
+                        rest = new_rest;
+                        let allowed = 'qvalue: loop {
+                            match rest.chars().next() {
+                                Some(' ' | '\t') => rest = &rest[1..],
+                                Some(';') => {
+                                    rest = &rest[1..];
+                                    loop {
+                                        match rest.chars().next() {
+                                            None => return Outcome::Error((Status::BadRequest, AcceptEncodingError::ParseOther)),
+                                            Some(' ' | '\t') => rest = &rest[1..],
+                                            Some('Q' | 'q') => {
+                                                let Some((_, qvalue, new_rest)) = regex_captures!(r"^[Qq]=(0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)(.*)$", rest) else { return Outcome::Error((Status::BadRequest, AcceptEncodingError::ParseOther)) };
+                                                rest = new_rest;
+                                                break 'qvalue qvalue.parse::<f32>().unwrap() > 0.0;
+                                            }
+                                            Some(c) => return Outcome::Error((Status::BadRequest, AcceptEncodingError::Parse(c))),
+                                        }
+                                    }
+                                }
+                                _ => break true,
+                            }
+                        };
+                        if token.eq_ignore_ascii_case("zstd") {
+                            return Outcome::Success(Self { accepts_zstd: allowed })
+                        } else if token == "*" {
+                            allow_other = allowed;
+                        }
+                    }
+                    _ => return Outcome::Error((Status::BadRequest, AcceptEncodingError::Parse(c))),
+                }
+            }
+        }
+        Outcome::Success(Self {
+            accepts_zstd: !has_header || allow_other,
+        })
+    }
+}
+
 #[derive(Responder)]
 pub(crate) enum GetResponse {
     Page(RawHtml<String>),
+    #[response(content_type = "application/octet-stream")]
     Patch {
         inner: NamedFile,
         content_disposition: Header<'static>,
@@ -433,6 +527,13 @@ pub(crate) enum GetResponse {
     Spoiler {
         inner: RawJson<Vec<u8>>,
         content_disposition: Header<'static>,
+        link: Header<'static>,
+    },
+    #[response(content_type = "application/json")]
+    CompressedSpoiler {
+        inner: Vec<u8>,
+        content_disposition: Header<'static>,
+        content_encoding: Header<'static>,
         link: Header<'static>,
     },
 }
@@ -455,7 +556,7 @@ impl<E: Into<GetError>> From<E> for StatusOrError<GetError> {
 }
 
 #[rocket::get("/seed/<filename>")]
-pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
+pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>, accept_encoding: AcceptEncoding, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
     let OptSuffix(file_stem, suffix) = filename;
     if !regex_is_match!("^[0-9A-Za-z_-]+$", file_stem) { return Err(StatusOrError::Status(Status::NotFound)) }
     Ok(match suffix {
@@ -482,7 +583,7 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                 progression_spoiler: false,
             }.extra(global).await?;
             let spoiler_path = match extra.spoiler_status {
-                SpoilerStatus::UnlockedProgression => Path::new(DIR).join(format!("{file_stem}_Spoiler.json")),
+                SpoilerStatus::UnlockedProgression => Path::new(DIR).join(format!("{file_stem}_Spoiler.json")), //TODO support compressed spoilers
                 SpoilerStatus::Progression(locked_spoiler_log_path) => locked_spoiler_log_path,
                 SpoilerStatus::Unlocked | SpoilerStatus::Locked | SpoilerStatus::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
             };
@@ -502,9 +603,40 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                 link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(Suffix(extra.chests.textures(), "png"))))),
             }
         } else {
-            let spoiler = match fs::read(Path::new(DIR).join(format!("{file_stem}.json"))).await {
-                Ok(spoiler) => spoiler,
-                Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+            let spoiler_path = Path::new(DIR).join(format!("{file_stem}.json"));
+            let mut compressed_spoiler_path = spoiler_path.clone();
+            compressed_spoiler_path.add_extension("zst");
+            let spoiler = match fs::read(&compressed_spoiler_path).await {
+                Ok(spoiler) => {
+                    let mut decompressed_spoiler = Vec::default();
+                    ZstdDecoder::new(&*spoiler).read_to_end(&mut decompressed_spoiler).await.at(compressed_spoiler_path)?;
+                    if accept_encoding.accepts_zstd {
+                        let chests = match serde_json::from_slice::<SpoilerLog>(&decompressed_spoiler) {
+                            Ok(spoiler) => ChestAppearances::from(spoiler),
+                            Err(e) => {
+                                eprintln!("failed to add favicon to {file_stem}.json: {e} ({e:?})");
+                                if let Environment::Production = Environment::default() {
+                                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to add favicon to {file_stem}.json: {e} ({e:?})"))).await?;
+                                }
+                                ChestAppearances::random()
+                            }
+                        };
+                        return Ok(GetResponse::CompressedSpoiler {
+                            inner: spoiler,
+                            content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "inline"),
+                            content_encoding: Header::new(CONTENT_ENCODING.as_str(), "zstd"),
+                            // may not work in all browsers, see https://bugzilla.mozilla.org/show_bug.cgi?id=1185705
+                            link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(Suffix(chests.textures(), "png"))))),
+                        })
+                    } else {
+                        decompressed_spoiler
+                    }
+                }
+                Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => match fs::read(spoiler_path).await {
+                    Ok(spoiler) => spoiler,
+                    Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+                    Err(e) => return Err(e.into()),
+                },
                 Err(e) => return Err(e.into()),
             };
             let chests = match serde_json::from_slice::<SpoilerLog>(&spoiler) {

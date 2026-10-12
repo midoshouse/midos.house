@@ -4692,7 +4692,7 @@ pub(crate) async fn practice_seed_post(global: &GlobalState, me: Option<User>, u
                 };
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
                 if let Some(spoiler_log_path) = spoiler_log_path {
-                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+                    seed::publish_spoiler(file_stem, spoiler_log_path).await?;
                 }
                 if settings.contains_key("bingosync_url") || bingo_passphrase.is_some() {
                     sqlx::query!("INSERT INTO seed_metadata (file_stem, progression_spoiler, bingosync_url, bingo_passphrase) VALUES ($1, FALSE, $2, $3)", file_stem, settings.remove("bingosync_url").map(|url| as_variant!(url, serde_json::Value::String).expect("settings with non-string Bingosync URL")), bingo_passphrase).execute(&mut *transaction).await?;
@@ -5218,27 +5218,25 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
                                         },
                                         Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
                                     }
-                                    if let Some(ref file_stem) = file_stem {
+                                    if let Some(ref file_stem) = file_stem && (file_hash.is_none() || !fs::exists(Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json.zst"))).await?) {
                                         match global.http_client.get("https://ootrandomizer.com/spoilers/get").query(&[("id", web_id)]).send().await {
                                             Ok(spoiler_response) => if spoiler_response.status() != StatusCode::BAD_REQUEST { // returns error 400 if no spoiler log has been generated
                                                 match spoiler_response.detailed_error_for_status().await {
                                                     Ok(spoiler_response) => {
-                                                        let spoiler_filename = format!("{file_stem}_Spoiler.json");
-                                                        let spoiler_path = Path::new(seed::DIR).join(&spoiler_filename);
-                                                        match File::create(&spoiler_path).await {
-                                                            Ok(mut file) => match io::copy_buf(&mut StreamReader::new(spoiler_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
-                                                                Ok(_) => if file_hash.is_none() {
-                                                                    match fs::read(spoiler_path).await {
-                                                                        Ok(buf) => match serde_json::from_slice::<SpoilerLog>(&buf) {
-                                                                            Ok(spoiler_log) => file_hash = Some(spoiler_log.file_hash),
-                                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
-                                                                        },
+                                                        match spoiler_response.bytes().await {
+                                                            Ok(spoiler_buf) => {
+                                                                if file_hash.is_none() {
+                                                                    match serde_json::from_slice::<SpoilerLog>(&spoiler_buf) {
+                                                                        Ok(spoiler_log) => file_hash = Some(spoiler_log.file_hash),
                                                                         Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
                                                                     }
-                                                                },
-                                                                Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
-                                                            },
-                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
+                                                                }
+                                                                match seed::save_spoiler_buf(file_stem, &*spoiler_buf).await {
+                                                                    Ok(_) => {}
+                                                                    Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
+                                                                }
+                                                            }
+                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error downloading spoiler log from room data: {e}")).with_name(field_name)),
                                                         }
                                                     }
                                                     Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
