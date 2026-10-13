@@ -15,6 +15,7 @@ use {
     tokio::io::{
         AsyncBufRead,
         AsyncReadExt as _,
+        BufReader,
     },
     crate::prelude::*,
 };
@@ -219,23 +220,29 @@ impl Data {
             None | Some(Files::TriforceBlitz { .. }) => {}
         }
         let spoiler_data = if let Some(locked_spoiler_log_path) = locked_spoiler_log_path && fs::exists(&locked_spoiler_log_path).await? {
-            Some((PathBuf::from(locked_spoiler_log_path), false))
+            Some((PathBuf::from(locked_spoiler_log_path), false, false))
         } else {
             match &self.files {
                 Some(Files::MidosHouse { file_stem, .. } | Files::OotrWeb { file_stem, .. }) => {
                     let mut spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json"));
                     if fs::exists(&spoiler_path).await? {
-                        Some((spoiler_path, true))
+                        Some((spoiler_path, false, true))
                     } else {
                         spoiler_path.add_extension("zst");
-                        fs::exists(&spoiler_path).await?.then(|| (spoiler_path, true))
+                        fs::exists(&spoiler_path).await?.then(|| (spoiler_path, true, true))
                     }
                 }
                 None | Some(Files::TriforceBlitz { .. }) => None,
             }
         };
-        if let Some((spoiler_path, unlocked)) = spoiler_data {
-            let log = fs::read_to_string(&spoiler_path).await?;
+        if let Some((spoiler_path, compressed, unlocked)) = spoiler_data {
+            let log = if compressed {
+                let mut buf = Vec::default();
+                ZstdDecoder::new(BufReader::new(File::open(&spoiler_path).await?)).read_to_end(&mut buf).await.at(&spoiler_path)?;
+                serde_json::from_slice(&buf)?
+            } else {
+                fs::read_to_string(&spoiler_path).await?
+            };
             extra.spoiler_status = if unlocked {
                 if progression_spoiler {
                     SpoilerStatus::UnlockedProgression
@@ -585,22 +592,31 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                 file_hash: None,
                 progression_spoiler: false,
             }.extra(global).await?;
-            let spoiler_path = match extra.spoiler_status {
+            let (spoiler_path, compressed) = match extra.spoiler_status {
                 SpoilerStatus::UnlockedProgression => {
                     let mut spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json"));
                     if fs::exists(&spoiler_path).await? {
-                        spoiler_path
+                        (spoiler_path, false)
                     } else {
                         spoiler_path.add_extension("zst");
-                        spoiler_path
+                        (spoiler_path, true)
                     }
                 }
-                SpoilerStatus::Progression(locked_spoiler_log_path) => locked_spoiler_log_path,
+                SpoilerStatus::Progression(locked_spoiler_log_path) => (locked_spoiler_log_path, false),
                 SpoilerStatus::Unlocked | SpoilerStatus::Locked | SpoilerStatus::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
             };
-            let spoiler = match fs::read_json::<serde_json::Value>(spoiler_path).await {
+            let spoiler = if compressed {
+                async {
+                    let mut buf = Vec::default();
+                    ZstdDecoder::new(BufReader::new(File::open(&spoiler_path).await?)).read_to_end(&mut buf).await.at(spoiler_path)?;
+                    Ok(serde_json::from_slice(&buf)?)
+                }.await
+            } else {
+                fs::read_json::<serde_json::Value>(spoiler_path).await.map_err(GetError::from)
+            };
+            let spoiler = match spoiler {
                 Ok(spoiler) => spoiler,
-                Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+                Err(GetError::Wheel(wheel::Error::Io { inner, .. })) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
                 Err(e) => return Err(e.into()),
             };
             GetResponse::Spoiler {
