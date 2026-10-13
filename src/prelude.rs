@@ -51,7 +51,6 @@ pub(crate) use {
         },
         time::Duration,
     },
-    async_compression::tokio::write::ZstdEncoder,
     async_trait::async_trait,
     chrono::{
         TimeDelta,

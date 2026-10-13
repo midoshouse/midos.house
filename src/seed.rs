@@ -1,5 +1,8 @@
 use {
-    async_compression::tokio::bufread::ZstdDecoder,
+    async_compression::tokio::{
+        bufread::ZstdDecoder,
+        write::ZstdEncoder,
+    },
     futures::stream::Stream,
     hyper::header::{
         CONTENT_DISPOSITION,
@@ -313,20 +316,26 @@ enum SpoilerStatus {
 
 pub(crate) async fn save_spoiler_buf(file_stem: &str, mut spoiler_log: impl AsyncBufRead + Unpin) -> wheel::Result {
     let unlocked_spoiler_log_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json.zst"));
+    let mut writer = ZstdEncoder::with_quality(File::create_new(&unlocked_spoiler_log_path).await?, COMPRESSION_LEVEL);
     io::copy_buf(
         &mut spoiler_log,
-        &mut ZstdEncoder::with_quality(File::create_new(&unlocked_spoiler_log_path).await?, COMPRESSION_LEVEL),
-    ).await.at(unlocked_spoiler_log_path)?;
+        &mut writer,
+    ).await.at(&unlocked_spoiler_log_path)?;
+    writer.shutdown().await.at(&unlocked_spoiler_log_path)?; // write zstd trailer
+    writer.into_inner().flush().await.at(unlocked_spoiler_log_path)?; // make sure data is actually written to writer
     Ok(())
 }
 
 pub(crate) async fn publish_spoiler(file_stem: &str, locked_spoiler_log_path: impl AsRef<Path>) -> wheel::Result {
     let locked_spoiler_log_path = locked_spoiler_log_path.as_ref();
     let unlocked_spoiler_log_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json.zst"));
+    let mut writer = ZstdEncoder::with_quality(File::create_new(&unlocked_spoiler_log_path).await?, COMPRESSION_LEVEL);
     io::copy(
         &mut File::open(locked_spoiler_log_path).await?,
-        &mut ZstdEncoder::with_quality(File::create_new(&unlocked_spoiler_log_path).await?, COMPRESSION_LEVEL),
-    ).await.at2(locked_spoiler_log_path, unlocked_spoiler_log_path)?;
+        &mut writer,
+    ).await.at2(locked_spoiler_log_path, &unlocked_spoiler_log_path)?;
+    writer.shutdown().await.at(&unlocked_spoiler_log_path)?; // write zstd trailer
+    writer.into_inner().flush().await.at(unlocked_spoiler_log_path)?; // make sure data is actually written to writer
     fs::remove_file(locked_spoiler_log_path).await?;
     Ok(())
 }
