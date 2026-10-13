@@ -223,8 +223,13 @@ impl Data {
         } else {
             match &self.files {
                 Some(Files::MidosHouse { file_stem, .. } | Files::OotrWeb { file_stem, .. }) => {
-                    let spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json")); //TODO support compressed spoilers
-                    fs::exists(&spoiler_path).await?.then(|| (spoiler_path, true))
+                    let mut spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json"));
+                    if fs::exists(&spoiler_path).await? {
+                        Some((spoiler_path, true))
+                    } else {
+                        spoiler_path.add_extension("zst");
+                        fs::exists(&spoiler_path).await?.then(|| (spoiler_path, true))
+                    }
                 }
                 None | Some(Files::TriforceBlitz { .. }) => None,
             }
@@ -398,7 +403,6 @@ pub(crate) async fn table_cell(global: &GlobalState, now: DateTime<Utc>, seed: &
                 }
                 @if show_password && let Some(password) = extra.password {
                     div(class = "password") {
-                        //TODO clef?
                         @for note in password {
                             : note.to_html();
                         }
@@ -418,7 +422,6 @@ pub(crate) async fn table_cell(global: &GlobalState, now: DateTime<Utc>, seed: &
                     }
                     @if show_password && let Some(password) = extra.password {
                         div(class = "password") {
-                            //TODO clef?
                             @for note in password {
                                 : note.to_html();
                             }
@@ -583,7 +586,15 @@ pub(crate) async fn get(global: &GlobalState, me: Option<User>, uri: Origin<'_>,
                 progression_spoiler: false,
             }.extra(global).await?;
             let spoiler_path = match extra.spoiler_status {
-                SpoilerStatus::UnlockedProgression => Path::new(DIR).join(format!("{file_stem}_Spoiler.json")), //TODO support compressed spoilers
+                SpoilerStatus::UnlockedProgression => {
+                    let mut spoiler_path = Path::new(DIR).join(format!("{file_stem}_Spoiler.json"));
+                    if fs::exists(&spoiler_path).await? {
+                        spoiler_path
+                    } else {
+                        spoiler_path.add_extension("zst");
+                        spoiler_path
+                    }
+                }
                 SpoilerStatus::Progression(locked_spoiler_log_path) => locked_spoiler_log_path,
                 SpoilerStatus::Unlocked | SpoilerStatus::Locked | SpoilerStatus::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
             };
