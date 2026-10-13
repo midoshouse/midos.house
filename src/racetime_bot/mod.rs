@@ -2385,7 +2385,13 @@ impl GlobalState {
                             last_error: Some(generation_error),
                         }),
                     },
-                    Err(wheel::Error::ResponseStatus { inner, .. }) if (attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until)) && inner.status().is_some_and(|status| status.is_server_error()) => continue,
+                    Err(ref e @ wheel::Error::ResponseStatus { ref inner, .. }) if (attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until)) && inner.status().is_some_and(|status| status.is_server_error()) => {
+                        let retry_in = Duration::from_secs(2u64.pow(attempts.min(6).into()));
+                        eprintln!("error response from triforceblitz.com, retrying in {}: {e}", unparse_duration(retry_in));
+                        eprintln!("debug info: {e:?}");
+                        sleep(retry_in).await;
+                        continue
+                    }
                     Err(e) => return Err(e.into()),
                 }
             };
