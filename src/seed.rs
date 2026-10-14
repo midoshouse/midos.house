@@ -242,7 +242,7 @@ impl Data {
             let log = if compressed {
                 let mut buf = Vec::default();
                 ZstdDecoder::new(BufReader::new(File::open(&spoiler_path).await?)).read_to_end(&mut buf).await.at(&spoiler_path)?;
-                serde_json::from_slice(&buf)?
+                String::from_utf8(buf)?
             } else {
                 fs::read_to_string(&spoiler_path).await?
             };
@@ -280,21 +280,12 @@ impl Data {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, IsNetworkError)]
 pub(crate) enum ExtraDataError {
-    #[error(transparent)] Json(#[from] serde_json::Error),
-    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] #[is_network_error = false] Json(#[from] serde_json::Error),
+    #[error(transparent)] #[is_network_error = false] Sql(#[from] sqlx::Error),
+    #[error(transparent)] #[is_network_error = false] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-}
-
-impl IsNetworkError for ExtraDataError {
-    fn is_network_error(&self) -> bool {
-        match self {
-            Self::Json(_) => false,
-            Self::Sql(_) => false,
-            Self::Wheel(e) => e.is_network_error(),
-        }
-    }
 }
 
 pub(crate) struct ExtraData {
