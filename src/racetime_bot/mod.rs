@@ -1659,7 +1659,7 @@ impl Goal {
             Self::RupeesOfTime => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime { password_lock: true }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::S10Test => {
                 let (week, settings) = match args {
-                    [] => (2, s::s10_test_settings_week3()), //TODO remove after event concludes
+                    [] => (3, s::s10_test_settings_week3()), //TODO remove after event concludes
                     [arg] if arg == "week1" => (1, s::s10_test_settings_week1()),
                     [arg] if arg == "week2" => (2, s::s10_test_settings_week2()),
                     [arg] if arg == "week3" => (3, s::s10_test_settings_week3()),
