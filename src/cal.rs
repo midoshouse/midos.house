@@ -3275,7 +3275,8 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         } else if me.is_some() {
             if global.config.startgg.is_some() {
-                let (races, skips) = startgg::races_to_import(&mut transaction, global, &event, event_slug).await?;
+                let (new_transaction, races, skips) = startgg::races_to_import(transaction, global, &event, event_slug).await?;
+                transaction = new_transaction;
                 if races.is_empty() {
                     html! {
                         article {
@@ -3411,7 +3412,8 @@ pub(crate) async fn import_races_post(global: &GlobalState, me: User, uri: Origi
                 Vec::default()
             }
             MatchSource::StartGG(event_slug) => {
-                let (races, skips) = startgg::races_to_import(&mut transaction, global, &event, event_slug).await?;
+                let (new_transaction, races, skips) = startgg::races_to_import(transaction, global, &event, event_slug).await?;
+                transaction = new_transaction;
                 if races.is_empty() {
                     if skips.is_empty() {
                         form.context.push_error(form::Error::validation("start.gg did not list any matches for this event."));
@@ -3591,36 +3593,10 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                     },
                     MatchSource::Scrubs(scrubs_id) => scrubs::import(global, &mut transaction, &event, scrubs_id).await?,
                     MatchSource::StartGG(event_slug) => if global.config.startgg.is_some() {
-                        loop {
-                            match startgg::races_to_import(&mut transaction, global, &event, event_slug).await {
-                                Ok((races, _)) => {
-                                    for race in races {
-                                        transaction = import_race(transaction, discord_ctx!(global), race).await?;
-                                    }
-                                    break
-                                }
-                                Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: _ }) => if let Some(auth_token) = &global.config.startgg {
-                                    let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, auth_token, startgg::team_members_query::Variables { entrant: entrant_id.clone() }).await?;
-                                    let startgg::team_members_query::ResponseData {
-                                        entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
-                                            participants: Some(participants),
-                                        }),
-                                    } = response else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no match on team members" }.into()) };
-                                    let Ok(startgg::team_members_query::TeamMembersQueryEntrantParticipants {
-                                        user: Some(startgg::team_members_query::TeamMembersQueryEntrantParticipantsUser { //TODO if user is None, this is a participant without a start.gg account, match on display name or DM Fenhl about connecting manually, don't return error
-                                            id: Some(user_id),
-                                        }),
-                                    }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no match on participants" }.into()) };
-                                    let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no associated MH user" }.into()) };
-                                    let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no associated MH team for this event" }.into()) };
-                                    sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant_id as _, team.id as _).execute(&mut *transaction).await?;
-                                    transaction.commit().await?;
-                                    transaction = global.db_pool.begin().await?;
-                                } else {
-                                    return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no start.gg auth token" }.into())
-                                },
-                                Err(e) => return Err(e.into()),
-                            }
+                        let (new_transaction, races, _) = startgg::races_to_import(transaction, global, &event, event_slug).await?;
+                        transaction = new_transaction;
+                        for race in races {
+                            transaction = import_race(transaction, discord_ctx!(global), race).await?;
                         }
                     } else {
                         println!("skipping start.gg race import due to missing access token");
