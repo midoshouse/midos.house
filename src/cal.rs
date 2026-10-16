@@ -2175,6 +2175,8 @@ pub(crate) enum Error {
         mh_event: String,
         startgg_event: String,
         entrant_id: startgg::ID,
+        #[allow(unused)] // debug repr only
+        context: &'static str,
     },
     #[error("Unqualified entrant ({racetime_id}) in event ({}/{event}) with SGL-style qualifiers", series.slug())]
     UnqualifiedEntrant {
@@ -3597,25 +3599,25 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                                     }
                                     break
                                 }
-                                Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }) => if let Some(auth_token) = &global.config.startgg {
+                                Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: _ }) => if let Some(auth_token) = &global.config.startgg {
                                     let response = startgg::query_cached::<startgg::TeamMembersQuery>(&global.http_client, auth_token, startgg::team_members_query::Variables { entrant: entrant_id.clone() }).await?;
                                     let startgg::team_members_query::ResponseData {
                                         entrant: Some(startgg::team_members_query::TeamMembersQueryEntrant {
                                             participants: Some(participants),
                                         }),
-                                    } = response else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
+                                    } = response else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no match on team members" }.into()) };
                                     let Ok(startgg::team_members_query::TeamMembersQueryEntrantParticipants {
                                         user: Some(startgg::team_members_query::TeamMembersQueryEntrantParticipantsUser { //TODO if user is None, this is a participant without a start.gg account, match on display name or DM Fenhl about connecting manually, don't return error
                                             id: Some(user_id),
                                         }),
-                                    }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
-                                    let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
-                                    let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into()) };
+                                    }) = participants.into_iter().filter_map(identity).exactly_one() else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no match on participants" }.into()) };
+                                    let Some(user) = User::from_startgg(&mut *transaction, user_id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no associated MH user" }.into()) };
+                                    let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await? else { return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no associated MH team for this event" }.into()) };
                                     sqlx::query!("UPDATE teams SET startgg_id = $1 WHERE id = $2", entrant_id as _, team.id as _).execute(&mut *transaction).await?;
                                     transaction.commit().await?;
                                     transaction = global.db_pool.begin().await?;
                                 } else {
-                                    return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id }.into())
+                                    return Err(Error::UnknownTeamStartGG { mh_series, mh_event, startgg_event, entrant_id, context: "no start.gg auth token" }.into())
                                 },
                                 Err(e) => return Err(e.into()),
                             }

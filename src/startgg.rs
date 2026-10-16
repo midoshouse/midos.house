@@ -330,12 +330,14 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
                     mh_event: event.event.to_string(),
                     startgg_event: event_slug.to_owned(),
                     entrant_id: team1.clone(),
+                    context: "team 1",
                 })?;
                 let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG {
                     mh_series: event.series,
                     mh_event: event.event.to_string(),
                     startgg_event: event_slug.to_owned(),
                     entrant_id: team2.clone(),
+                    context: "team 2",
                 })?;
                 let best_of = phase_group.as_ref()
                     .and_then(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
