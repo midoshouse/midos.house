@@ -6,6 +6,7 @@ ignore = [
     "RUSTSEC-2026-0104", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0346", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0349", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+    "RUSTSEC-2026-0382", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
 ]
 unmaintained = "none"
 
