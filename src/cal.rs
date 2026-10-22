@@ -1843,7 +1843,7 @@ impl Event {
 
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
         Ok(if let Some(goal) = racetime_bot::Goal::for_event(self.race.series, &self.race.event) && goal != racetime_bot::Goal::ScrubsS8 {
-            if self.race.series == Series::SpeedGaming && event.speedgaming_in_person_id.is_some()
+            if self.race.series == Series::SpeedGaming && (event.speedgaming_in_person_id.is_some() || self.race.event == "2026") //TODO support Wizzrobe (https://onsite.speedgaming.org/api/docs)
                 && let Some(race_start) = self.start()
                 && event.start(transaction).await?.is_some_and(|event_start| event_start <= race_start)
             {
