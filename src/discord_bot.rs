@@ -2637,9 +2637,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         let race_id = values.iter().exactly_one().expect("sgonsitedisambig interaction with unexpected payload").parse()?;
                         let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &global.http_client, race_id).await?, kind: cal::EventKind::Normal };
                         let event = cal_event.race.event(&mut transaction).await?;
-                        let Some(speedgaming_in_person_id) = event.speedgaming_in_person_id else { panic!("sgonsitedisambig interaction for race from non-SpeedGaming-on-site event") };
+                        let Some(speedgaming_in_person_id) = event.speedgaming_in_person_id else { panic!("sgonsitedisambig interaction for race from non-Wizzrobe event") };
                         let schedule = sgl::in_person_schedule(&global, speedgaming_in_person_id).await?;
-                        let schedule_match = schedule.into_iter().find(|schedule_match| schedule_match.id == speedgaming_id).expect("no such SpeedGaming on-site match ID");
+                        let schedule_match = schedule.into_iter().find(|schedule_match| schedule_match.id == speedgaming_id).expect("no such Wizzrobe match ID");
                         transaction = schedule_match.update_race(&global.db_pool, transaction, ctx, &event, &mut cal_event).await?;
                         cal_event.race.save(&mut transaction).await?;
                         transaction.commit().await?;

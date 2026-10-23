@@ -3754,7 +3754,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                             Ok(None) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
                                 if let Some(organizer_channel) = event.discord_organizer_channel {
                                     let mut msg = MessageBuilder::default();
-                                    msg.push("could not find any races matching SpeedGaming on-site match ");
+                                    msg.push("could not find any races matching Wizzrobe match ");
                                     msg.push_mono(schedule_match.id.to_string());
                                     if let Some(players) = NEVec::try_from_vec(schedule_match.players) {
                                         let (first, rest) = players.into_nonempty_iter().next();
@@ -3783,7 +3783,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                             Err(races) => if disambiguation_messages.binary_search(&schedule_match.id).is_err() {
                                 if let Some(organizer_channel) = event.discord_organizer_channel {
                                     let mut msg = MessageBuilder::default();
-                                    msg.push("found multiple races matching SpeedGaming on-site match ");
+                                    msg.push("found multiple races matching Wizzrobe match ");
                                     msg.push_mono(schedule_match.id.to_string());
                                     if let Some(players) = NEVec::try_from_vec(schedule_match.players) {
                                         let (first, rest) = players.into_nonempty_iter().next();

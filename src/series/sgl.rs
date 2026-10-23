@@ -358,7 +358,9 @@ pub(crate) async fn online_schedule(http_client: &reqwest::Client, event_slug: &
 pub(crate) struct InPersonMatch {
     pub(crate) id: i64,
     generated_seed: Option<GeneratedSeed>,
+    /// **Warning:** Incorrectly represented timestamp, claims to be in UTC but is actually in America/New_York, needs to be reinterpreted. Was claimed to be fixed for 2026 according to maintainer but still present in practice.
     scheduled_at: DateTime<Utc>,
+    /// Appears to be correct unlike `scheduled_at`.
     finished_at: Option<DateTime<Utc>>,
     pub(crate) players: Vec<InPersonPlayer>,
 }
@@ -409,16 +411,17 @@ impl InPersonMatch {
                 }
             }
             if !cal_event.race.has_any_room() { // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
+                let scheduled_at = self.scheduled_at.naive_local().and_local_timezone(America::New_York).single_ok()?.to_utc();
                 cal_event.race.source = match mem::replace(&mut cal_event.race.source, cal::Source::Manual) {
                     cal::Source::Manual | cal::Source::SpeedGamingInPerson { id: _ } => cal::Source::SpeedGamingInPerson { id: self.id },
                     cal::Source::StartGG { event, set } | cal::Source::StartGGSpeedGamingInPerson { event, set, id: _ } => cal::Source::StartGGSpeedGamingInPerson { event, set, id: self.id },
                     source => panic!("unexpected race source: {source:?}"),
                 };
                 let schedule_changed = match cal_event.race.schedule {
-                    RaceSchedule::Live { start, .. } => (start != self.scheduled_at).then_some(true),
+                    RaceSchedule::Live { start, .. } => (start != scheduled_at).then_some(true),
                     _ => Some(false),
                 };
-                cal_event.race.schedule.set_live_start(self.scheduled_at);
+                cal_event.race.schedule.set_live_start(scheduled_at);
                 if let Some(was_scheduled) = schedule_changed {
                     cal_event.race.save(&mut transaction).await?;
                     transaction.commit().await?;
@@ -426,16 +429,16 @@ impl InPersonMatch {
                     if let Some(thread) = cal_event.race.scheduling_thread {
                         let msg = if let French = event.language
                             && cal_event.race.game.is_none()
-                            && self.scheduled_at - Utc::now() >= TimeDelta::minutes(30)
+                            && scheduled_at - Utc::now() >= TimeDelta::minutes(30)
                         {
                             MessageBuilder::default()
                                 .push("Votre race a été planifiée pour le ")
-                                .push_timestamp(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
+                                .push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
                                 .push('.')
                                 .build()
                         } else {
                             let mut response_content = MessageBuilder::default();
-                            if self.scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                            if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
                                 for entrant in cal_event.active_entrants() {
                                     response_content.mention_entrant_long(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), entrant).await?;
                                     response_content.push(' ');
@@ -443,9 +446,9 @@ impl InPersonMatch {
                             }
                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                             response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                            response_content.push_timestamp(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
                             response_content.push('.');
-                            if self.scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                            if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
                                 response_content.push(" Please get your equipment and report to the tournament room.");
                             }
                             response_content.build()

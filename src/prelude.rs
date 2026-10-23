@@ -205,6 +205,7 @@ pub(crate) use {
             AsyncCommandOutputExt as _,
             IoResultExt as _,
             IsNetworkError,
+            LocalResultExt as _,
             ReqwestResponseExt as _,
             SendResultExt as _,
         },
