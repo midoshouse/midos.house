@@ -69,6 +69,11 @@ pub(crate) enum Source {
     SpeedGamingInPerson {
         id: i64,
     },
+    StartGGSpeedGamingInPerson {
+        event: String,
+        set: startgg::ID,
+        id: i64,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -668,6 +673,8 @@ impl Race {
         } else if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
             if let Some(id) = row.speedgaming_id {
                 Source::StartGGSpeedGamingOnline { event, set, id }
+            } else if let Some(id) = row.speedgaming_onsite_id {
+                Source::StartGGSpeedGamingInPerson { event, set, id }
             } else {
                 Source::StartGG { event, set }
             }
@@ -1137,7 +1144,7 @@ impl Race {
     }
 
     pub(crate) fn startgg_set_url(&self) -> Result<Option<Url>, url::ParseError> {
-        Ok(if let Source::StartGG { ref event, set: startgg::ID(ref set), .. } | Source::StartGGSpeedGamingOnline { ref event, set: startgg::ID(ref set), .. } = self.source {
+        Ok(if let Source::StartGG { ref event, set: startgg::ID(ref set), .. } | Source::StartGGSpeedGamingOnline { ref event, set: startgg::ID(ref set), .. } | Source::StartGGSpeedGamingInPerson { ref event, set: startgg::ID(ref set), .. } = self.source {
             Some(format!("https://start.gg/{event}/set/{set}").parse()?)
         } else {
             None
@@ -1145,7 +1152,7 @@ impl Race {
     }
 
     pub(crate) fn startgg_report_url(&self) -> Result<Option<Url>, url::ParseError> {
-        Ok(if let Source::StartGG { ref event, set: startgg::ID(ref set), .. } | Source::StartGGSpeedGamingOnline { ref event, set: startgg::ID(ref set), .. } = self.source {
+        Ok(if let Source::StartGG { ref event, set: startgg::ID(ref set), .. } | Source::StartGGSpeedGamingOnline { ref event, set: startgg::ID(ref set), .. } | Source::StartGGSpeedGamingInPerson { ref event, set: startgg::ID(ref set), .. } = self.source {
             Some(format!("https://start.gg/{event}/set/{set}/report").parse()?)
         } else {
             None
@@ -1428,6 +1435,7 @@ impl Race {
             Source::Sheet { timestamp } => (None, None, None, Some(timestamp), None, None, None, None),
             Source::StartGG { ref event, ref set } => (None, None, None, None, Some(event), Some(set), None, None),
             Source::StartGGSpeedGamingOnline { ref event, ref set, id } => (None, None, None, None, Some(event), Some(set), Some(id), None),
+            Source::StartGGSpeedGamingInPerson { ref event, ref set, id } => (None, None, None, None, Some(event), Some(set), None, Some(id)),
             Source::SpeedGamingOnline { id } => (None, None, None, None, None, None, Some(id), None),
             Source::SpeedGamingInPerson { id } => (None, None, None, None, None, None, None, Some(id)),
         };
@@ -3607,7 +3615,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                 let schedule = sgl::online_schedule(&global.http_client, speedgaming_slug).await.map_err(AutoImportError::SglOnlineSchedule)?;
                 let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
                 let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
-                unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
+                unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. } | Source::StartGGSpeedGamingInPerson { .. }));
                 existing_races.sort_unstable_by_key(|cal_event| {
                     let (Source::SpeedGamingOnline { id } | Source::StartGGSpeedGamingOnline { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
                     id
@@ -3716,10 +3724,10 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
             if let Some(tournament_id) = event.speedgaming_in_person_id {
                 let schedule = sgl::in_person_schedule(global, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
                 let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
-                let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
+                let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. } | Source::StartGGSpeedGamingInPerson { .. }));
                 unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
                 existing_races.sort_unstable_by_key(|cal_event| {
-                    let Source::SpeedGamingInPerson { id } = cal_event.race.source else { unreachable!("partitioned above") };
+                    let (Source::SpeedGamingInPerson { id } | Source::StartGGSpeedGamingInPerson { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
                     id
                 });
                 let disambiguation_messages = sqlx::query_scalar!(
@@ -3728,7 +3736,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                 ).fetch_all(&mut *transaction).await?;
                 for schedule_match in schedule {
                     if let Ok(idx) = existing_races.binary_search_by_key(&schedule_match.id, |cal_event| {
-                        let Source::SpeedGamingInPerson { id } = cal_event.race.source else { unreachable!("partitioned above") };
+                        let (Source::SpeedGamingInPerson { id } | Source::StartGGSpeedGamingInPerson { id, .. }) = cal_event.race.source else { unreachable!("partitioned above") };
                         id
                     }) {
                         // this match is already assigned to a race, update it in case it finished, got rescheduled, or its restream info got changed
@@ -4317,7 +4325,7 @@ pub(crate) async fn submit_async(global: &GlobalState, me: User, uri: Origin<'_>
                     if let Some(organizer_channel) = event.discord_organizer_channel {
                         let mut msg = MessageBuilder::default();
                         msg.push("asynced race finished with FPA call");
-                        if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, Source::StartGG { .. } | Source::StartGGSpeedGamingOnline { .. }) {
+                        if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, Source::StartGG { .. } | Source::StartGGSpeedGamingOnline { .. } | Source::StartGGSpeedGamingInPerson { .. }) {
                             msg.push(" — please manually ");
                             if let Some(results_channel) = event.discord_race_results_channel {
                                 msg.push("post the announcement in ");
@@ -4848,12 +4856,26 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
                     : id;
                 }
             }
+            Source::StartGGSpeedGamingInPerson { event, set: startgg::ID(set), id } => {
+                p {
+                    : "start.gg event: ";
+                    : event;
+                }
+                p {
+                    : "start.gg match: ";
+                    : set;
+                }
+                p {
+                    : "Wizzrobe match: ";
+                    : id;
+                }
+            }
             Source::SpeedGamingOnline { id } => p {
                 : "SpeedGaming match: ";
                 : id;
             }
             Source::SpeedGamingInPerson { id } => p {
-                : "SpeedGaming on-site match: ";
+                : "Wizzrobe match: ";
                 : id;
             }
         }

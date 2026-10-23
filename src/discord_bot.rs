@@ -1627,6 +1627,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     source: match race.source {
                                         cal::Source::SpeedGamingOnline { id: _ } | cal::Source::SpeedGamingInPerson { id: _ } => if reset_schedule { cal::Source::Manual } else { race.source },
                                         cal::Source::StartGGSpeedGamingOnline { event, set, id } => if reset_schedule { cal::Source::StartGG { event, set } } else { cal::Source::StartGGSpeedGamingOnline { event, set, id } },
+                                        cal::Source::StartGGSpeedGamingInPerson { event, set, id } => if reset_schedule { cal::Source::StartGG { event, set } } else { cal::Source::StartGGSpeedGamingInPerson { event, set, id } },
                                         _ => race.source,
                                     },
                                     schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },

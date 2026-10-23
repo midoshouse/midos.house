@@ -409,7 +409,11 @@ impl InPersonMatch {
                 }
             }
             if !cal_event.race.has_any_room() { // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
-                assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGamingInPerson { id: self.id }), cal::Source::Manual | cal::Source::SpeedGamingInPerson { id: _ }));
+                cal_event.race.source = match mem::replace(&mut cal_event.race.source, cal::Source::Manual) {
+                    cal::Source::Manual | cal::Source::SpeedGamingInPerson { id: _ } => cal::Source::SpeedGamingInPerson { id: self.id },
+                    cal::Source::StartGG { event, set } | cal::Source::StartGGSpeedGamingInPerson { event, set, id: _ } => cal::Source::StartGGSpeedGamingInPerson { event, set, id: self.id },
+                    source => panic!("unexpected race source: {source:?}"),
+                };
                 let schedule_changed = match cal_event.race.schedule {
                     RaceSchedule::Live { start, .. } => (start != self.scheduled_at).then_some(true),
                     _ => Some(false),

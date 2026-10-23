@@ -241,7 +241,7 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                 msg.push(" and ");
                 losing_room.format_discord(&mut msg, false);
             }
-            if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
+            if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. } | cal::Source::StartGGSpeedGamingInPerson { .. }) {
                 msg.push(" — please manually ");
                 if let Some(results_channel) = event.discord_race_results_channel {
                     msg.push("post the announcement in ");
@@ -382,7 +382,7 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                 if winning_room != losing_room {
                     builder.push(']');
                 }
-                if (event.manual_reporting_for_asyncs && winning_room != losing_room) && (event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. })) {
+                if (event.manual_reporting_for_asyncs && winning_room != losing_room) && (event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. } | cal::Source::StartGGSpeedGamingInPerson { .. })) {
                     builder.push(" — please manually ");
                     if let Some(results_channel) = event.discord_race_results_channel {
                         builder.push("post the announcement in ");
@@ -441,7 +441,7 @@ pub(crate) async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Po
                     }
                     None
                 }
-                cal::Source::StartGG { ref set, .. } | cal::Source::StartGGSpeedGamingOnline { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) | Entrant::MidosHouseTeamMember { team: Team { startgg_id: Some(winner_entrant_id), .. }, .. } = &winner {
+                cal::Source::StartGG { ref set, .. } | cal::Source::StartGGSpeedGamingOnline { ref set, .. } | cal::Source::StartGGSpeedGamingInPerson { ref set, .. } => if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) | Entrant::MidosHouseTeamMember { team: Team { startgg_id: Some(winner_entrant_id), .. }, .. } = &winner {
                     if let Some(game) = cal_event.race.game {
                         if let Some(access_token) = &global.config.startgg {
                             let startgg::set_scores_query::ResponseData {
@@ -694,7 +694,7 @@ impl Handler {
                 msg.push(racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');
-                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
+                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. } | cal::Source::StartGGSpeedGamingInPerson { .. }) {
                     msg.push(" — please manually ");
                     if let Some(results_channel) = event.discord_race_results_channel {
                         msg.push("post the announcement in ");
@@ -718,7 +718,7 @@ impl Handler {
                 msg.push(racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');
-                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
+                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. } | cal::Source::StartGGSpeedGamingInPerson { .. }) {
                     msg.push(" — please manually ");
                     if let Some(results_channel) = event.discord_race_results_channel {
                         msg.push("post the announcement in ");

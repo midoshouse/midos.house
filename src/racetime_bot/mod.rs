@@ -5738,7 +5738,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         msg.push(racetime_host());
                                         msg.push(&ctx.data().await.url);
                                         msg.push('>');
-                                        if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. }) {
+                                        if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. } | cal::Source::StartGGSpeedGamingOnline { .. } | cal::Source::StartGGSpeedGamingInPerson { .. }) {
                                             msg.push(" — please manually ");
                                             if let Some(results_channel) = event.discord_race_results_channel {
                                                 msg.push("post the announcement in ");
