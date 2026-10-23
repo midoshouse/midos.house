@@ -1365,7 +1365,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             let response_content = if was_scheduled.is_some() {
                                                 format!("Please contact a tournament organizer to reschedule this race.")
                                             } else {
-                                                format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
+                                                format!("Please use <https://onsite.speedgaming.org/> to schedule races for this event.")
                                             };
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
@@ -1855,7 +1855,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         let response_content = if was_scheduled.is_some() {
                                             format!("Please contact a tournament organizer to reschedule this race.")
                                         } else {
-                                            format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
+                                            format!("Please use <https://onsite.speedgaming.org/> to schedule races for this event.")
                                         };
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
@@ -2129,7 +2129,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         let response_content = if was_scheduled {
                                             format!("Please contact a tournament organizer to reschedule this race.")
                                         } else {
-                                            format!("Please use <https://onsite.speedgaming.org/?tab=Player> to schedule races for this event.")
+                                            format!("Please use <https://onsite.speedgaming.org/> to schedule races for this event.")
                                         };
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
@@ -2637,7 +2637,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                         let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &global.http_client, race_id).await?, kind: cal::EventKind::Normal };
                         let event = cal_event.race.event(&mut transaction).await?;
                         let Some(speedgaming_in_person_id) = event.speedgaming_in_person_id else { panic!("sgonsitedisambig interaction for race from non-SpeedGaming-on-site event") };
-                        let schedule = sgl::in_person_schedule(&global.http_client, speedgaming_in_person_id).await?;
+                        let schedule = sgl::in_person_schedule(&global, speedgaming_in_person_id).await?;
                         let schedule_match = schedule.into_iter().find(|schedule_match| schedule_match.id == speedgaming_id).expect("no such SpeedGaming on-site match ID");
                         transaction = schedule_match.update_race(&global.db_pool, transaction, ctx, &event, &mut cal_event).await?;
                         cal_event.race.save(&mut transaction).await?;
@@ -2792,9 +2792,9 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
                     }
                 }
                 SchedulingBackend::SpeedGamingInPerson => if game_count > 1 {
-                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
+                    content.push("<https://onsite.speedgaming.org/> to schedule your races.");
                 } else {
-                    content.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your race.");
+                    content.push("<https://onsite.speedgaming.org/> to schedule your race.");
                 },
             }
         }

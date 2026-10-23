@@ -36,6 +36,7 @@ pub(crate) struct Config {
     #[serde(rename = "startggOAuth")]
     pub(crate) startgg_oauth: ConfigOAuth,
     pub(crate) tfb_api_key: String,
+    pub(crate) wizzrobe_api_key: String,
 }
 
 impl Config {
@@ -90,6 +91,7 @@ impl Config {
                 client_secret: String::default(),
             },
             tfb_api_key: String::default(),
+            wizzrobe_api_key: String::default(),
         }
     }
 }

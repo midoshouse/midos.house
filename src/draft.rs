@@ -1474,7 +1474,7 @@ impl Draft {
                                         builder.push("/submit> to schedule your races.");
                                     }
                                     SchedulingBackend::SpeedGamingInPerson => {
-                                        builder.push("<https://onsite.speedgaming.org/?tab=Player> to schedule your races.");
+                                        builder.push("<https://onsite.speedgaming.org/> to schedule your races.");
                                     }
                                 }
                                 builder.build()

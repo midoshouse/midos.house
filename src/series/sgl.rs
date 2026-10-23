@@ -10,10 +10,12 @@ use {
 };
 
 /// Rate limit once per minute according to DMs with tsigma6
-const RATE_LIMIT: Duration = Duration::from_mins(1);
+const ONLINE_RATE_LIMIT: Duration = Duration::from_mins(1);
+/// 120 requests a minute according to <https://onsite.speedgaming.org/api/docs>
+const IN_PERSON_RATE_LIMIT: Duration = Duration::from_millis(500);
 
-static ONLINE_CACHE: LazyLock<Mutex<(Instant, OnlineSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, OnlineSchedule::default())));
-static IN_PERSON_CACHE: LazyLock<Mutex<(Instant, InPersonSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, InPersonSchedule::default())));
+static ONLINE_CACHE: LazyLock<Mutex<(Instant, OnlineSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + ONLINE_RATE_LIMIT, OnlineSchedule::default())));
+static IN_PERSON_CACHE: LazyLock<Mutex<(Instant, InPersonSchedule)>> = LazyLock::new(|| Mutex::new((Instant::now() + IN_PERSON_RATE_LIMIT, InPersonSchedule::default())));
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct RestreamMatch {
@@ -346,7 +348,7 @@ pub(crate) async fn online_schedule(http_client: &reqwest::Client, event_slug: &
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
-            *next_request = Instant::now() + RATE_LIMIT;
+            *next_request = Instant::now() + ONLINE_RATE_LIMIT;
         }
         Ok(cache.clone())
     })
@@ -356,9 +358,7 @@ pub(crate) async fn online_schedule(http_client: &reqwest::Client, event_slug: &
 pub(crate) struct InPersonMatch {
     pub(crate) id: i64,
     generated_seed: Option<GeneratedSeed>,
-    /// **Warning:** Incorrectly represented timestamp, claims to be in UTC but is actually in America/New_York, needs to be reinterpreted. Will be fixed for 2026 according to maintainer.
     scheduled_at: DateTime<Utc>,
-    /// Appears to be correct unlike `scheduled_at`.
     finished_at: Option<DateTime<Utc>>,
     pub(crate) players: Vec<InPersonPlayer>,
 }
@@ -409,13 +409,12 @@ impl InPersonMatch {
                 }
             }
             if !cal_event.race.has_any_room() { // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
-                let scheduled_at = self.scheduled_at.naive_local().and_local_timezone(America::New_York).single_ok()?.to_utc();
                 assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGamingInPerson { id: self.id }), cal::Source::Manual | cal::Source::SpeedGamingInPerson { id: _ }));
                 let schedule_changed = match cal_event.race.schedule {
-                    RaceSchedule::Live { start, .. } => (start != scheduled_at).then_some(true),
+                    RaceSchedule::Live { start, .. } => (start != self.scheduled_at).then_some(true),
                     _ => Some(false),
                 };
-                cal_event.race.schedule.set_live_start(scheduled_at);
+                cal_event.race.schedule.set_live_start(self.scheduled_at);
                 if let Some(was_scheduled) = schedule_changed {
                     cal_event.race.save(&mut transaction).await?;
                     transaction.commit().await?;
@@ -423,16 +422,16 @@ impl InPersonMatch {
                     if let Some(thread) = cal_event.race.scheduling_thread {
                         let msg = if let French = event.language
                             && cal_event.race.game.is_none()
-                            && scheduled_at - Utc::now() >= TimeDelta::minutes(30)
+                            && self.scheduled_at - Utc::now() >= TimeDelta::minutes(30)
                         {
                             MessageBuilder::default()
                                 .push("Votre race a été planifiée pour le ")
-                                .push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
+                                .push_timestamp(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
                                 .push('.')
                                 .build()
                         } else {
                             let mut response_content = MessageBuilder::default();
-                            if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                            if self.scheduled_at - Utc::now() < TimeDelta::minutes(30) {
                                 for entrant in cal_event.active_entrants() {
                                     response_content.mention_entrant_long(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), entrant).await?;
                                     response_content.push(' ');
@@ -440,9 +439,9 @@ impl InPersonMatch {
                             }
                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                             response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                            response_content.push_timestamp(scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push_timestamp(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
                             response_content.push('.');
-                            if scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                            if self.scheduled_at - Utc::now() < TimeDelta::minutes(30) {
                                 response_content.push(" Please get your equipment and report to the tournament room.");
                             }
                             response_content.build()
@@ -497,16 +496,17 @@ pub(crate) struct User {
 
 type InPersonSchedule = Vec<InPersonMatch>;
 
-pub(crate) async fn in_person_schedule(http_client: &reqwest::Client, tournament_id: i64) -> wheel::Result<InPersonSchedule> {
+pub(crate) async fn in_person_schedule(global: &GlobalState, tournament_id: i64) -> wheel::Result<InPersonSchedule> {
     lock!(cache = IN_PERSON_CACHE; {
         let (ref mut next_request, ref mut cache) = *cache;
         if *next_request <= Instant::now() {
-            *cache = http_client.get("https://onsite.speedgaming.org/api/matches")
-                .query(&[("tournament_id", tournament_id)])
+            *cache = global.http_client.get("https://onsite.speedgaming.org/api/matches")
+                .bearer_auth(&global.config.wizzrobe_api_key)
+                .query(&[("tournament_id", tournament_id), ("limit", 500)]) //TODO handle pagination if there are more than 500 matches (seems to be undocumented/missing)
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
-            *next_request = Instant::now() + RATE_LIMIT;
+            *next_request = Instant::now() + IN_PERSON_RATE_LIMIT;
         }
         Ok(cache.clone())
     })

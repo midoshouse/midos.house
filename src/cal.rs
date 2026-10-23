@@ -3714,7 +3714,7 @@ async fn auto_import_races_inner(global: &GlobalState, mut shutdown: rocket::Shu
                 }
             }
             if let Some(tournament_id) = event.speedgaming_in_person_id {
-                let schedule = sgl::in_person_schedule(&global.http_client, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
+                let schedule = sgl::in_person_schedule(global, tournament_id).await.map_err(AutoImportError::SglInPersonSchedule)?;
                 let races = Race::for_event(&mut transaction, &global.http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
                 let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGamingInPerson { .. }));
                 unassigned_races.retain(|cal_event| !matches!(cal_event.race.source, Source::SpeedGamingOnline { .. } | Source::StartGGSpeedGamingOnline { .. }));
