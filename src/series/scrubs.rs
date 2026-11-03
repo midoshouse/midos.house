@@ -143,7 +143,7 @@ struct Matches {
 #[serde(rename_all = "camelCase")]
 struct Match {
     id: Uuid,
-    scheduled_at: DateTime<Utc>,
+    scheduled_at: Option<DateTime<Utc>>,
     group: String,
     round: u32,
     racetime_room_url: Option<Url>,
@@ -279,10 +279,14 @@ pub(crate) async fn import(global: &GlobalState, transaction: &mut Transaction<'
             round: Some(scrubs_match.round.to_string()),
             game: None,
             scheduling_thread: None,
-            schedule: RaceSchedule::Live {
-                start: scrubs_match.scheduled_at,
-                end: None,
-                room: scrubs_match.racetime_room_url,
+            schedule: if let Some(start) = scrubs_match.scheduled_at {
+                RaceSchedule::Live {
+                    end: None,
+                    room: scrubs_match.racetime_room_url,
+                    start,
+                }
+            } else {
+                RaceSchedule::Unscheduled
             },
             schedule_updated_at: None,
             fpa_invoked: false,
