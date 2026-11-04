@@ -1,20 +1,13 @@
-use {
-    chrono::Days,
-    derive_more::{
-        Display,
-        FromStr,
+use crate::{
+    event::{
+        Data,
+        Error,
+        InfoError,
+        Tab,
+        enter,
     },
-    crate::{
-        event::{
-            Data,
-            Error,
-            InfoError,
-            Tab,
-            enter,
-        },
-        prelude::*,
-        series::pic::EnterFormDefaults,
-    },
+    prelude::*,
+    series::pic::EnterFormDefaults,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -38,33 +31,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         }),
         _ => None,
     })
-}
-
-#[derive(FromStr, Display, PartialEq, Eq, Hash, Sequence)]
-pub(crate) enum WeeklyKind {
-    Saturday,
-    Sunday,
-}
-
-impl WeeklyKind {
-    pub(crate) fn cal_id_part(&self) -> &'static str {
-        match self {
-            Self::Saturday => "sat",
-            Self::Sunday => "sun",
-        }
-    }
-
-    pub(crate) fn next_weekly_after(&self, min_time: DateTime<impl TimeZone>) -> DateTime<Utc> {
-        let mut time = match self {
-            //TODO which time zone's DST rules to follow?
-            Self::Saturday => Utc.with_ymd_and_hms(2026, 10, 3, 22, 0, 0).single().expect("wrong hardcoded datetime"),
-            Self::Sunday => Utc.with_ymd_and_hms(2026, 10, 4, 13, 0, 0).single().expect("wrong hardcoded datetime"),
-        };
-        while time <= min_time {
-            time = time.checked_add_days(Days::new(7)).unwrap();
-        }
-        time
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, FromFormField, UriDisplayQuery)]
