@@ -145,7 +145,8 @@ struct Match {
     id: Uuid,
     scheduled_at: Option<DateTime<Utc>>,
     group: String,
-    round: u32,
+    /// Negative for losers bracket
+    round: i32,
     racetime_room_url: Option<Url>,
     restream_url: Option<Url>,
     player1_racetime_id: String,
@@ -276,7 +277,11 @@ pub(crate) async fn import(global: &GlobalState, transaction: &mut Transaction<'
                 },
             ]),
             phase: Some(scrubs_match.group),
-            round: Some(scrubs_match.round.to_string()),
+            round: Some(if scrubs_match.round.is_negative() {
+                format!("Losers Round {}", scrubs_match.round.abs())
+            } else {
+                format!("Winners Round {}", scrubs_match.round)
+            }),
             game: None,
             scheduling_thread: None,
             schedule: if let Some(start) = scrubs_match.scheduled_at {
