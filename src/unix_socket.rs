@@ -367,13 +367,14 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, global: Arc<GlobalSta
                                 let mut subsystems = all::<Subsystem>().map(|subsystem| (subsystem, global.flow.subscribe(subsystem))).collect::<HashMap<_, _>>();
                                 eprintln!("getting initial subsystem states");
                                 for (subsystem, subscription) in &mut subsystems {
+                                    eprintln!("writing initial subsystem state for {subsystem:?}");
                                     Some(SubsystemStatusUpdate {
                                         subsystem: subsystem.to_string(),
                                         status: subscription.next().await.unwrap_or(SubsystemStatusKind::Crashed),
                                     }).write(&mut sock).await.expect("error writing to UNIX socket");
                                 }
                                 loop {
-                                    eprintln!("waiting for  subsystem state changes");
+                                    eprintln!("waiting for subsystem state changes");
                                     let mut subsystems = subsystems.iter_mut().map(|(subsystem, subscription)| subscription.next().map(move |res| (subsystem, res))).collect::<FuturesUnordered<_>>();
                                     select! {
                                         () = &mut shutdown => break,
