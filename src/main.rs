@@ -269,7 +269,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 if let Environment::Production = Environment::default() {
                     wheel::night_report(&format!("{}/autoImportError", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
                 }
-                flow::IMPORT_TASK_STATUS.send(SubsystemStatusKind::Crashed).allow_unreceived();
+                flow::update_import_task_status(SubsystemStatusKind::Crashed);
                 Ok(())
             }
         }));
