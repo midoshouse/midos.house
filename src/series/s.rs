@@ -2788,3 +2788,422 @@ pub(crate) fn s10_test_settings_week5() -> seed::Settings {
         format!("ice_trap_appearance") => json!("anything"),
     ]
 }
+
+pub(crate) fn s10_test_settings_week6() -> seed::Settings {
+    collect![
+        format!("user_message") => json!("S10 Testing Week 6"),
+        format!("password_lock") => json!(true),
+        format!("bridge") => json!("vanilla"),
+        format!("trials") => json!(0),
+        format!("shuffle_ganon_bosskey") => json!("medallions"),
+        format!("open_forest") => json!("closed_deku"),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!("open"),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => json!("random"),
+        format!("spawn_positions") => json!([
+            "child",
+        ]),
+        format!("free_bombchu_drops") => json!(false),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+        format!("shuffle_map") => json!("startwith"),
+        format!("shuffle_compass") => json!("startwith"),
+        format!("enhance_map_compass") => json!([
+            "map_dungeon_location",
+        ]),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_grottos_without_agony",
+            "logic_fewer_tunic_requirements",
+            "logic_rusted_switches",
+            "logic_man_on_roof",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_deku_b1_webs_with_bow",
+            "logic_dc_scarecrow_gs",
+            "logic_dc_jump",
+            "logic_lens_botw",
+            "logic_child_deadhand",
+            "logic_forest_vines",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_lens_gtg",
+            "logic_lens_castle",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("skip_reward_from_rauru") => json!("free"),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("scarecrow_behavior") => json!("fast"),
+        format!("fast_bunny_hood") => json!(true),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("fast_shadow_boat") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("hint_dist_user") => json!({
+            "name":                  "s10test_week6",
+            "gui_name":              "S10 Testing Week 6",
+            "description":           "Hint Distribution for S10 testing week 6",
+            "add_locations": [
+                {
+                    "location": "Sheik in Kakariko",
+                    "types": [
+                        "always",
+                    ],
+                },
+                {
+                    "location": "Deku Theater Skull Mask",
+                    "types": [
+                        "always",
+                    ],
+                },
+            ],
+            "remove_locations": [
+                {
+                    "location": "Song from Royal Familys Tomb",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "Sheik in Forest",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "Sheik at Temple",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "Sheik in Crater",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "Sheik in Ice Cavern",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "Sheik at Colossus",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "GF HBA 1500 Points",
+                    "types": [
+                        "sometimes",
+                    ],
+                },
+                {
+                    "location": "Graveyard Dampe Race Rewards",
+                    "types": [
+                        "dual",
+                    ],
+                },
+                {
+                    "location": "Graveyard Royal Family Tomb Contents",
+                    "types": [
+                        "dual",
+                    ],
+                },
+                {
+                    "location": "Ice Cavern Final Room",
+                    "types": [
+                        "dual",
+                    ],
+                },
+            ],
+            "add_items": [],
+            "remove_items": [
+                {
+                    "item": "Zeldas Lullaby",
+                    "types": [
+                        "goal",
+                    ],
+                },
+            ],
+            "misc_hint_items": {
+                "dampe_diary": "Light Arrows",
+            },
+            "dungeons_barren_limit": 1,
+            "one_hint_per_goal": true,
+            "named_items_required": true,
+            "vague_named_items": false,
+            "use_default_goals": false,
+            "custom_goals": [
+                {
+                    "category": "rainbow_bridge",
+                    "priority": 10,
+                    "minimum_goals": 2,
+                    "lock_entrances": [
+                        "Ganons Castle Ledge -> Ganons Castle Lobby",
+                    ],
+                    "goals": [
+                        {
+                            "name": "Shadow Medallion",
+                            "hint_text": "path of the #Shadow Medallion#",
+                            "color": "Pink",
+                            "items": [
+                                {
+                                    "name": "Shadow Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "Spirit Medallion",
+                            "hint_text": "path of the #Spirit Medallion#",
+                            "color": "Yellow",
+                            "items": [
+                                {
+                                    "name": "Spirit Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "category": "ganon_bosskey",
+                    "priority": 20,
+                    "minimum_goals": 6,
+                    "lock_entrances": [],
+                    "goals": [
+                        {
+                            "name": "Forest Medallion",
+                            "hint_text": "path of the #Forest Medallion#",
+                            "color": "Green",
+                            "items": [
+                                {
+                                    "name": "Forest Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "Fire Medallion",
+                            "hint_text": "path of the #Fire Medallion#",
+                            "color": "Red",
+                            "items": [
+                                {
+                                    "name": "Fire Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "Water Medallion",
+                            "hint_text": "path of the #Water Medallion#",
+                            "color": "Blue",
+                            "items": [
+                                {
+                                    "name": "Water Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "Shadow Medallion",
+                            "hint_text": "path of the #Shadow Medallion#",
+                            "color": "Pink",
+                            "items": [
+                                {
+                                    "name": "Shadow Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "Spirit Medallion",
+                            "hint_text": "path of the #Spirit Medallion#",
+                            "color": "Yellow",
+                            "items": [
+                                {
+                                    "name": "Spirit Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                        {
+                            "name": "Light Medallion",
+                            "hint_text": "path of the #Light Medallion#",
+                            "color": "Light Blue",
+                            "items": [
+                                {
+                                    "name": "Light Medallion",
+                                    "quantity": 1,
+                                    "minimum": 1,
+                                    "hintable": false,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+            "distribution": {
+                "trial": {
+                    "order": 1,
+                    "weight": 0.0,
+                    "fixed": 0,
+                    "copies": 0,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "always": {
+                    "order": 2,
+                    "weight": 0.0,
+                    "fixed": 5,
+                    "copies": 2,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "goal": {
+                    "order": 3,
+                    "weight": 0.0,
+                    "fixed": 4,
+                    "copies": 2,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "barren": {
+                    "order": 4,
+                    "weight": 0.0,
+                    "fixed": 3,
+                    "copies": 2,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "important_check": {
+                    "order": 5,
+                    "weight": 0.0,
+                    "fixed": 0,
+                    "copies": 0,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "song": {
+                    "order": 6,
+                    "weight": 0.0,
+                    "fixed": 0,
+                    "copies": 0,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "dual": {
+                    "order": 7,
+                    "weight": 0.0,
+                    "fixed": 2,
+                    "copies": 2,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "sometimes": {
+                    "order": 8,
+                    "weight": 0.0,
+                    "fixed": 4,
+                    "copies": 2,
+                    "remove_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+                "junk": {
+                    "order": 9,
+                    "weight": 1.0,
+                    "fixed": 0,
+                    "copies": 1,
+                    "priority_stones": [
+                        "LH (Southeast Corner)",
+                        "LH (Southwest Corner)",
+                        "HF (Cow Grotto)",
+                        "HC (Storms Grotto)",
+                    ],
+                },
+            },
+        }),
+        format!("misc_hints") => json!([
+            "altar",
+            "dampe_diary",
+            "warp_songs_and_owls",
+            "30_skulltulas",
+            "40_skulltulas",
+            "50_skulltulas",
+        ]),
+        format!("correct_chest_appearances") => json!("both"),
+        format!("correct_potcrate_appearances") => json!("off"),
+        format!("blue_fire_arrows") => json!(true),
+        format!("tcg_requires_lens") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("anything"),
+        format!("password_lock") => json!(true),
+    ]
+}

@@ -857,7 +857,7 @@ impl Goal {
             Self::S6 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 0) },
             Self::S7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::S8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
-            Self::S10Test => VersionedBranch::Latest { branch: rando::Branch::Dev },
+            Self::S10Test => VersionedBranch::Pinned { version: rando::Version::from_dev(9, 1, 40) },
             Self::ScrubsS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 175) },
             Self::ScrubsS6 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::ScrubsS7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 64) },
@@ -925,7 +925,7 @@ impl Goal {
             Self::S6 => Some(s::s6_settings()),
             Self::S7 => None, // settings draft
             Self::S8 => Some(s::s8_settings()),
-            Self::S10Test => Some(s::s10_test_settings_week5()),
+            Self::S10Test => Some(s::s10_test_settings_week6()),
             Self::ScrubsS5 => Some(scrubs::s5_settings()),
             Self::ScrubsS6 => Some(scrubs::s6_settings()),
             Self::ScrubsS7 => Some(scrubs::s7_settings()),
@@ -1069,6 +1069,7 @@ impl Goal {
                 ctx.say("!seed week2: Week 2's settings").await?;
                 ctx.say("!seed week3: Week 3's settings").await?;
                 ctx.say("!seed week4: Week 4's settings").await?;
+                ctx.say("!seed week5: Week 5's settings").await?;
             }
             Self::SlugOpen2026 => for format in all::<sco::Format>() {
                 match format.draft_kind() {
@@ -1661,12 +1662,13 @@ impl Goal {
             Self::RupeesOfTime => SeedCommandParseResult::Rsl { preset: rsl::VersionedPreset::RupeesOfTime { password_lock: true }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::S10Test => {
                 let (week, settings) = match args {
-                    [] => (5, s::s10_test_settings_week5()), //TODO remove after event concludes
+                    [] => (6, s::s10_test_settings_week6()), //TODO remove after event concludes
                     [arg] if arg == "week1" => (1, s::s10_test_settings_week1()),
                     [arg] if arg == "week2" => (2, s::s10_test_settings_week2()),
                     [arg] if arg == "week3" => (3, s::s10_test_settings_week3()),
                     [arg] if arg == "week4" => (4, s::s10_test_settings_week4()),
                     [arg] if arg == "week5" => (5, s::s10_test_settings_week5()),
+                    [arg] if arg == "week6" => (6, s::s10_test_settings_week6()),
                     [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
                     [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
                 };
@@ -4136,7 +4138,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 "Welcome! This is a practice room for Standard Tournament Season 10 testing. Learn more about the event at https://midos.house/event/s/10test",
                                 true,
                                 vec![
-                                    ("Roll seed (week 5)", ActionButton::Message {
+                                    ("Roll seed (week 6)", ActionButton::Message {
                                         message: format!("!seed"),
                                         help_text: Some(format!("Create a seed with the current test settings.")),
                                         survey: None,
@@ -4153,7 +4155,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 help_text: None,
                                                 kind: SurveyQuestionKind::Select,
                                                 placeholder: None,
-                                                options: (1..5).map(|week| (week.to_string(), week.to_string())).collect(),
+                                                options: (1..6).map(|week| (week.to_string(), week.to_string())).collect(),
                                             },
                                         ]),
                                         submit: Some(format!("Roll")),
