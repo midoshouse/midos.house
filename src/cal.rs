@@ -4736,7 +4736,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
         h2 : "Edit race";
         @match race.source {
             Source::Manual => p : "Source: Manually added";
-            Source::Challonge { id } => p {
+            Source::Challonge { ref id } => p {
                 : "Challonge match: ";
                 : id;
             }
@@ -4750,10 +4750,10 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
             }
             Source::Sheet { timestamp } => p {
                 : "Google Form submission timestamp: ";
-                : timestamp.strftime("%d/%m/%Y %H:%M:%S").to_string();
+                : timestamp.strftime("%A, %B %-d, %Y, %H:%M:%S").to_string();
                 : " (unknown time zone)";
             }
-            Source::StartGG { event, set: startgg::ID(set) } => {
+            Source::StartGG { ref event, set: startgg::ID(ref set) } => {
                 p {
                     : "start.gg event: ";
                     : event;
@@ -4763,7 +4763,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
                     : set;
                 }
             }
-            Source::StartGGSpeedGamingOnline { event, set: startgg::ID(set), id } => {
+            Source::StartGGSpeedGamingOnline { ref event, set: startgg::ID(ref set), id } => {
                 p {
                     : "start.gg event: ";
                     : event;
@@ -4777,7 +4777,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
                     : id;
                 }
             }
-            Source::StartGGSpeedGamingInPerson { event, set: startgg::ID(set), id } => {
+            Source::StartGGSpeedGamingInPerson { ref event, set: startgg::ID(ref set), id } => {
                 p {
                     : "start.gg event: ";
                     : event;
@@ -4828,13 +4828,13 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
                 }
             }
         }
-        @if let Some(phase) = race.phase {
+        @if let Some(phase) = &race.phase {
             p {
                 : "Phase: ";
                 : phase;
             }
         }
-        @if let Some(round) = race.round {
+        @if let Some(round) = &race.round {
             p {
                 : "Round: ";
                 : round;
@@ -4850,12 +4850,12 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
             RaceSchedule::Unscheduled => p : "Not yet scheduled";
             RaceSchedule::Live { start, end, room: _ } => {
                 p {
-                    : "Start: ";
+                    : "Scheduled starting time: ";
                     : format_datetime(start, DateTimeFormat { long: true, running_text: false });
                 }
                 @if let Some(end) = end {
                     p {
-                        : "End: ";
+                        : "Ended at: ";
                         : format_datetime(end, DateTimeFormat { long: true, running_text: false });
                     }
                 } else {
@@ -4865,33 +4865,33 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
             RaceSchedule::Async { start1, start2, start3, end1, end2, end3, room1: _, room2: _, room3: _ } => {
                 @if let Some(start1) = start1 {
                     p {
-                        : "Start (team A): ";
+                        : "Scheduled starting time (team A): ";
                         : format_datetime(start1, DateTimeFormat { long: true, running_text: false });
                     }
                 } else {
-                    p : "Team A not yet started";
+                    p : "Team A not yet scheduled";
                 }
                 @if let Some(start2) = start2 {
                     p {
-                        : "Start (team B): ";
+                        : "Scheduled starting time (team B): ";
                         : format_datetime(start2, DateTimeFormat { long: true, running_text: false });
                     }
                 } else {
-                    p : "Team B not yet started";
+                    p : "Team B not yet scheduled";
                 }
                 @if let Entrants::Three(_) = race.entrants {
                     @if let Some(start3) = start3 {
                         p {
-                            : "Start (team C): ";
+                            : "Scheduled starting time (team C): ";
                             : format_datetime(start3, DateTimeFormat { long: true, running_text: false });
                         }
                     } else {
-                        p : "Team C not yet started";
+                        p : "Team C not yet scheduled";
                     }
                 }
                 @if let Some(end1) = end1 {
                     p {
-                        : "End (team A): ";
+                        : "Ended at (team A): ";
                         : format_datetime(end1, DateTimeFormat { long: true, running_text: false });
                     }
                 } else {
@@ -4899,7 +4899,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
                 }
                 @if let Some(end2) = end2 {
                     p {
-                        : "End (team B): ";
+                        : "Ended at (team B): ";
                         : format_datetime(end2, DateTimeFormat { long: true, running_text: false });
                     }
                 } else {
@@ -4908,11 +4908,88 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
                 @if let Entrants::Three(_) = race.entrants {
                     @if let Some(end3) = end3 {
                         p {
-                            : "End (team C): ";
+                            : "Ended at (team C): ";
                             : format_datetime(end3, DateTimeFormat { long: true, running_text: false });
                         }
                     } else {
                         p : "Team C not yet ended (will be updated automatically from the racetime.gg room, if any)";
+                    }
+                }
+                @if race.teams().next().is_some() && let Some(me) = &me && event.organizers(&mut transaction).await?.contains(me) {
+                    p : "Async form data:";
+                    ol {
+                        @for team in race.teams() {
+                            li {
+                                : team.to_html(&mut transaction, false).await?;
+                                : ": ";
+                                @if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested: jiff_sqlx::Timestamp", submitted AS "submitted: jiff_sqlx::Timestamp", fpa, pieces FROM race_async_teams WHERE race = $1 AND team = $2"#, race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
+                                    li {
+                                        : "requested at ";
+                                        : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: false });
+                                        @if let Some(submitted) = team_row.submitted {
+                                            : ", submitted at ";
+                                            : format_datetime(submitted, DateTimeFormat { long: true, running_text: false });
+                                        } else {
+                                            : ", not yet submitted";
+                                        }
+                                        @if team_row.fpa.is_some() {
+                                            : ", FPA called"; //TODO show text?
+                                        } else {
+                                            : ", no FPA called";
+                                        }
+                                        @if let Some(pieces) = team_row.pieces {
+                                            @if pieces == 1 {
+                                                : ", 1 Triforce piece found";
+                                            } else {
+                                                : ", ";
+                                                : pieces;
+                                                : " Triforce pieces found";
+                                            }
+                                        }
+                                        ul {
+                                            @let members = team.member_ids(&mut transaction).await?;
+                                            @let member_rows = sqlx::query!(
+                                                r#"SELECT player AS "player: Id<Users>", vod, time FROM race_async_players WHERE race = $1 AND player = ANY($2)"#,
+                                                race.id as _,
+                                                &members.iter().map(|member_id| i64::from(*member_id)).collect_vec(),
+                                            ).fetch_all(&mut *transaction).await?;
+                                            @for member_row in member_rows {
+                                                li {
+                                                    : User::from_id(&mut *transaction, member_row.player).await?.expect("nonexistent user returned from database");
+                                                    @if let Some(time) = member_row.time {
+                                                        : ": finish time: ";
+                                                        : unparse_duration(decode_pginterval(time)?);
+                                                    } else {
+                                                        : ": DNF";
+                                                    }
+                                                    @if let Some(vod) = member_row.vod {
+                                                        @if vod.split(' ').count() == 1 {
+                                                            : ", VoD:";
+                                                        } else {
+                                                            : ", VoDs:";
+                                                        }
+                                                        @for word in vod.split(' ') {
+                                                            : " ";
+                                                            @if let Ok(word_url) = Url::parse(word) {
+                                                                a(href = word_url.to_string()) : word;
+                                                            } else {
+                                                                : word;
+                                                            }
+                                                        }
+                                                    } else {
+                                                        : ", no VoD";
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    li {
+                                        : "not yet requested";
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
