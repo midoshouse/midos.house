@@ -5837,7 +5837,12 @@ impl RaceHandler<GlobalState> for Handler {
     }
 }
 
-pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String, Option<CreateAllowedMentions>)>, Error> {
+pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, global: &Arc<GlobalState>, host_info: &racetime::HostInfo, cal_event: &mut cal::Event, event: &event::Data<'_>, reason: impl fmt::Display) -> Result<Option<(bool, String, Option<CreateAllowedMentions>)>, Error> {
+    println!("creating room for {}, reason: {reason}", {
+        let mut msg_builder = MessageBuilder::default();
+        cal_event.format_discord(&mut *transaction, None, English, &mut msg_builder).await?;
+        msg_builder.build()
+    }); //DEBUG investigating duplicate rooms being created for some league/10 races
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await? {
         RaceHandleMode::None => {
             if let Some(start) = cal_event.start() && let Some(end) = cal_event.end_mut() {
@@ -6335,7 +6340,7 @@ async fn create_rooms(global: Arc<GlobalState>, mut shutdown: rocket::Shutdown) 
                     let mut transaction = global.db_pool.begin().await?;
                     for mut cal_event in cal::Event::rooms_to_open(&mut transaction, &global.http_client).await? {
                         let event = cal_event.race.event(&mut transaction).await?;
-                        if let Some((is_room_url, msg, allowed_mentions)) = create_room(&mut transaction, &global, &racetime_host_info(), &mut cal_event, &event).await? {
+                        if let Some((is_room_url, msg, allowed_mentions)) = create_room(&mut transaction, &global, &racetime_host_info(), &mut cal_event, &event, "create_rooms").await? {
                             let ctx = discord_ctx!(global);
                             if is_room_url && cal_event.is_private_async_part() {
                                 let msg = match cal_event.race.entrants {

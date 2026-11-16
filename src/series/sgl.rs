@@ -198,7 +198,7 @@ impl Restream {
                         )
                     };
                     lock!(new_room_lock = global.new_room_lock; {
-                        if let Some((_, msg, allowed_mentions)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, cal_event, &event).await? {
+                        if let Some((_, msg, allowed_mentions)) = racetime_bot::create_room(&mut transaction, &global, &racetime_host, cal_event, &event, "sgl::Restream::update_race").await? {
                             if let Some(channel) = event.discord_race_room_channel {
                                 if let Some(thread) = cal_event.race.scheduling_thread {
                                     thread.send_message(discord_ctx, {
