@@ -616,10 +616,10 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
     Ok(())
 }
 
-fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
+fn parse_timestamp(timestamp: &str) -> Option<Timestamp> {
     regex_captures!("^<t:(-?[0-9]+)(?::[tTdDfFR])?>$", timestamp)
         .and_then(|(_, timestamp)| timestamp.parse().ok())
-        .and_then(|timestamp| Utc.timestamp_opt(timestamp, 0).single())
+        .and_then(|timestamp| Timestamp::from_second(timestamp).ok())
 }
 
 pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global: Arc<GlobalState>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
@@ -1294,9 +1294,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                     };
                                     match event.scheduling_backend(&mut transaction).await? {
                                         SchedulingBackend::MidosHouse => if team.is_some() || is_organizer {
-                                            let start = Utc::now() + TimeDelta::minutes(15);
+                                            let start = Timestamp::now() + SignedDuration::from_mins(15);
                                             race.schedule.set_live_start(start);
-                                            race.schedule_updated_at = Some(Utc::now());
+                                            race.schedule_updated_at = Some(Timestamp::now());
                                             let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                             let (global, racetime_host) = {
                                                 let data = ctx.data.read().await;
@@ -1322,7 +1322,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     let mut response_content = MessageBuilder::default();
                                                     response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                                                     response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
-                                                    response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    response_content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                     let response_content = response_content
                                                         .push(". The race room will be opened momentarily.")
                                                         .build();
@@ -1631,7 +1631,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                         _ => race.source,
                                     },
                                     schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
-                                    schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
+                                    schedule_updated_at: if reset_schedule { Some(Timestamp::now()) } else { race.schedule_updated_at },
                                     fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
                                     seed: if reset_schedule { seed::Data::default() } else { race.seed },
                                     video_urls: if reset_schedule { HashMap::default() } else { race.video_urls },
@@ -1695,7 +1695,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                             _ => panic!("unexpected slash command option type"),
                                         };
                                         if let Some(start) = parse_timestamp(start) {
-                                            if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                            if Duration::try_from(start - Timestamp::now()).map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
                                                     .content(if event.min_schedule_notice <= Duration::default() {
@@ -1715,7 +1715,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                 transaction.rollback().await?;
                                             } else {
                                                 race.schedule.set_live_start(start);
-                                                race.schedule_updated_at = Some(Utc::now());
+                                                race.schedule_updated_at = Some(Timestamp::now());
                                                 let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                                 if let Some(was_scheduled) = was_scheduled && event.series == Series::Standard && event.event == "9" {
                                                     let mut content = MessageBuilder::default();
@@ -1723,13 +1723,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     content.push(" was rescheduled");
                                                     if let Some(old_start) = was_scheduled {
                                                         content.push(" from ");
-                                                        content.push_timestamp(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        content.push_timestamp_jiff(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                     }
                                                     content.push(" to ");
-                                                    content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                     S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
                                                 }
-                                                if start - Utc::now() < TimeDelta::minutes(30) {
+                                                if start - Timestamp::now() < SignedDuration::from_mins(30) {
                                                     let (global, racetime_host) = {
                                                         let data = ctx.data.read().await;
                                                         (
@@ -1754,7 +1754,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                             let mut response_content = MessageBuilder::default();
                                                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                                                             response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
-                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                            response_content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             let response_content = response_content
                                                                 .push(". The race room will be opened momentarily.")
                                                                 .build();
@@ -1770,11 +1770,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     cal_event.race.save(&mut transaction).await?;
                                                     let overlapping_maintenance_windows = match cal_event.should_create_room(&mut transaction, &event).await? {
                                                         RaceHandleMode::None | RaceHandleMode::Notify => Vec::default(),
-                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end_time: jiff_sqlx::Timestamp", kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, (start + cal_event.estimated_duration()).to_sqlx() as _, (start - SignedDuration::from_mins(30)).to_sqlx() as _)
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
-                                                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end_time: jiff_sqlx::Timestamp", kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, (start + cal_event.estimated_duration()).to_sqlx() as _, (start - SignedDuration::from_mins(30)).to_sqlx() as _)
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
@@ -1786,14 +1786,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     {
                                                         MessageBuilder::default()
                                                             .push("Votre race a été planifiée pour le ")
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push('.')
                                                             .build()
                                                     } else {
                                                         let mut response_content = MessageBuilder::default();
                                                         response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                                                         response_content.push(if was_scheduled.is_some() { " has been rescheduled for " } else { " is now scheduled for " });
-                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        response_content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                         response_content.push('.');
                                                         for (window, kind) in overlapping_maintenance_windows {
                                                             response_content.push_line("");
@@ -1801,9 +1801,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                             response_content.push(" this race may overlap with ");
                                                             response_content.push(kind.to_string());
                                                             response_content.push(" maintenance planned for ");
-                                                            response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push_timestamp_jiff(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
                                                             response_content.push(" until ");
-                                                            response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push_timestamp_jiff(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
                                                             response_content.push('.');
                                                         }
                                                         response_content.build()
@@ -1888,7 +1888,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     .content("Sorry, Bingo races cannot be asynced.")
                                                 )).await?;
                                                 transaction.rollback().await?;
-                                            } else if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                            } else if Duration::try_from(start - Timestamp::now()).map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
                                                     .content(if event.min_schedule_notice <= Duration::default() {
@@ -1912,11 +1912,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     Entrants::Two([Entrant::MidosHouseTeam(ref team1) | Entrant::MidosHouseTeamMember { team: ref team1, .. }, Entrant::MidosHouseTeam(ref team2) | Entrant::MidosHouseTeamMember { team: ref team2, .. }]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
                                                             race.schedule.set_async_start1(start);
-                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            race.schedule_updated_at = Some(Timestamp::now());
                                                             cal::EventKind::Async1
                                                         } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                             race.schedule.set_async_start2(start);
-                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            race.schedule_updated_at = Some(Timestamp::now());
                                                             cal::EventKind::Async2
                                                         } else {
                                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1930,15 +1930,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     Entrants::Three([Entrant::MidosHouseTeam(ref team1) | Entrant::MidosHouseTeamMember { team: ref team1, .. }, Entrant::MidosHouseTeam(ref team2) | Entrant::MidosHouseTeamMember { team: ref team2, .. }, Entrant::MidosHouseTeam(ref team3) | Entrant::MidosHouseTeamMember { team: ref team3, .. }]) => {
                                                         if team.as_ref().is_some_and(|team| team1 == team) {
                                                             race.schedule.set_async_start1(start);
-                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            race.schedule_updated_at = Some(Timestamp::now());
                                                             cal::EventKind::Async1
                                                         } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                             race.schedule.set_async_start2(start);
-                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            race.schedule_updated_at = Some(Timestamp::now());
                                                             cal::EventKind::Async2
                                                         } else if team.as_ref().is_some_and(|team| team3 == team) {
                                                             race.schedule.set_async_start3(start);
-                                                            race.schedule_updated_at = Some(Utc::now());
+                                                            race.schedule_updated_at = Some(Timestamp::now());
                                                             cal::EventKind::Async3
                                                         } else {
                                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1956,11 +1956,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     let mut content = MessageBuilder::default();
                                                     cal_event.format_discord(&mut transaction, Some(OOTR_GUILD), English, &mut content).await?;
                                                     content.push(" was rescheduled from ");
-                                                    content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                     content.push(" to async");
                                                     S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
                                                 }
-                                                if start - Utc::now() < TimeDelta::minutes(30) {
+                                                if start - Timestamp::now() < SignedDuration::from_mins(30) {
                                                     let (global, racetime_host) = {
                                                         let data = ctx.data.read().await;
                                                         (
@@ -2009,7 +2009,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                                 },
                                                             };
                                                             response_content.push(if is_reschedule { " has been rescheduled for " } else { " is now scheduled for " });
-                                                            response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                            response_content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                             let response_content = response_content
                                                                 .push(". The race room will be opened momentarily.")
                                                                 .build();
@@ -2025,11 +2025,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     cal_event.race.save(&mut transaction).await?;
                                                     let overlapping_maintenance_windows = match cal_event.should_create_room(&mut transaction, &event).await? {
                                                         RaceHandleMode::None | RaceHandleMode::Notify => Vec::default(),
-                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end_time: jiff_sqlx::Timestamp", kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, (start + cal_event.estimated_duration()).to_sqlx() as _, (start - SignedDuration::from_mins(30)).to_sqlx() as _)
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
-                                                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, start + cal_event.estimated_duration(), start - TimeDelta::minutes(30))
+                                                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end_time: jiff_sqlx::Timestamp", kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, (start + cal_event.estimated_duration()).to_sqlx() as _, (start - SignedDuration::from_mins(30)).to_sqlx() as _)
                                                             .fetch(&mut *transaction)
                                                             .map_ok(|row| (row.start..row.end_time, row.kind))
                                                             .try_collect().await?,
@@ -2041,7 +2041,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     {
                                                         MessageBuilder::default()
                                                             .push("La partie de votre async a été planifiée pour le ")
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push('.')
                                                             .build()
                                                     } else {
@@ -2059,7 +2059,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                             },
                                                         };
                                                         response_content.push(if is_reschedule { " has been rescheduled for " } else { " is now scheduled for " });
-                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        response_content.push_timestamp_jiff(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                         response_content.push('.');
                                                         for (window, kind) in overlapping_maintenance_windows {
                                                             response_content.push_line("");
@@ -2071,9 +2071,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                             }
                                                             response_content.push(kind.to_string());
                                                             response_content.push(" maintenance planned for ");
-                                                            response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push_timestamp_jiff(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
                                                             response_content.push(" until ");
-                                                            response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                                            response_content.push_timestamp_jiff(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
                                                             response_content.push('.');
                                                         }
                                                         response_content.build()
@@ -2181,7 +2181,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, global
                                                     let mut content = MessageBuilder::default();
                                                     cal_event.format_discord(&mut transaction, Some(OOTR_GUILD), English, &mut content).await?;
                                                     content.push(" (previous starting time: ");
-                                                    content.push_timestamp(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                    content.push_timestamp_jiff(old_start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                     content.push(") was removed from the schedule");
                                                     S9_RESTREAM_PLANNING.say(ctx, content.build()).await?;
                                                 }

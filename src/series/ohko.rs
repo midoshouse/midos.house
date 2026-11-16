@@ -28,7 +28,7 @@ pub(crate) fn s1_enter_form() -> RawHtml<String> {
         article {
             p {
                 : "To enter this tournament, either join the live qualifier on ";
-                : format_datetime(Utc.with_ymd_and_hms(2024, 3, 9, 19, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                : format_datetime(date(2024, 3, 9).at(19, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                 : " or play the qualifier async (see ";
                 a(href = "https://discord.com/channels/274180765816848384/1208046928504553483/1213524850627317830") : "this Discord message";
                 : " for details).";

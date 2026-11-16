@@ -135,15 +135,15 @@ impl Series {
         }
     }
 
-    pub(crate) fn default_race_duration(&self) -> TimeDelta {
+    pub(crate) fn default_race_duration(&self) -> Duration {
         match self {
-            Self::EscapeFromKakariko => TimeDelta::minutes(40),
-            Self::SpoilerLog | Self::TriforceBlitz => TimeDelta::hours(2),
-            Self::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
-            Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
-            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::Mentor | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
-            Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
-            Self::PotsOfTime | Self::Rsl | Self::RupeesOfTime => TimeDelta::hours(4) + TimeDelta::minutes(30),
+            Self::EscapeFromKakariko => Duration::from_mins(40),
+            Self::SpoilerLog | Self::TriforceBlitz => Duration::from_hours(2),
+            Self::BattleRoyale => Duration::from_hours(2) + Duration::from_mins(30),
+            Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => Duration::from_hours(3),
+            Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::Mentor | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournamentOfTruth | Self::TournoiFrancophone => Duration::from_hours(3) + Duration::from_mins(30),
+            Self::Mq | Self::Multiworld | Self::Pictionary => Duration::from_hours(4),
+            Self::PotsOfTime | Self::Rsl | Self::RupeesOfTime => Duration::from_hours(4) + Duration::from_mins(30),
             Self::SlugOpen => all::<sco::Format>().map(|format| format.default_race_duration()).max().expect("no formats defined for SlugCentral Open"),
         }
     }

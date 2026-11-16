@@ -244,7 +244,7 @@ impl Cache {
 }
 
 pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, cache: &mut Cache, me: Option<&User>, data: &Data<'_>, is_organizer: bool, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
-    let now = Utc::now();
+    let now = Timestamp::now();
     let mut signups = match qualifier_kind {
         QualifierKind::Score { score_kind, series, event, exclude_players: _ } => {
             let mut scores = HashMap::<_, Vec<_>>::default();
@@ -363,7 +363,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                                     entrant.status.value = EntrantStatusValue::Dnf;
                                                 } else {
                                                     entrant.status.value = EntrantStatusValue::Done;
-                                                    entrant.finish_time = Some(room_data.started_at.and_then(|started_at| (now - started_at).to_std().ok()).unwrap_or_default());
+                                                    entrant.finish_time = Some(room_data.started_at.and_then(|started_at| Duration::try_from(now - started_at).ok()).unwrap_or_default());
                                                 }
                                             },
                                         | EntrantStatusValue::Done
@@ -399,28 +399,28 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                         match score_kind {
                                             QualifierScoreKind::StandardS4 => {
                                                 // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
-                                                let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
+                                                let finish_time = SignedDuration::try_from(finish_time).expect("finish time out of range");
                                                 let par_cutoff = usize::from(par_cutoff).min(num_entrants);
-                                                let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
-                                                let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
-                                                let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) + TimeDelta::minutes(30) - t_average).div_duration_f64(TimeDelta::hours(2) + TimeDelta::minutes(30) - (TimeDelta::hours(1) + TimeDelta::minutes(40))))));
-                                                let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
-                                                let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
+                                                let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| SignedDuration::try_from(finish_time).expect("finish time out of range")).collect_vec();
+                                                let t_average = par_times.iter().sum::<SignedDuration>() / i32::try_from(par_cutoff).expect("too many entrants");
+                                                let t_j_h = SignedDuration::from_mins(8).mul_f64(1.0.min(0.0.max((SignedDuration::from_hours(2) + SignedDuration::from_mins(30) - t_average).div_duration_f64(SignedDuration::from_hours(2) + SignedDuration::from_mins(30) - (SignedDuration::from_hours(1) + SignedDuration::from_mins(40))))));
+                                                let t_jet = SignedDuration::from_mins(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(SignedDuration::from_mins(8)) * 0.35)));
+                                                let t_g_h = SignedDuration::from_secs_f64((par_times.iter().map(|finish_time| (*finish_time - t_average).abs().as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
                                                 let sigma_finish = t_g_h.div_duration_f64(t_average);
-                                                let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
-                                                ((1.0 - (finish_time - t_average - TimeDelta::minutes(10).min(t_jet + t_gamble)).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
+                                                let t_gamble = SignedDuration::from_mins(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                                ((1.0 - (finish_time - t_average - SignedDuration::from_mins(10).min(t_jet + t_gamble)).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
                                             }
                                             QualifierScoreKind::StandardS9 => {
                                                 // https://docs.google.com/document/d/19hqOQvXyH_7b83nHrjetRI6s6RhS-KZ1BjBBu_gqScA/edit
-                                                let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
+                                                let finish_time = SignedDuration::try_from(finish_time).expect("finish time out of range");
                                                 let par_cutoff = usize::from(par_cutoff).min(num_entrants);
-                                                let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
-                                                let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
-                                                let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) - t_average).div_duration_f64(TimeDelta::hours(2) - (TimeDelta::hours(1) + TimeDelta::minutes(10))))));
-                                                let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
-                                                let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
+                                                let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| SignedDuration::try_from(finish_time).expect("finish time out of range")).collect_vec();
+                                                let t_average = par_times.iter().sum::<SignedDuration>() / i32::try_from(par_cutoff).expect("too many entrants");
+                                                let t_j_h = SignedDuration::from_mins(8).mul_f64(1.0.min(0.0.max((SignedDuration::from_hours(2) - t_average).div_duration_f64(SignedDuration::from_hours(2) - (SignedDuration::from_hours(1) + SignedDuration::from_mins(10))))));
+                                                let t_jet = SignedDuration::from_mins(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(SignedDuration::from_mins(8)) * 0.35)));
+                                                let t_g_h = SignedDuration::from_secs_f64((par_times.iter().map(|finish_time| (*finish_time - t_average).abs().as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
                                                 let sigma_finish = t_g_h.div_duration_f64(t_average);
-                                                let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                                let t_gamble = SignedDuration::from_mins(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
                                                 ((1.0 - (finish_time - t_average).div_duration_f64(t_average + t_jet + t_gamble)) * 1000.0).clamp(100.0, 1100.0)
                                             }
                                             QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online | QualifierScoreKind::Sgl2025Online => {
@@ -453,7 +453,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(67.10), r64(88.15), r64(98.43), r64(98.38), r64(92.95), r64(91.23)]);
                 } else if qual_event.series == Series::SpeedGaming && qual_event.event == "2025onl" && racetime_id == "ZbpNAaBvn5BJkg04" {
                     user_teams.insert(user.id, team.clone());
-                    scores.insert(MemberUser::MidosHouse(user), vec![r64(96.20), r64(98.45), r64(0.00), r64(89.54)]);
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(96.20), r64(98.45), r64(0.0), r64(89.54)]);
                 } else if qual_event.series == Series::Standard && qual_event.event == "8" && racetime_id == "ZbpNAaBvn5BJkg04" {
                     user_teams.insert(user.id, team.clone());
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(879.3406950051751), r64(951.7427921609709), r64(1061.1862257605446), r64(886.4433468105399), r64(998.1002187946477), r64(1068.2248505659336), r64(1012.2516020105614), r64(937.6929640620418), r64(952.9889842185521), r64(1044.158719834512), r64(971.2929980811368), r64(990.3848225802512)]);
@@ -462,7 +462,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     scores.insert(MemberUser::MidosHouse(user), vec![r64(828.60), r64(972.82), r64(979.43), r64(829.50), r64(912.99), r64(947.95), r64(1011.65), r64(938.46)]);
                 } else if qual_event.series == Series::Standard && qual_event.event == "9" && racetime_id == "b8GPMWwL4OB1nEk0" {
                     user_teams.insert(user.id, team.clone());
-                    scores.insert(MemberUser::MidosHouse(user), vec![r64(936.79), r64(920.78), r64(791.54), r64(925.41), r64(894.59), r64(827.72), r64(0.00), r64(930.91)]);
+                    scores.insert(MemberUser::MidosHouse(user), vec![r64(936.79), r64(920.78), r64(791.54), r64(925.41), r64(894.59), r64(827.72), r64(0.0), r64(930.91)]);
                 } else {
                     //TODO cache scores in database to guard against racetime.gg user deletion
                     return Err(cal::Error::UnqualifiedEntrant {

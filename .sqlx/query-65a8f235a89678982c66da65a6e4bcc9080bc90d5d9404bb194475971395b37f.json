@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT schedule_updated_at FROM races WHERE id = $1",
+  "query": "SELECT schedule_updated_at AS \"schedule_updated_at: jiff_sqlx::Timestamp\" FROM races WHERE id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "schedule_updated_at",
+        "name": "schedule_updated_at: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -24,5 +24,5 @@
       true
     ]
   },
-  "hash": "5d2d26cacf0a684bc4d928834e850174edb6af28f3f8bc13a3fa04e7cc3d8072"
+  "hash": "65a8f235a89678982c66da65a6e4bcc9080bc90d5d9404bb194475971395b37f"
 }

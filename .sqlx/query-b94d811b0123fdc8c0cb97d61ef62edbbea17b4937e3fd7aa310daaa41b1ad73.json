@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            display_name,\n            short_name,\n            start,\n            end_time,\n            url,\n            challonge_community,\n            scrubs_id,\n            speedgaming_slug,\n            speedgaming_in_person_id,\n            hide_races_tab,\n            hide_teams_tab,\n            teams_url,\n            enter_url,\n            find_team_url,\n            video_url,\n            discord_guild AS \"discord_guild: PgSnowflake<GuildId>\",\n            discord_invite_url,\n            discord_race_room_channel AS \"discord_race_room_channel: PgSnowflake<ChannelId>\",\n            discord_race_results_channel AS \"discord_race_results_channel: PgSnowflake<ChannelId>\",\n            discord_organizer_channel AS \"discord_organizer_channel: PgSnowflake<ChannelId>\",\n            discord_scheduling_channel AS \"discord_scheduling_channel: PgSnowflake<ChannelId>\",\n            rando_version AS \"rando_version: Json<VersionedBranch>\",\n            single_settings AS \"single_settings: Json<seed::Settings>\",\n            team_config AS \"team_config: TeamConfig\",\n            enter_flow AS \"enter_flow: Json<enter::Flow>\",\n            show_opt_out,\n            show_qualifier_times,\n            default_game_count,\n            min_schedule_notice,\n            open_stream_delay,\n            invitational_stream_delay,\n            retime_window,\n            auto_import,\n            emulator_settings_reminder,\n            prevent_late_joins,\n            manual_reporting_with_breaks,\n            manual_reporting_for_asyncs,\n            async_organizer_notifications,\n            language AS \"language: Language\",\n            listed\n        FROM events WHERE series = $1 AND event = $2",
+  "query": "SELECT\n            display_name,\n            short_name,\n            start AS \"start: jiff_sqlx::Timestamp\",\n            end_time AS \"end_time: jiff_sqlx::Timestamp\",\n            url,\n            challonge_community,\n            scrubs_id,\n            speedgaming_slug,\n            speedgaming_in_person_id,\n            hide_races_tab,\n            hide_teams_tab,\n            teams_url,\n            enter_url,\n            find_team_url,\n            video_url,\n            discord_guild AS \"discord_guild: PgSnowflake<GuildId>\",\n            discord_invite_url,\n            discord_race_room_channel AS \"discord_race_room_channel: PgSnowflake<ChannelId>\",\n            discord_race_results_channel AS \"discord_race_results_channel: PgSnowflake<ChannelId>\",\n            discord_organizer_channel AS \"discord_organizer_channel: PgSnowflake<ChannelId>\",\n            discord_scheduling_channel AS \"discord_scheduling_channel: PgSnowflake<ChannelId>\",\n            rando_version AS \"rando_version: Json<VersionedBranch>\",\n            single_settings AS \"single_settings: Json<seed::Settings>\",\n            team_config AS \"team_config: TeamConfig\",\n            enter_flow AS \"enter_flow: Json<enter::Flow>\",\n            show_opt_out,\n            show_qualifier_times,\n            default_game_count,\n            min_schedule_notice,\n            open_stream_delay,\n            invitational_stream_delay,\n            retime_window,\n            auto_import,\n            emulator_settings_reminder,\n            prevent_late_joins,\n            manual_reporting_with_breaks,\n            manual_reporting_for_asyncs,\n            async_organizer_notifications,\n            language AS \"language: Language\",\n            listed\n        FROM events WHERE series = $1 AND event = $2",
   "describe": {
     "columns": [
       {
@@ -27,7 +27,7 @@
       },
       {
         "ordinal": 2,
-        "name": "start",
+        "name": "start: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -38,7 +38,7 @@
       },
       {
         "ordinal": 3,
-        "name": "end_time",
+        "name": "end_time: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -522,5 +522,5 @@
       false
     ]
   },
-  "hash": "25ebaecfb3d58890316c91a1f8615f088d0723c616cb5e2dbdd1740c76508681"
+  "hash": "b94d811b0123fdc8c0cb97d61ef62edbbea17b4937e3fd7aa310daaa41b1ad73"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            series AS \"series: Series\",\n            event,\n            challonge_match,\n            league_id,\n            scrubs_id,\n            sheet_timestamp,\n            startgg_event,\n            startgg_set AS \"startgg_set: startgg::ID\",\n            speedgaming_id,\n            speedgaming_onsite_id,\n            game,\n            team1 AS \"team1: Id<Teams>\",\n            team2 AS \"team2: Id<Teams>\",\n            team3 AS \"team3: Id<Teams>\",\n            p1,\n            p2,\n            p3,\n            p1_discord AS \"p1_discord: PgSnowflake<UserId>\",\n            p2_discord AS \"p2_discord: PgSnowflake<UserId>\",\n            p1_racetime,\n            p2_racetime,\n            p1_twitch,\n            p2_twitch,\n            total,\n            finished,\n            phase,\n            round,\n            scheduling_thread AS \"scheduling_thread: PgSnowflake<ChannelId>\",\n            draft_state AS \"draft_state: Json<Draft>\",\n            start,\n            async_start1,\n            async_start2,\n            async_start3,\n            end_time,\n            async_end1,\n            async_end2,\n            async_end3,\n            room,\n            async_room1,\n            async_room2,\n            async_room3,\n            schedule_updated_at,\n            fpa_invoked,\n            file_stem,\n            locked_spoiler_log_path,\n            web_id,\n            web_gen_time,\n            is_tfb_dev,\n            tfb_uuid,\n            hash1 AS \"hash1: HashIcon\",\n            hash2 AS \"hash2: HashIcon\",\n            hash3 AS \"hash3: HashIcon\",\n            hash4 AS \"hash4: HashIcon\",\n            hash5 AS \"hash5: HashIcon\",\n            seed_password,\n            bingosync_url,\n            bingo_passphrase,\n            video_url,\n            restreamer,\n            video_url_fr,\n            restreamer_fr,\n            video_url_de,\n            restreamer_de,\n            video_url_pt,\n            restreamer_pt,\n            video_url_es,\n            restreamer_es,\n            last_edited_by AS \"last_edited_by: Id<Users>\",\n            last_edited_at,\n            ignored,\n            schedule_locked,\n            notified,\n            async_notified1,\n            async_notified2,\n            async_notified3\n        FROM races WHERE id = $1",
+  "query": "SELECT\n            series AS \"series: Series\",\n            event,\n            challonge_match,\n            league_id,\n            scrubs_id,\n            sheet_timestamp AS \"sheet_timestamp: jiff_sqlx::DateTime\",\n            startgg_event,\n            startgg_set AS \"startgg_set: startgg::ID\",\n            speedgaming_id,\n            speedgaming_onsite_id,\n            game,\n            team1 AS \"team1: Id<Teams>\",\n            team2 AS \"team2: Id<Teams>\",\n            team3 AS \"team3: Id<Teams>\",\n            p1,\n            p2,\n            p3,\n            p1_discord AS \"p1_discord: PgSnowflake<UserId>\",\n            p2_discord AS \"p2_discord: PgSnowflake<UserId>\",\n            p1_racetime,\n            p2_racetime,\n            p1_twitch,\n            p2_twitch,\n            total,\n            finished,\n            phase,\n            round,\n            scheduling_thread AS \"scheduling_thread: PgSnowflake<ChannelId>\",\n            draft_state AS \"draft_state: Json<Draft>\",\n            start AS \"start: jiff_sqlx::Timestamp\",\n            async_start1 AS \"async_start1: jiff_sqlx::Timestamp\",\n            async_start2 AS \"async_start2: jiff_sqlx::Timestamp\",\n            async_start3 AS \"async_start3: jiff_sqlx::Timestamp\",\n            end_time AS \"end_time: jiff_sqlx::Timestamp\",\n            async_end1 AS \"async_end1: jiff_sqlx::Timestamp\",\n            async_end2 AS \"async_end2: jiff_sqlx::Timestamp\",\n            async_end3 AS \"async_end3: jiff_sqlx::Timestamp\",\n            room,\n            async_room1,\n            async_room2,\n            async_room3,\n            schedule_updated_at AS \"schedule_updated_at: jiff_sqlx::Timestamp\",\n            fpa_invoked,\n            file_stem,\n            locked_spoiler_log_path,\n            web_id,\n            web_gen_time AS \"web_gen_time: jiff_sqlx::Timestamp\",\n            is_tfb_dev,\n            tfb_uuid,\n            hash1 AS \"hash1: HashIcon\",\n            hash2 AS \"hash2: HashIcon\",\n            hash3 AS \"hash3: HashIcon\",\n            hash4 AS \"hash4: HashIcon\",\n            hash5 AS \"hash5: HashIcon\",\n            seed_password,\n            bingosync_url,\n            bingo_passphrase,\n            video_url,\n            restreamer,\n            video_url_fr,\n            restreamer_fr,\n            video_url_de,\n            restreamer_de,\n            video_url_pt,\n            restreamer_pt,\n            video_url_es,\n            restreamer_es,\n            last_edited_by AS \"last_edited_by: Id<Users>\",\n            last_edited_at AS \"last_edited_at: jiff_sqlx::Timestamp\",\n            ignored,\n            schedule_locked,\n            notified,\n            async_notified1,\n            async_notified2,\n            async_notified3\n        FROM races WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -60,7 +60,7 @@
       },
       {
         "ordinal": 5,
-        "name": "sheet_timestamp",
+        "name": "sheet_timestamp: jiff_sqlx::DateTime",
         "type_info": "Timestamp",
         "origin": {
           "Table": {
@@ -324,7 +324,7 @@
       },
       {
         "ordinal": 29,
-        "name": "start",
+        "name": "start: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -335,7 +335,7 @@
       },
       {
         "ordinal": 30,
-        "name": "async_start1",
+        "name": "async_start1: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -346,7 +346,7 @@
       },
       {
         "ordinal": 31,
-        "name": "async_start2",
+        "name": "async_start2: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -357,7 +357,7 @@
       },
       {
         "ordinal": 32,
-        "name": "async_start3",
+        "name": "async_start3: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -368,7 +368,7 @@
       },
       {
         "ordinal": 33,
-        "name": "end_time",
+        "name": "end_time: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -379,7 +379,7 @@
       },
       {
         "ordinal": 34,
-        "name": "async_end1",
+        "name": "async_end1: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -390,7 +390,7 @@
       },
       {
         "ordinal": 35,
-        "name": "async_end2",
+        "name": "async_end2: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -401,7 +401,7 @@
       },
       {
         "ordinal": 36,
-        "name": "async_end3",
+        "name": "async_end3: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -456,7 +456,7 @@
       },
       {
         "ordinal": 41,
-        "name": "schedule_updated_at",
+        "name": "schedule_updated_at: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -511,7 +511,7 @@
       },
       {
         "ordinal": 46,
-        "name": "web_gen_time",
+        "name": "web_gen_time: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -953,7 +953,7 @@
       },
       {
         "ordinal": 68,
-        "name": "last_edited_at",
+        "name": "last_edited_at: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -1112,5 +1112,5 @@
       false
     ]
   },
-  "hash": "7fe8565e3cd777bbfede1f3806cd90c8b4f5b4c795c6a89fb294dbe92ec97a70"
+  "hash": "10cb1a03f1db34a4ff76f464b957f81be9d79286df68177737836d89cf2c8992"
 }

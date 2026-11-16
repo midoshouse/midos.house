@@ -52,15 +52,6 @@ pub(crate) use {
         time::Duration,
     },
     async_trait::async_trait,
-    chrono::{
-        TimeDelta,
-        prelude::*,
-    },
-    chrono_tz::{
-        America,
-        Europe,
-        Tz,
-    },
     collect_mac::collect,
     either::Either,
     enum_iterator::{
@@ -81,6 +72,17 @@ pub(crate) use {
         },
     },
     itertools::Itertools as _,
+    jiff::{
+        SignedDuration,
+        Timestamp,
+        ZonedDateTime,
+        civil::{
+            self,
+            date,
+        },
+        tz::TimeZone,
+    },
+    jiff_sqlx::ToSqlx as _,
     lazy_regex::{
         regex_captures,
         regex_is_match,

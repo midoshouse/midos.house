@@ -182,9 +182,9 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
         match subcommand {
             #[cfg(unix)] Subcommand::PrepareStop { async_proto: false, .. } => {
                 while let Some(update) = Option::<PrepareStopUpdate>::read(&mut sock).await? {
-                    println!("{} preparing to stop Mido's House: {update}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                    println!("{} preparing to stop Mido's House: {update}", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
                 }
-                println!("{} preparing to stop Mido's House: done", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} preparing to stop Mido's House: done", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
             }
             #[cfg(unix)] Subcommand::PrepareStop { async_proto: true, .. } => {
                 let mut stdout = stdout();
@@ -194,29 +194,29 @@ async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
                 }
             }
             #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } | Subcommand::Seed { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
-                println!("{} {update:#?}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} {update:#?}", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
             },
             #[cfg(unix)] Subcommand::UpdateRegionalVc { .. } => {
-                println!("{} Mido's House: updating regional voice chat", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} Mido's House: updating regional voice chat", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
                 u8::read(&mut sock).await?;
-                println!("{} Mido's House: done updating regional voice chat", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} Mido's House: done updating regional voice chat", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
             }
             #[cfg(unix)] Subcommand::CheckEosmwAccess { .. } => {
-                println!("{} Mido's House: checking end-of-season multiworld access", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} Mido's House: checking end-of-season multiworld access", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
                 let authorized = bool::read(&mut sock).await?;
-                println!("{} Mido's House: done checking end-of-season multiworld access", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} Mido's House: done checking end-of-season multiworld access", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
                 return Ok(authorized)
             }
             #[cfg(unix)] Subcommand::DebugSpeedGamingMatch { .. } => {
-                println!("{} Mido's House: debugging SpeedGaming match", Utc::now().format("%Y-%m-%d %H:%M:%S"));
-                println!("{} {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), String::read(&mut sock).await?);
+                println!("{} Mido's House: debugging SpeedGaming match", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
+                println!("{} {}", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"), String::read(&mut sock).await?);
             }
             #[cfg(unix)] Subcommand::FollowSubsystemStatus { async_proto: false, .. } => {
                 eprintln!("waiting for subsystem state updates");
                 while let Some(SubsystemStatusUpdate { subsystem, status }) = Option::read(&mut sock).await? {
-                    println!("{} status of Mido's House subsystem “{subsystem}” changed to {status:?}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                    println!("{} status of Mido's House subsystem “{subsystem}” changed to {status:?}", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
                 }
-                println!("{} preparing to stop Mido's House: done", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                println!("{} preparing to stop Mido's House: done", Timestamp::now().strftime("%Y-%m-%d %H:%M:%S"));
             }
             #[cfg(unix)] Subcommand::FollowSubsystemStatus { async_proto: true, .. } => {
                 let mut stdout = stdout();

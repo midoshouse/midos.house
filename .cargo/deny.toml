@@ -4,8 +4,10 @@ ignore = [
     "RUSTSEC-2026-0098", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0099", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0104", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+    "RUSTSEC-2026-0258", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0346", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0349", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
+    "RUSTSEC-2026-0381", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
     "RUSTSEC-2026-0382", #TODO(https://github.com/serenity-rs/serenity/issues/3557)
 ]
 unmaintained = "none"
@@ -14,4 +16,5 @@ unmaintained = "none"
 multiple-versions = "allow" #TODO
 deny = [
     #{ crate = "aws-lc-rs", reason = "often fails to compile", use-instead = "ring" }, #TODO
+    { crate = "chrono-tz", reason = "ships outdated timezone database", use-instead = "jiff" },
 ]

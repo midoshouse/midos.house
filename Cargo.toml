@@ -45,8 +45,6 @@ async-graphql = { git = "https://github.com/fenhl/async-graphql", branch = "form
 async-graphql-rocket = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
 async-trait = "0.1"
 base64 = "0.23"
-chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
-chrono-tz = "0.10"
 clap = { version = "4", features = ["derive"] }
 collect-mac = "0.1"
 convert_case = "0.12"
@@ -67,6 +65,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = { version = "2", features = ["serde"] }
 infinite-stream = "0.2"
 itertools = "0.15"
+jiff = { version = "1", features = ["serde"] }
+jiff-sqlx = { version = "1", features = ["postgres"] }
 kuchiki = "0.8" #TODO unmaintained, replace with `scraper` crate?
 lazy-regex = "3"
 log = "0.4"
@@ -76,7 +76,7 @@ mimalloc = "0.1"
 noisy_float = "0.2"
 nonempty-collections = "1"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", features = ["sqlx"] }
-racetime = "0.35"
+racetime = "0.36"
 rand = "0.10"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "cookies", "form", "gzip", "hickory-dns", "http2", "json", "query", "rustls-no-provider", "stream", "system-proxy", "zstd"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
@@ -94,9 +94,9 @@ serde_plain = "1"
 serde_urlencoded = "0.7"
 serde_with = { version = "3", features = ["json"] }
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] }
-serenity-utils = { git = "https://github.com/fenhl/serenity-utils" }
+serenity-utils = { git = "https://github.com/fenhl/serenity-utils", features = ["jiff"] }
 smart-default = "0.7"
-sqlx = { version = "0.9", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
+sqlx = { version = "0.9", default-features = false, features = ["json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
 systemstat = "0.2"
 tempfile = "3"
 thiserror = "2"
@@ -107,11 +107,11 @@ typemap_rev = "0.3" # transitive dependency of serenity
 url = { version = "2", features = ["serde"] }
 urlencoding = "2"
 uuid = "1"
-wheel = { git = "https://github.com/fenhl/wheel", features = ["chrono", "night", "racetime", "reqwest", "rocket", "serde_json"] }
+wheel = { git = "https://github.com/fenhl/wheel", features = ["night", "racetime", "reqwest", "rocket", "serde_json"] }
 yup-oauth2 = "12"
 
 [target.'cfg(unix)'.dependencies]
-async-proto = { version = "0.26", features = ["chrono", "serde_json", "serenity", "url", "uuid"] }
+async-proto = { version = "0.26", features = ["serde_json", "serenity", "url", "uuid"] }
 xdg = "3"
 
 [target.'cfg(windows)'.dependencies]

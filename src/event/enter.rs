@@ -20,7 +20,7 @@ use {
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct Flow {
     pub(crate) requirements: Vec<Requirement>,
-    closes: Option<DateTime<Utc>>,
+    closes: Option<Timestamp>,
 }
 
 enum DeserializeRawHtml {}
@@ -124,16 +124,16 @@ pub(crate) enum Requirement {
     /// Must either request and submit the qualifier seed as an async, or participate in the live qualifier
     #[serde(rename_all = "camelCase")]
     Qualifier {
-        async_start: DateTime<Utc>,
-        async_end: DateTime<Utc>,
-        live_start: DateTime<Utc>,
+        async_start: Timestamp,
+        async_end: Timestamp,
+        live_start: Timestamp,
     },
     /// Must either request and submit at least one of the qualifier seeds as an async, or participate in at least one of the live qualifiers
     #[serde(alias = "tripleQualifier", rename_all = "camelCase")]
     MultiQualifier {
-        async_starts: NEVec<DateTime<Utc>>,
-        async_ends: NEVec<DateTime<Utc>>,
-        live_starts: NEVec<DateTime<Utc>>,
+        async_starts: NEVec<Timestamp>,
+        async_ends: NEVec<Timestamp>,
+        live_starts: NEVec<Timestamp>,
     },
     /// Must place within the top n players after all races in the `Qualifier` phase
     #[serde(rename_all = "camelCase")]
@@ -545,7 +545,7 @@ impl Requirement {
                 }
             }
             &Self::Qualifier { async_start, async_end, live_start } => {
-                let now = Utc::now();
+                let now = Timestamp::now();
                 let async_available = now >= async_start && now < async_end;
                 let series = data.series;
                 let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
@@ -587,7 +587,7 @@ impl Requirement {
                 }
             }
             Self::MultiQualifier { async_starts, async_ends, live_starts } => {
-                let now = Utc::now();
+                let now = Timestamp::now();
                 let async_available = async_starts.iter().zip_eq(async_ends).any(|(async_start, async_end)| now >= *async_start && now < *async_end);
                 let async_starts = async_starts.clone();
                 let async_ends = async_ends.clone();
@@ -762,7 +762,7 @@ impl Requirement {
                 form_ctx.push_error(form::Error::validation("Please select one of the options.").with_name("restream_consent_radio"));
             },
             Self::Qualifier { async_start, async_end, .. } => {
-                let now = Utc::now();
+                let now = Timestamp::now();
                 if now >= *async_start && now < *async_end {
                     if !value.confirm {
                         form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
@@ -772,7 +772,7 @@ impl Requirement {
                 }
             }
             Self::MultiQualifier { async_starts, async_ends, .. } => if !self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
-                let now = Utc::now();
+                let now = Timestamp::now();
                 if async_starts.iter().zip_eq(async_ends).any(|(async_start, async_end)| now >= *async_start && now < *async_end) {
                     if !value.confirm {
                         form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
@@ -823,7 +823,7 @@ impl Requirement {
         Ok(match self {
             Requirement::Qualifier { .. } => Some(AsyncKind::Qualifier1),
             Requirement::MultiQualifier { async_starts, async_ends, .. } => {
-                let now = Utc::now();
+                let now = Timestamp::now();
                 if self.is_checked(transaction, global, me, data).await?.unwrap_or(false) {
                     None
                 } else {
@@ -944,7 +944,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, globa
                                     p : "You can no longer enter this event since you have already opted out.";
                                 }
                             }
-                        } else if closes.is_some_and(|closes| closes <= Utc::now()) {
+                        } else if closes.is_some_and(|closes| closes <= Timestamp::now()) {
                             html! {
                                 article {
                                     p : "The deadline to enter this event has passed.";
@@ -1301,7 +1301,7 @@ pub(crate) async fn post(global: &GlobalState, me: User, uri: Origin<'_>, csrf: 
             TeamConfig::Solo => {
                 let mut request_qualifier = None;
                 if let Some(Flow { ref requirements, closes }) = data.enter_flow {
-                    if closes.is_some_and(|closes| closes <= Utc::now()) {
+                    if closes.is_some_and(|closes| closes <= Timestamp::now()) {
                         form.context.push_error(form::Error::validation("The deadline to enter this event has passed."));
                     } else if requirements.is_empty() {
                         if data.is_single_race() {

@@ -179,8 +179,8 @@ pub(crate) struct Data<'a> {
     pub(crate) display_name: String,
     short_name: Option<String>,
     /// The event's originally scheduled starting time, not accounting for the 24-hour deadline extension in the event of an odd number of teams for events with qualifier asyncs.
-    pub(crate) base_start: Option<DateTime<Utc>>,
-    pub(crate) end: Option<DateTime<Utc>>,
+    pub(crate) base_start: Option<Timestamp>,
+    pub(crate) end: Option<Timestamp>,
     pub(crate) url: Option<Url>,
     challonge_community: Option<String>,
     scrubs_id: Option<Uuid>,
@@ -242,8 +242,8 @@ impl<'a> Data<'a> {
         sqlx::query!(r#"SELECT
             display_name,
             short_name,
-            start,
-            end_time,
+            start AS "start: jiff_sqlx::Timestamp",
+            end_time AS "end_time: jiff_sqlx::Timestamp",
             url,
             challonge_community,
             scrubs_id,
@@ -284,8 +284,8 @@ impl<'a> Data<'a> {
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
                 short_name: row.short_name,
-                base_start: row.start,
-                end: row.end_time,
+                base_start: row.start.map(Timestamp::from),
+                end: row.end_time.map(Timestamp::from),
                 url: row.url.map(|url| url.parse()).transpose()?,
                 challonge_community: row.challonge_community,
                 scrubs_id: row.scrubs_id,
@@ -559,12 +559,12 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<DateTime<Utc>>, DataError> {
+    pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<Timestamp>, DataError> {
         Ok(if let Some(mut start) = self.base_start {
             if let Some(max_delay) = sqlx::query_scalar!("SELECT max_delay FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier'", self.series as _, &self.event).fetch_optional(&mut **transaction).await? {
                 let mut num_qualified_teams = 0;
-                let mut last_submission_time = None::<DateTime<Utc>>;
-                let mut teams = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+                let mut last_submission_time = None::<Timestamp>;
+                let mut teams = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!: jiff_sqlx::Timestamp" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
                     series = $1
                     AND event = $2
                     AND NOT resigned
@@ -574,9 +574,9 @@ impl<'a> Data<'a> {
                 while let Some(submitted) = teams.try_next().await? {
                     num_qualified_teams += 1;
                     last_submission_time = Some(if let Some(last_submission_time) = last_submission_time {
-                        last_submission_time.max(submitted)
+                        last_submission_time.max(submitted.into())
                     } else {
-                        submitted
+                        submitted.into()
                     });
                 }
                 if num_qualified_teams % 2 == 0 {
@@ -584,8 +584,8 @@ impl<'a> Data<'a> {
                         start = start.max(last_submission_time);
                     }
                 } else {
-                    if start <= Utc::now() {
-                        start += TimeDelta::from_std(decode_pginterval(max_delay)?).expect("max delay on async too long");
+                    if start <= Timestamp::now() {
+                        start += decode_pginterval(max_delay)?;
                     }
                 }
             }
@@ -596,11 +596,11 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) async fn is_started(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<bool, DataError> {
-        Ok(self.start(transaction).await?.is_some_and(|start| start <= Utc::now()))
+        Ok(self.start(transaction).await?.is_some_and(|start| start <= Timestamp::now()))
     }
 
     pub(crate) fn is_ended(&self) -> bool {
-        self.end.is_some_and(|end| end <= Utc::now())
+        self.end.is_some_and(|end| end <= Timestamp::now())
     }
 
     pub(crate) async fn scheduling_backend(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<SchedulingBackend<'_>, DataError> {
@@ -1120,7 +1120,6 @@ pub(crate) enum Error {
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("ExactlyOneError while formatting result of last async half")]
@@ -1156,7 +1155,6 @@ impl IsNetworkError for Error {
             Self::SeedData(e) => e.is_network_error(),
             Self::Serenity(_) => false,
             Self::Sql(_) => false,
-            Self::TimeFromLocal(_) => false,
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::ExactlyOne => false,
@@ -1387,8 +1385,8 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, global: &Global
                     p : "You have resigned from this event.";
                 } else {
                     @let async_info = if let Some(async_kind) = data.active_async(&mut transaction, Some(row.id)).await? {
-                        let async_row = sqlx::query!(r#"SELECT is_tfb_dev, tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon", seed_password, bingosync_url, bingo_passphrase FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
-                        if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, row.id as _, async_kind as _).fetch_optional(&mut *transaction).await? {
+                        let async_row = sqlx::query!(r#"SELECT is_tfb_dev, tfb_uuid, web_id, web_gen_time AS "web_gen_time: jiff_sqlx::Timestamp", file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon", seed_password, bingosync_url, bingo_passphrase FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+                        if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!: jiff_sqlx::Timestamp", submitted AS "submitted: jiff_sqlx::Timestamp" FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, row.id as _, async_kind as _).fetch_optional(&mut *transaction).await? {
                             if team_row.submitted.is_some() {
                                 None
                             } else {
@@ -2378,7 +2376,7 @@ pub(crate) async fn request_async(global: &GlobalState, me: User, uri: Origin<'_
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
             None
         };
-        let async_row = sqlx::query!(r#"SELECT is_tfb_dev, tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon", seed_password, bingosync_url, bingo_passphrase FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+        let async_row = sqlx::query!(r#"SELECT is_tfb_dev, tfb_uuid, web_id, web_gen_time AS "web_gen_time: jiff_sqlx::Timestamp", file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon", seed_password, bingosync_url, bingo_passphrase FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
         let seed = seed::Data::from_db(
             None,
             None,

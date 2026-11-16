@@ -33,7 +33,7 @@ pub(crate) const COMPRESSION_LEVEL: async_compression::Level = async_compression
 pub(crate) const ALLOW_RIIR: bool = false; //TODO investigate bug with weird camera in graveyard and missing shops
 
 /// ootrandomizer.com seeds are deleted after 60 days (https://discord.com/channels/274180765816848384/1248210891636342846/1257367685658837126)
-const WEB_TIMEOUT: TimeDelta = TimeDelta::days(60);
+const WEB_TIMEOUT: Duration = Duration::from_hours(60 * 24);
 
 pub(crate) type Settings = serde_json::Map<String, serde_json::Value>;
 
@@ -130,26 +130,26 @@ pub(crate) enum Files {
     },
     OotrWeb {
         id: i64,
-        gen_time: DateTime<Utc>,
+        gen_time: Timestamp,
         file_stem: Cow<'static, str>,
     },
     TriforceBlitz {
         is_dev: bool,
         uuid: Uuid,
-        scheduled_spoiler_unlock: Option<DateTime<Utc>>,
+        scheduled_spoiler_unlock: Option<Timestamp>,
     },
 }
 
 impl Data {
     pub(crate) fn from_db(
-        start: Option<DateTime<Utc>>,
-        async_start1: Option<DateTime<Utc>>,
-        async_start2: Option<DateTime<Utc>>,
-        async_start3: Option<DateTime<Utc>>,
+        start: Option<jiff_sqlx::Timestamp>,
+        async_start1: Option<jiff_sqlx::Timestamp>,
+        async_start2: Option<jiff_sqlx::Timestamp>,
+        async_start3: Option<jiff_sqlx::Timestamp>,
         file_stem: Option<String>,
         locked_spoiler_log_path: Option<String>,
         web_id: Option<i64>,
-        web_gen_time: Option<DateTime<Utc>>,
+        web_gen_time: Option<jiff_sqlx::Timestamp>,
         is_tfb_dev: bool,
         tfb_uuid: Option<Uuid>,
         hash1: Option<HashIcon>,
@@ -176,9 +176,9 @@ impl Data {
             },
             files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
                 (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { is_dev: is_tfb_dev, uuid, scheduled_spoiler_unlock: None }),
-                (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
-                (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(if let Some(first_start) = [start, async_start1, async_start2, async_start3].into_iter().filter_map(identity).min() {
-                    Files::OotrWeb { id, gen_time: first_start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) }
+                (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time: gen_time.into(), file_stem: Cow::Owned(file_stem) }),
+                (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(if let Some(first_start) = [start, async_start1, async_start2, async_start3].into_iter().filter_map(identity).map(Timestamp::from).min() {
+                    Files::OotrWeb { id, gen_time: first_start - Duration::from_hours(24), file_stem: Cow::Owned(file_stem) }
                 } else {
                     Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }
                 }),
@@ -331,7 +331,7 @@ pub(crate) async fn publish_spoiler(file_stem: &str, locked_spoiler_log_path: im
     Ok(())
 }
 
-pub(crate) async fn table_cell(global: &GlobalState, now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, show_password: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table_cell(global: &GlobalState, now: Timestamp, seed: &Data, spoiler_logs: bool, show_password: bool, add_hash_url: Option<uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(global).await?;
     let mut seed_links = match seed.files {
         Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => Some(html! {
@@ -443,7 +443,7 @@ pub(crate) async fn table_cell(global: &GlobalState, now: DateTime<Utc>, seed: &
 
 pub(crate) async fn table(global: &GlobalState, seeds: impl Stream<Item = Data>, spoiler_logs: bool, show_password: bool) -> Result<RawHtml<String>, ExtraDataError> {
     let mut seeds = pin!(seeds);
-    let now = Utc::now();
+    let now = Timestamp::now();
     Ok(html! {
         table(class = "seeds") {
             thead {

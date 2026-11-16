@@ -83,7 +83,7 @@ struct VersionsResponse {
 
 pub(crate) struct SeedInfo {
     pub(crate) id: i64,
-    pub(crate) gen_time: DateTime<Utc>,
+    pub(crate) gen_time: Timestamp,
     pub(crate) file_hash: [HashIcon; 5],
     pub(crate) file_stem: String,
     pub(crate) password: Option<NEVec<Button>>,
@@ -347,7 +347,7 @@ impl ApiClient {
         Ok(id)
     }
 
-    pub(crate) async fn roll_seed_with_retry(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: seed::Settings) -> Result<SeedInfo, Error> {
+    pub(crate) async fn roll_seed_with_retry(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<Timestamp>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: seed::Settings) -> Result<SeedInfo, Error> {
         #[derive(Deserialize)]
         struct SettingsLog {
             file_hash: [HashIcon; 5],
@@ -357,7 +357,7 @@ impl ApiClient {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct SeedDetailsResponse {
-            creation_timestamp: DateTime<Utc>,
+            creation_timestamp: Timestamp,
             #[serde_as(as = "JsonString")]
             settings_log: SettingsLog,
         }
@@ -378,7 +378,7 @@ impl ApiClient {
         };
         let mut last_id = None;
         for attempt in 0u8.. {
-            if attempt >= 3 && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
+            if attempt >= 3 && delay_until.is_none_or(|delay_until| Timestamp::now() >= delay_until) {
                 drop(mw_permit);
                 return Err(Error::Retries {
                     ctx: "on ootrandomizer.com",

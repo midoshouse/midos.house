@@ -68,13 +68,13 @@ impl Format {
         }
     }
 
-    pub(crate) fn default_race_duration(&self) -> TimeDelta {
+    pub(crate) fn default_race_duration(&self) -> Duration {
         match self {
-            Self::Ice => TimeDelta::minutes(30),
-            Self::Triforce => TimeDelta::hours(2),
-            Self::Bingo => TimeDelta::hours(2) + TimeDelta::minutes(30),
-            Self::Sgl | Self::Mixed => TimeDelta::hours(3),
-            Self::League | Self::Saws | Self::Franco => TimeDelta::hours(3) + TimeDelta::minutes(30),
+            Self::Ice => Duration::from_mins(30),
+            Self::Triforce => Duration::from_hours(2),
+            Self::Bingo => Duration::from_hours(2) + Duration::from_mins(30),
+            Self::Sgl | Self::Mixed => Duration::from_hours(3),
+            Self::League | Self::Saws | Self::Franco => Duration::from_hours(3) + Duration::from_mins(30),
         }
     }
 

@@ -232,7 +232,7 @@ pub(crate) async fn info(global: &GlobalState, transaction: &mut Transaction<'_,
             }
             p {
                 : "Before the race we will provide a room on ";
-                @match data.base_start.map(|base_start| base_start.year()) {
+                @match data.base_start.map(|base_start| base_start.to_zoned_datetime(TimeZone::UTC).year()) {
                     Some(..=2022) => a(href = "https://aggie.io/") : "aggie.io";
                     Some(2023) => {
                         a(href = "https://magma.com/") : "magma.com";

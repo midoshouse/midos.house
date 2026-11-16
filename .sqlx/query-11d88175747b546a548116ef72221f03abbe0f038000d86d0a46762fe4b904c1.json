@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT requested AS \"requested!\", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL",
+  "query": "SELECT requested AS \"requested!: jiff_sqlx::Timestamp\", submitted AS \"submitted: jiff_sqlx::Timestamp\" FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "requested!",
+        "name": "requested!: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -16,7 +16,7 @@
       },
       {
         "ordinal": 1,
-        "name": "submitted",
+        "name": "submitted: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -51,5 +51,5 @@
       true
     ]
   },
-  "hash": "560b26433ffcbefecb11fe60dbc0a8fcfc1690ee38cad61fe22d0782beedb081"
+  "hash": "11d88175747b546a548116ef72221f03abbe0f038000d86d0a46762fe4b904c1"
 }

@@ -129,8 +129,8 @@ struct Qualifiers {
 struct Qualifier {
     id: Uuid,
     number: u32,
-    start_date: DateTime<Utc>,
-    end_date: Option<DateTime<Utc>>,
+    start_date: Timestamp,
+    end_date: Option<Timestamp>,
     racetime_room_url: Option<Url>,
 }
 
@@ -143,7 +143,7 @@ struct Matches {
 #[serde(rename_all = "camelCase")]
 struct Match {
     id: Uuid,
-    scheduled_at: Option<DateTime<Utc>>,
+    scheduled_at: Option<Timestamp>,
     group: String,
     /// Negative for losers bracket
     round: i32,

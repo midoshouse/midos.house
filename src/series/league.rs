@@ -108,16 +108,15 @@ pub(crate) struct Schedule {
     pub(crate) matches: Vec<Match>,
 }
 
-fn deserialize_datetime<'de, D: Deserializer<'de>>(deserializer: D) -> Result<DateTime<Utc>, D::Error> {
-    // workaround for https://github.com/chronotope/chrono/issues/330
-    Ok(NaiveDateTime::parse_from_str(&format!("{}:00", <&str>::deserialize(deserializer)?), "%Y-%m-%d %H:%M:%S").map_err(D::Error::custom)?.and_utc())
+fn deserialize_datetime<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Timestamp, D::Error> {
+    Ok(civil::DateTime::strptime("%Y-%m-%d %H:%M", <&str>::deserialize(deserializer)?).map_err(D::Error::custom)?.to_zoned_datetime(TimeZone::UTC).map_err(D::Error::custom)?.into())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Match {
     #[serde(rename = "timeUTC", deserialize_with = "deserialize_datetime")]
-    pub(crate) time_utc: DateTime<Utc>,
+    pub(crate) time_utc: Timestamp,
     pub(crate) player_a: User,
     pub(crate) player_b: User,
     pub(crate) id: i32,

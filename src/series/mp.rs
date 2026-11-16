@@ -78,7 +78,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p {
                         strong {
                             : "Deadline is ";
-                            : format_datetime(Utc.with_ymd_and_hms(2025, 5, 13, 23, 59, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(date(2025, 5, 13).at(23, 59, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                             : ".";
                             br;
                             : "Start of the first round is May 14th after the wheel spin.";
@@ -530,7 +530,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p {
                         strong {
                             : "Deadline is ";
-                            : format_datetime(Utc.with_ymd_and_hms(2026, 6, 2, 0, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(date(2026, 6, 2).at(0, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                             : ".";
                             br;
                             : "Start of the first round is June 3rd after the wheel spin.";

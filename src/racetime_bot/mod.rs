@@ -2040,7 +2040,7 @@ impl CleanShutdown {
 }
 
 impl GlobalState {
-    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<Timestamp>, version: VersionedBranch, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let password_lock = settings.get("password_lock").is_some_and(|password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
@@ -2056,18 +2056,18 @@ impl GlobalState {
                 match preroll {
                     // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
                     // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
-                    PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                    PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| Duration::try_from(delay_until - Timestamp::now()).ok()) {
                         sleep(sleep_duration).await;
                     },
                     // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
-                    PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                    PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| Duration::try_from(delay_until - Timestamp::now()).ok()) {
                         let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_mins(5));
                         let sleep_duration = rng().random_range(min_sleep_duration..max_sleep_duration);
                         sleep(sleep_duration).await;
                     },
                     // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
                     // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| Duration::try_from(delay_until - SignedDuration::from_mins(15) - Timestamp::now()).ok()) {
                         let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     },
@@ -2165,7 +2165,7 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_rsl_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_rsl_seed(self: Arc<Self>, delay_until: Option<Timestamp>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -2208,7 +2208,7 @@ impl GlobalState {
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
             let mut last_error = None;
             for attempt in 0.. {
-                if attempt >= outer_tries && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
+                if attempt >= outer_tries && delay_until.is_none_or(|delay_until| Timestamp::now() >= delay_until) {
                     return Err(RollError::Retries {
                         ctx: "in RSL script",
                         num_retries: 3 * attempt,
@@ -2273,7 +2273,7 @@ impl GlobalState {
                     let plando_path = rsl_script_path.join("data").join(plando_filename);
                     let settings = fs::read_json::<Plando>(&plando_path).await?.settings;
                     fs::remove_file(plando_path).await?;
-                    if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+                    if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| Duration::try_from(delay_until - SignedDuration::from_mins(15) - Timestamp::now()).ok()) {
                         // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
                         // This is especially true for open races, whose rooms are opened an entire hour before start.
                         // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
@@ -2343,11 +2343,11 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, display_name: &'static str, settings_preset: Option<&'static str>, room: Option<String>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<Timestamp>, display_name: &'static str, settings_preset: Option<&'static str>, room: Option<String>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
-            if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+            if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| Duration::try_from(delay_until - SignedDuration::from_mins(15) - Timestamp::now()).ok()) {
                 // triforceblitz.com has a list of recently rolled seeds, making it easy to find a seed if you know when it was rolled.
                 // This is especially true for open races, whose rooms are opened an entire hour before start.
                 // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
@@ -2386,14 +2386,14 @@ impl GlobalState {
                 match response {
                     Ok(response) => match response.json_with_text_in_error::<tfb::SeedResponse>().await? {
                         tfb::SeedResponse::Ready { id, hash_icons, seed_password, seed_url: _ } => break (id, hash_icons, seed_password),
-                        tfb::SeedResponse::Failed { .. } if attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until) => continue,
+                        tfb::SeedResponse::Failed { .. } if attempts < 3 || delay_until.is_some_and(|delay_until| Timestamp::now() < delay_until) => continue,
                         tfb::SeedResponse::Failed { generation_error } => return Err(RollError::Retries {
                             ctx: "on triforceblitz.com",
                             num_retries: attempts,
                             last_error: Some(generation_error),
                         }),
                     },
-                    Err(ref e @ wheel::Error::ResponseStatus { ref inner, .. }) if (attempts < 3 || delay_until.is_some_and(|delay_until| Utc::now() < delay_until)) && inner.status().is_some_and(|status| status.is_server_error()) => {
+                    Err(ref e @ wheel::Error::ResponseStatus { ref inner, .. }) if (attempts < 3 || delay_until.is_some_and(|delay_until| Timestamp::now() < delay_until)) && inner.status().is_some_and(|status| status.is_server_error()) => {
                         let retry_in = Duration::from_secs(2u64.pow(attempts.min(6).into()));
                         eprintln!("error response from triforceblitz.com, retrying in {}: {e}", unparse_duration(retry_in));
                         eprintln!("debug info: {e:?}");
@@ -2429,7 +2429,7 @@ impl GlobalState {
     }
 }
 
-pub(crate) async fn roll_seed_locally(global: &GlobalState, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
+pub(crate) async fn roll_seed_locally(global: &GlobalState, delay_until: Option<Timestamp>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
     if delay_until.is_none() { // practice seed
         let fs = systemstat::System::new().mount_at("/").at("/")?;
         if fs.avail < ByteSize::gib(5) || (fs.avail.as_u64() as f64 / fs.total.as_u64() as f64) < 0.05 || fs.files_avail < 5000 || (fs.files_avail as f64 / fs.files_total as f64) < 0.05 {
@@ -2490,7 +2490,7 @@ pub(crate) async fn roll_seed_locally(global: &GlobalState, delay_until: Option<
     };
     let mut last_error = None;
     for attempt in 0.. {
-        if attempt >= 3 && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
+        if attempt >= 3 && delay_until.is_none_or(|delay_until| Timestamp::now() >= delay_until) {
             if let Some(tempfile) = plando_tempfile {
                 let temp_path = tempfile.to_path_buf();
                 tempfile.close().at(temp_path)?;
@@ -2711,7 +2711,7 @@ impl SeedRollUpdate {
                         seed::Files::OotrWeb { id, gen_time, file_stem } => {
                             sqlx::query!(
                                 "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3 WHERE id = $4",
-                                *id as i64, gen_time, file_stem, cal_event.race.id as _,
+                                *id as i64, gen_time.to_sqlx() as _, file_stem, cal_event.race.id as _,
                             ).execute(&global.db_pool).await?;
                         }
                         seed::Files::TriforceBlitz { is_dev, uuid, scheduled_spoiler_unlock: _ } => {
@@ -2737,7 +2737,7 @@ impl SeedRollUpdate {
                                 seed::Files::OotrWeb { id, gen_time, file_stem } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                                        format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                                        format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time.to_sqlx() as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(&global.db_pool).await?;
                                 }
                                 seed::Files::TriforceBlitz { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
@@ -2772,7 +2772,7 @@ impl SeedRollUpdate {
                     UnlockSpoilerLog::Now => ctx.say("The spoiler log is also available on the seed page.").await?,
                     UnlockSpoilerLog::Progression => ctx.say("The progression spoiler is also available on the seed page. The full spoiler will be available there after the race.").await?,
                     UnlockSpoilerLog::After => if let Some(seed::Files::TriforceBlitz { scheduled_spoiler_unlock: Some(unlock_time), .. }) = seed.files {
-                        let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
+                        let unlock_time = Duration::try_from(unlock_time - Timestamp::now()).expect("unlock time for current daily seed in the past");
                         ctx.say(format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
                     } else {
                         ctx.say(if let French = language {
@@ -3184,7 +3184,7 @@ impl Handler {
     /// For `existing_state`, `Some(None)` means this is an existing race room with unknown state, while `None` means this is a new race room.
     async fn should_handle_inner(race_data: &RaceData, global: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> sqlx::Result<bool> {
         if Goal::from_race_data(race_data).is_none() { return Ok(false) }
-        if race_data.ended_at.is_some_and(|ended_at| Utc::now() - ended_at >= TimeDelta::hours(1)) { return Ok(false) }
+        if race_data.ended_at.is_some_and(|ended_at| Timestamp::now() - ended_at >= SignedDuration::from_hours(1)) { return Ok(false) }
         if let Some(existing_state) = existing_state {
             if let Some(existing_state) = existing_state {
                 if let Some(ref official_data) = existing_state.official_data {
@@ -3374,7 +3374,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
+    async fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, delay_until: Option<Timestamp>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
         let global = ctx.global_state.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
@@ -3382,7 +3382,7 @@ impl Handler {
         tokio::spawn(async move {
             lock!(@write state = state; *state = RaceState::Rolling); //TODO ensure only one seed is rolled at a time
             let mut seed_state = None::<SeedRollUpdate>;
-            if let Some(delay) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+            if let Some(delay) = delay_until.and_then(|delay_until| Duration::try_from(delay_until - Timestamp::now()).ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 or 60 minutes ahead of start
                 let display_delay = if delay > Duration::from_mins(14) && delay < Duration::from_mins(16) {
                     Duration::from_mins(15)
@@ -3458,19 +3458,19 @@ impl SeedHandler for Handler {
 
     async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        let delay_until = official_start.map(|start| start - SignedDuration::from_mins(15));
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_seed(preroll, true, delay_until, version, settings, plando, bingo_passphrase, unlock_spoiler_log), language, article, description).await;
     }
 
     async fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        let delay_until = official_start.map(|start| start - SignedDuration::from_mins(15));
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log), language, article, description).await;
     }
 
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, display_name: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        let delay_until = official_start.map(|start| start - SignedDuration::from_mins(15));
         // Triforce Blitz website's auto unlock doesn't know about async parts so has to be disabled for asyncs
         let unlock_spoiler_log = if unlock_spoiler_log == UnlockSpoilerLog::After && self.official_data.as_ref().is_some_and(|official_data| official_data.cal_event.is_private_async_part()) { UnlockSpoilerLog::Never } else { unlock_spoiler_log };
         self.roll_seed_inner(ctx, delay_until, ctx.global_state.clone().roll_tfb_seed(delay_until, display_name, preset, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), password_lock, unlock_spoiler_log), language, article, description).await;
@@ -3478,7 +3478,7 @@ impl SeedHandler for Handler {
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        let delay_until = official_start.map(|start| start - SignedDuration::from_mins(15));
         let (tx, rx) = mpsc::channel(1);
         tx.send(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed }).await.unwrap();
         self.roll_seed_inner(ctx, delay_until, rx, language, article, description).await;
@@ -3680,8 +3680,8 @@ impl RaceHandler<GlobalState> for Handler {
                 }
                 let stream_delay = cal_event.race.stream_delay(&event);
                 if !stream_delay.is_zero() || event.emulator_settings_reminder || event.prevent_late_joins {
-                    let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
-                    if let Ok(delay) = (delay_until - Utc::now()).to_std() {
+                    let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - SignedDuration::from_mins(5);
+                    if let Ok(delay) = Duration::try_from(delay_until - Timestamp::now()) {
                         let ctx = ctx.clone();
                         let game_audio_reminder = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase != "Qualifier");
                         let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase != "Qualifier");
@@ -3759,7 +3759,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 password: None, //TODO get from API
                                 bingo: None,
                                 files: Some(seed::Files::OotrWeb {
-                                    gen_time: Utc::now(),
+                                    gen_time: Timestamp::now(),
                                     file_stem: Cow::Owned(file_stem),
                                     id,
                                 }),
@@ -5485,7 +5485,7 @@ impl RaceHandler<GlobalState> for Handler {
         }
         if !self.start_saved {
             if let (Goal::Rsl, Some(start)) = (goal, data.started_at) {
-                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await?;
+                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start.to_sqlx() as _, format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await?;
                 self.start_saved = true;
             }
         }
@@ -5576,12 +5576,12 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(match goal {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + SignedDuration::from_mins(match goal {
                                     Goal::Pic5 | Goal::Pic6 | Goal::Pic7 => 10,
                                     Goal::PicRs1 | Goal::PicRs2 => 25,
                                     _ => unreachable!(),
-                                }) - Utc::now();
-                                if let Ok(initial_wait) = initial_wait.to_std() {
+                                }) - Timestamp::now();
+                                if let Ok(initial_wait) = Duration::try_from(initial_wait) {
                                     sleep(initial_wait).await;
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                     let (_, ()) = tokio::join!(
@@ -5598,8 +5598,8 @@ impl RaceHandler<GlobalState> for Handler {
                             let ctx = ctx.clone();
                             let race_state = self.race_state.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(15) - Utc::now();
-                                if let Ok(initial_wait) = initial_wait.to_std() {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + SignedDuration::from_mins(15) - Timestamp::now();
+                                if let Ok(initial_wait) = Duration::try_from(initial_wait) {
                                     sleep(initial_wait).await;
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                     let (_, ()) = tokio::join!(
@@ -5621,8 +5621,8 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::hours(2) - Utc::now();
-                                if let Ok(initial_wait) = initial_wait.to_std() {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + Duration::from_hours(2) - Timestamp::now();
+                                if let Ok(initial_wait) = Duration::try_from(initial_wait) {
                                     sleep(initial_wait).await;
                                     let is_1v1 = {
                                         let data = ctx.data().await;
@@ -5642,8 +5642,8 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(10) - Utc::now();
-                                if let Ok(initial_wait) = initial_wait.to_std() {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + SignedDuration::from_mins(10) - Timestamp::now();
+                                if let Ok(initial_wait) = Duration::try_from(initial_wait) {
                                     sleep(initial_wait).await;
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await.is_ok_and(identity) { return }
                                     let (_, ()) = tokio::join!(
@@ -5977,7 +5977,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
             struct AsyncSeedHandler {
                 goal: Goal,
                 race: Race,
-                start: DateTime<Utc>,
+                start: Timestamp,
             }
 
             impl SeedHandler for AsyncSeedHandler {
@@ -5985,17 +5985,17 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
                 type SeedResult = mpsc::Receiver<SeedRollUpdate>;
 
                 async fn roll_seed(&self, global: &Arc<GlobalState>, _: PrerollMode, version: VersionedBranch, settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>, bingo_passphrase: Option<String>, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
-                    let delay_until = Some(self.start - TimeDelta::minutes(15));
+                    let delay_until = Some(self.start - SignedDuration::from_mins(15));
                     global.clone().roll_seed(PrerollMode::Long, bingo_passphrase.is_none(), delay_until, version, settings, plando, bingo_passphrase, unlock_spoiler_log)
                 }
 
                 async fn roll_rsl_seed(&self, global: &Arc<GlobalState>, preset: rsl::VersionedPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
-                    let delay_until = Some(self.start - TimeDelta::minutes(15));
+                    let delay_until = Some(self.start - SignedDuration::from_mins(15));
                     global.clone().roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log)
                 }
 
                 async fn roll_tfb_seed(&self, global: &Arc<GlobalState>, display_name: &'static str, preset: Option<&'static str>, password_lock: bool, unlock_spoiler_log: UnlockSpoilerLog, _: Language, _: &'static str, _: String) -> mpsc::Receiver<SeedRollUpdate> {
-                    let delay_until = Some(self.start - TimeDelta::minutes(15));
+                    let delay_until = Some(self.start - SignedDuration::from_mins(15));
                     global.clone().roll_tfb_seed(delay_until, display_name, preset, None, password_lock, unlock_spoiler_log)
                 }
 
@@ -6103,7 +6103,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
     {
         let mut msg = MessageBuilder::default();
         msg.push("La race commence ");
-        msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
+        msg.push_timestamp_jiff(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
         msg.push(" : ");
         let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, French, &mut msg).await?;
         msg.push(" <");
@@ -6124,7 +6124,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, glo
             msg.push(' ');
         }
         msg.push("race starting ");
-        msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
+        msg.push_timestamp_jiff(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
         msg.push(": ");
         let allowed_mentions = cal_event.format_discord(&mut *transaction, event.discord_guild, English, &mut msg).await?;
         match room_url {
@@ -6181,7 +6181,7 @@ async fn prepare_seeds(global: Arc<GlobalState>, mut seed_cache_rx: watch::Recei
                             .cal_events()
                             .filter_map(|cal_event| cal_event.start())
                             .min()
-                        && start > Utc::now()
+                        && start > Timestamp::now()
                         {
                             'seed: loop {
                                 let mut seed_rx = global.clone().roll_seed(

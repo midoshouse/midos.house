@@ -4,8 +4,8 @@
 
 \restrict NSkHPci93sAFqHtSzSNGsBd7dCxhH7NpHe4WhC8jFzIipftC7A6hpgap0hCfbqM
 
--- Dumped from database version 17.11 (Debian 17.11-0+deb13u1)
--- Dumped by pg_dump version 17.11 (Debian 17.11-0+deb13u1)
+-- Dumped from database version 17.12 (Debian 17.12-0+deb13u1)
+-- Dumped by pg_dump version 17.12 (Debian 17.12-0+deb13u1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;

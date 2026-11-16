@@ -431,15 +431,15 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     ul {
                         li {
                             : "Qualifiers ";
-                            : format_date_range(Utc.with_ymd_and_hms(2024, 11, 16, 19, 0, 0).single().expect("wrong hardcoded datetime"), Utc.with_ymd_and_hms(2024, 12, 22, 19, 0, 0).single().expect("wrong hardcoded datetime"));
+                            : format_date_range(date(2024, 11, 16).at(19, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), date(2024, 12, 22).at(19, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"));
                         }
                         li {
                             : "Opt-ins until ";
-                            : format_datetime(Utc.with_ymd_and_hms(2024, 12, 27, 23, 59, 59).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(date(2024, 12, 27).at(23, 59, 59, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                         }
                         li {
                             : "Start of the bracket phase: ";
-                            : format_datetime(Utc.with_ymd_and_hms(2024, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(date(2024, 12, 28).at(0, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                         }
                     }
                     h3(id = "top32") : "Main Tournament";
@@ -1259,15 +1259,15 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     ul {
                         li {
                             : "Qualifiers ";
-                            : format_date_range(Utc.with_ymd_and_hms(2026, 1, 3, 19, 0, 0).single().expect("wrong hardcoded datetime"), Utc.with_ymd_and_hms(2026, 1, 31, 19, 0, 0).single().expect("wrong hardcoded datetime"));
+                            : format_date_range(date(2026, 1, 3).at(19, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), date(2026, 1, 31).at(19, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"));
                         }
                         li {
                             : "Opt-ins until ";
-                            : format_datetime(Utc.with_ymd_and_hms(2026, 2, 2, 18, 59, 59).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(date(2026, 2, 2).at(18, 59, 59, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                         }
                         li {
                             : "Start of the bracket phase: ";
-                            : format_datetime(Utc.with_ymd_and_hms(2026, 2, 2, 19, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(date(2026, 2, 2).at(19, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                         }
                     }
                     h3(id = "top32") : "Main Tournament";

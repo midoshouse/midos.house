@@ -91,7 +91,7 @@ impl Notification {
             for race in Race::for_event(&mut *transaction, http_client, &cc9).await? {
                 if race.restreamers.get(&English).and_then(as_variant!(cal::Restreamer::MidosHouse)).is_some_and(|restreamer| *restreamer == me.id)
                     && let RaceSchedule::Live { start, .. } = race.schedule
-                    && start > Utc::now()
+                    && start > Timestamp::now()
                     && !race.video_urls.contains_key(&English)
                     && race.commentators.get(&English).map(|commentators| commentators.len().get()).unwrap_or_default() >= 2
                     && race.trackers.get(&English).map(|trackers| trackers.len().get()).unwrap_or_default() >= race.num_trackers(&mut *transaction).await?

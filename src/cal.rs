@@ -51,7 +51,7 @@ pub(crate) enum Source {
         id: Uuid,
     },
     Sheet {
-        timestamp: NaiveDateTime,
+        timestamp: civil::DateTime,
     },
     StartGG {
         event: String,
@@ -362,17 +362,17 @@ pub(crate) enum RaceSchedule {
     #[default]
     Unscheduled,
     Live {
-        start: DateTime<Utc>,
-        end: Option<DateTime<Utc>>,
+        start: Timestamp,
+        end: Option<Timestamp>,
         room: Option<Url>,
     },
     Async {
-        start1: Option<DateTime<Utc>>,
-        start2: Option<DateTime<Utc>>,
-        start3: Option<DateTime<Utc>>,
-        end1: Option<DateTime<Utc>>,
-        end2: Option<DateTime<Utc>>,
-        end3: Option<DateTime<Utc>>,
+        start1: Option<Timestamp>,
+        start2: Option<Timestamp>,
+        start3: Option<Timestamp>,
+        end1: Option<Timestamp>,
+        end2: Option<Timestamp>,
+        end3: Option<Timestamp>,
         room1: Option<Url>,
         room2: Option<Url>,
         room3: Option<Url>,
@@ -381,8 +381,8 @@ pub(crate) enum RaceSchedule {
 
 impl RaceSchedule {
     fn new(
-        live_start: Option<DateTime<Utc>>, async_start1: Option<DateTime<Utc>>, async_start2: Option<DateTime<Utc>>, async_start3: Option<DateTime<Utc>>,
-        live_end: Option<DateTime<Utc>>, async_end1: Option<DateTime<Utc>>, async_end2: Option<DateTime<Utc>>, async_end3: Option<DateTime<Utc>>,
+        live_start: Option<Timestamp>, async_start1: Option<Timestamp>, async_start2: Option<Timestamp>, async_start3: Option<Timestamp>,
+        live_end: Option<Timestamp>, async_end1: Option<Timestamp>, async_end2: Option<Timestamp>, async_end3: Option<Timestamp>,
         live_room: Option<Url>, async_room1: Option<Url>, async_room2: Option<Url>, async_room3: Option<Url>,
     ) -> Self {
         match (live_start, async_start1, async_start2, async_start3) {
@@ -405,7 +405,7 @@ impl RaceSchedule {
         }
     }
 
-    fn end_time(&self, entrants: &Entrants) -> Option<DateTime<Utc>> {
+    fn end_time(&self, entrants: &Entrants) -> Option<Timestamp> {
         match *self {
             Self::Unscheduled => None,
             Self::Live { end, .. } => end,
@@ -458,28 +458,28 @@ impl RaceSchedule {
         ordering
     }
 
-    pub(crate) fn set_live_start(&mut self, new_start: DateTime<Utc>) {
+    pub(crate) fn set_live_start(&mut self, new_start: Timestamp) {
         match self {
             Self::Live { start, .. } => *start = new_start,
             _ => *self = Self::Live { start: new_start, end: None, room: None },
         }
     }
 
-    pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) {
+    pub(crate) fn set_async_start1(&mut self, new_start: Timestamp) {
         match self {
             Self::Async { start1, .. } => *start1 = Some(new_start),
             _ => *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
 
-    pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) {
+    pub(crate) fn set_async_start2(&mut self, new_start: Timestamp) {
         match self {
             Self::Async { start2, .. } => *start2 = Some(new_start),
             _ => *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
 
-    pub(crate) fn set_async_start3(&mut self, new_start: DateTime<Utc>) {
+    pub(crate) fn set_async_start3(&mut self, new_start: Timestamp) {
         match self {
             Self::Async { start3, .. } => *start3 = Some(new_start),
             _ => *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
@@ -562,7 +562,7 @@ pub(crate) struct Race {
     pub(crate) game: Option<i16>,
     pub(crate) scheduling_thread: Option<ChannelId>,
     pub(crate) schedule: RaceSchedule,
-    pub(crate) schedule_updated_at: Option<DateTime<Utc>>,
+    pub(crate) schedule_updated_at: Option<Timestamp>,
     pub(crate) fpa_invoked: bool,
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: seed::Data,
@@ -571,7 +571,7 @@ pub(crate) struct Race {
     pub(crate) commentators: HashMap<Language, NESet<Id<Users>>>,
     pub(crate) trackers: HashMap<Language, NESet<Id<Users>>>, //TODO double-tracking support
     pub(crate) last_edited_by: Option<Id<Users>>,
-    pub(crate) last_edited_at: Option<DateTime<Utc>>,
+    pub(crate) last_edited_at: Option<Timestamp>,
     /// An ignored race is treated as if it didn't exist for most purposes, with the notable exception of auto-import.
     /// This allows a race to be “deleted” without being recreated automatically.
     pub(crate) ignored: bool,
@@ -590,7 +590,7 @@ impl Race {
             challonge_match,
             league_id,
             scrubs_id,
-            sheet_timestamp,
+            sheet_timestamp AS "sheet_timestamp: jiff_sqlx::DateTime",
             startgg_event,
             startgg_set AS "startgg_set: startgg::ID",
             speedgaming_id,
@@ -614,24 +614,24 @@ impl Race {
             round,
             scheduling_thread AS "scheduling_thread: PgSnowflake<ChannelId>",
             draft_state AS "draft_state: Json<Draft>",
-            start,
-            async_start1,
-            async_start2,
-            async_start3,
-            end_time,
-            async_end1,
-            async_end2,
-            async_end3,
+            start AS "start: jiff_sqlx::Timestamp",
+            async_start1 AS "async_start1: jiff_sqlx::Timestamp",
+            async_start2 AS "async_start2: jiff_sqlx::Timestamp",
+            async_start3 AS "async_start3: jiff_sqlx::Timestamp",
+            end_time AS "end_time: jiff_sqlx::Timestamp",
+            async_end1 AS "async_end1: jiff_sqlx::Timestamp",
+            async_end2 AS "async_end2: jiff_sqlx::Timestamp",
+            async_end3 AS "async_end3: jiff_sqlx::Timestamp",
             room,
             async_room1,
             async_room2,
             async_room3,
-            schedule_updated_at,
+            schedule_updated_at AS "schedule_updated_at: jiff_sqlx::Timestamp",
             fpa_invoked,
             file_stem,
             locked_spoiler_log_path,
             web_id,
-            web_gen_time,
+            web_gen_time AS "web_gen_time: jiff_sqlx::Timestamp",
             is_tfb_dev,
             tfb_uuid,
             hash1 AS "hash1: HashIcon",
@@ -653,7 +653,7 @@ impl Race {
             video_url_es,
             restreamer_es,
             last_edited_by AS "last_edited_by: Id<Users>",
-            last_edited_at,
+            last_edited_at AS "last_edited_at: jiff_sqlx::Timestamp",
             ignored,
             schedule_locked,
             notified,
@@ -668,7 +668,7 @@ impl Race {
         } else if let Some(id) = row.scrubs_id {
             Source::Scrubs { id }
         } else if let Some(timestamp) = row.sheet_timestamp {
-            Source::Sheet { timestamp }
+            Source::Sheet { timestamp: timestamp.into() }
         } else if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
             if let Some(id) = row.speedgaming_id {
                 Source::StartGGSpeedGamingOnline { event, set, id }
@@ -767,7 +767,7 @@ impl Race {
         macro_rules! update_end {
             ($var:ident, $room:ident, $team:expr, $query:literal) => {
                 let $var = if let Some(end) = row.$var {
-                    Some(end)
+                    Some(end.into())
                 } else if let Some(ref room) = row.$room {
                     let end = http_client.get(format!("{room}/data"))
                         .send().await?
@@ -775,12 +775,12 @@ impl Race {
                         .json_with_text_in_error::<RaceData>().await?
                         .ended_at;
                     if let Some(end) = end {
-                        sqlx::query!($query, end, id as _).execute(&mut **transaction).await?;
+                        sqlx::query!($query, end.to_sqlx() as _, id as _).execute(&mut **transaction).await?;
                     }
                     end
-                } else if let Some(team) = $team && let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!" FROM race_async_teams WHERE race = $1 AND team = $2 AND submitted IS NOT NULL"#, id as _, team as _).fetch_optional(&mut **transaction).await? {
-                    sqlx::query!($query, submitted, id as _).execute(&mut **transaction).await?;
-                    Some(submitted)
+                } else if let Some(team) = $team && let Some(submitted) = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!: jiff_sqlx::Timestamp" FROM race_async_teams WHERE race = $1 AND team = $2 AND submitted IS NOT NULL"#, id as _, team as _).fetch_optional(&mut **transaction).await? {
+                    sqlx::query!($query, submitted as _, id as _).execute(&mut **transaction).await?;
+                    Some(submitted.into())
                 } else {
                     None
                 };
@@ -822,11 +822,11 @@ impl Race {
             game: row.game,
             scheduling_thread: row.scheduling_thread.map(|PgSnowflake(id)| id),
             schedule: RaceSchedule::new(
-                row.start, row.async_start1, row.async_start2, row.async_start3,
+                row.start.map(Timestamp::from), row.async_start1.map(Timestamp::from), row.async_start2.map(Timestamp::from), row.async_start3.map(Timestamp::from),
                 end_time, async_end1, async_end2, async_end3,
                 row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?, row.async_room3.map(|room| room.parse()).transpose()?,
             ),
-            schedule_updated_at: row.schedule_updated_at,
+            schedule_updated_at: row.schedule_updated_at.map(Timestamp::from),
             fpa_invoked: row.fpa_invoked,
             draft: row.draft_state.map(|Json(draft)| draft),
             seed: seed::Data::from_db(
@@ -869,7 +869,7 @@ impl Race {
                     .map(|restreamer| (language, restreamer))
             ).collect(),
             last_edited_by: row.last_edited_by,
-            last_edited_at: row.last_edited_at,
+            last_edited_at: row.last_edited_at.map(Timestamp::from),
             ignored: row.ignored,
             schedule_locked: row.schedule_locked,
             notified: row.notified,
@@ -1190,8 +1190,8 @@ impl Race {
     /// The seed remains hidden until it's posted in the last calendar event of this race.
     pub(crate) fn show_seed(&self) -> bool {
         if let RaceSchedule::Unscheduled = self.schedule { return false }
-        let now = Utc::now();
-        self.cal_events().all(|event| event.is_private_async_part() || event.start().is_some_and(|start| start <= now + TimeDelta::minutes(15)) || event.end().is_some())
+        let now = Timestamp::now();
+        self.cal_events().all(|event| event.is_private_async_part() || event.start().is_some_and(|start| start <= now + SignedDuration::from_mins(15)) || event.end().is_some())
     }
 
     /// The password remains hidden until it's posted in the last calendar event of this race.
@@ -1422,23 +1422,23 @@ impl Race {
             =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,                $9,          $10,         $11,         $12,        $13,        $14,      $15,   $16,   $17,    $18,          $19,       $20,   $21,   $22,   $23,   $24,   $25,  $26, $27, $28, $29,            $30,            $31,       $32,   $33,   $34,     $35, $36,           $37,   $38,      $39,      $40,          $41,        $42,           $43,                     $44,          $45,           $46,       $47,       $48,        $49,        $50,             $51,   $52,                 $53,          $54,           $55,             $56,       $57,         $58,         $59,          $60,         $61,        $62,             $63,           $64,            $65,      $66,        $67,         $68,          $69,           $70,                   $71,           $72,              $73,             $74,             $75,             $76)
         ",
             startgg_set as _,
-            start,
+            start.map(jiff_sqlx::Timestamp::from) as _,
             self.series as _,
             self.event,
-            async_start2,
-            async_start1,
+            async_start2.map(jiff_sqlx::Timestamp::from) as _,
+            async_start1.map(jiff_sqlx::Timestamp::from) as _,
             room.map(|url| url.to_string()),
             self.scheduling_thread.map(PgSnowflake) as _,
             async_room1.map(|url| url.to_string()),
             async_room2.map(|url| url.to_string()),
             self.draft.as_ref().map(Json) as _,
-            async_end1,
-            async_end2,
-            end,
+            async_end1.map(jiff_sqlx::Timestamp::from) as _,
+            async_end2.map(jiff_sqlx::Timestamp::from) as _,
+            end.map(jiff_sqlx::Timestamp::from) as _,
             team1 as _,
             team2 as _,
             web_id.map(|web_id| web_id as i64),
-            web_gen_time,
+            web_gen_time.map(jiff_sqlx::Timestamp::from) as _,
             file_stem.map(|file_stem| &**file_stem),
             self.seed.file_hash.map(|[hash1, _, _, _, _]| hash1) as _,
             self.seed.file_hash.map(|[_, hash2, _, _, _]| hash2) as _,
@@ -1450,7 +1450,7 @@ impl Race {
             p1,
             p2,
             self.last_edited_by as _,
-            self.last_edited_at,
+            self.last_edited_at.map(jiff_sqlx::Timestamp::from) as _,
             self.video_urls.get(&English).map(|url| url.to_string()),
             self.phase,
             self.round,
@@ -1472,16 +1472,16 @@ impl Race {
             p2_discord.map(PgSnowflake) as _,
             self.schedule_locked,
             team3 as _,
-            self.schedule_updated_at,
+            self.schedule_updated_at.map(jiff_sqlx::Timestamp::from) as _,
             self.video_urls.get(&German).map(|url| url.to_string()),
             self.restreamers.get(&German).and_then(as_variant!(Restreamer::RaceTime)),
-            sheet_timestamp,
+            sheet_timestamp.map(jiff_sqlx::DateTime::from) as _,
             league_id,
             p1_racetime,
             p2_racetime,
-            async_start3,
+            async_start3.map(jiff_sqlx::Timestamp::from) as _,
             async_room3.map(|url| url.to_string()),
-            async_end3,
+            async_end3.map(jiff_sqlx::Timestamp::from) as _,
             challonge_match,
             self.seed.password.as_ref().map(|password| password.iter().copied().map(char::from).collect::<String>()),
             speedgaming_id,
@@ -1714,7 +1714,7 @@ impl Event {
         }
     }
 
-    pub(crate) fn start(&self) -> Option<DateTime<Utc>> {
+    pub(crate) fn start(&self) -> Option<Timestamp> {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { start, .. } => Some(start),
@@ -1727,7 +1727,7 @@ impl Event {
         }
     }
 
-    pub(crate) fn end(&self) -> Option<DateTime<Utc>> {
+    pub(crate) fn end(&self) -> Option<Timestamp> {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { end, .. } => end,
@@ -1740,7 +1740,7 @@ impl Event {
         }
     }
 
-    pub(crate) fn end_mut(&mut self) -> Option<&mut Option<DateTime<Utc>>> {
+    pub(crate) fn end_mut(&mut self) -> Option<&mut Option<Timestamp>> {
         match &mut self.race.schedule {
             RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { end, .. } => Some(end),
@@ -1753,7 +1753,7 @@ impl Event {
         }
     }
 
-    pub(crate) fn estimated_duration(&self) -> TimeDelta {
+    pub(crate) fn estimated_duration(&self) -> Duration {
         //TODO use actual duration if public
         //TODO better fallback duration estimates depending on participants
         if let Some(format) = sco::Format::for_race(&self.race) {
@@ -2107,7 +2107,6 @@ pub(crate) enum RaceHandleMode {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 #[rocket_util(is_network_error)] //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
 pub(crate) enum Error {
-    #[error(transparent)] ChronoParse(#[from] chrono::format::ParseError),
     #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Draft(#[from] draft::Error),
     #[error(transparent)] Event(#[from] event::DataError),
@@ -2121,7 +2120,6 @@ pub(crate) enum Error {
     #[error(transparent)] SlugOpenSingleSettings(#[from] sco::SingleSettingsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
-    #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("anonymized entrant in race without hidden entrants")]
@@ -2168,7 +2166,6 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
 impl IsNetworkError for Error {
     fn is_network_error(&self) -> bool {
         match self {
-            Self::ChronoParse(_) => false,
             Self::Discord(_) => false,
             Self::Draft(e) => e.is_network_error(),
             Self::Event(_) => false,
@@ -2182,7 +2179,6 @@ impl IsNetworkError for Error {
             Self::SlugOpenSingleSettings(e) => e.is_network_error(),
             Self::Sql(_) => false,
             Self::StartGG(e) => e.is_network_error(),
-            Self::TimeFromLocal(_) => false,
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::AnonymizedEntrant => false,
@@ -2197,40 +2193,24 @@ impl IsNetworkError for Error {
     }
 }
 
-trait IntoIcsTzid {
-    fn into_tzid(self) -> TzIDParam<'static>;
+fn dtstamp(datetime: Timestamp) -> String {
+    datetime.strftime("%Y%m%dT%H%M%SZ").to_string()
 }
 
-impl IntoIcsTzid for Utc {
-    fn into_tzid(self) -> TzIDParam<'static> {
-        TzIDParam::new("Etc/UTC")
-    }
-}
-
-impl IntoIcsTzid for Tz {
-    fn into_tzid(self) -> TzIDParam<'static> {
-        TzIDParam::new(self.name())
-    }
-}
-
-fn dtstamp(datetime: DateTime<Utc>) -> String {
-    datetime.to_utc().format("%Y%m%dT%H%M%SZ").to_string()
-}
-
-fn dtstart<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtStart<'static> {
-    let mut dtstart = DtStart::new(datetime.naive_local().format("%Y%m%dT%H%M%S").to_string());
-    dtstart.add(datetime.timezone().into_tzid());
+fn dtstart(datetime: ZonedDateTime) -> DtStart<'static> {
+    let mut dtstart = DtStart::new(datetime.strftime("%Y%m%dT%H%M%S").to_string());
+    dtstart.add(TzIDParam::new(datetime.time_zone().iana_name().expect("attempted to create ICS dtstart with non-IANA timezone").to_owned()));
     dtstart
 }
 
-fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
-    let mut dtend = DtEnd::new(datetime.naive_local().format("%Y%m%dT%H%M%S").to_string());
-    dtend.add(datetime.timezone().into_tzid());
+fn dtend(datetime: ZonedDateTime) -> DtEnd<'static> {
+    let mut dtend = DtEnd::new(datetime.strftime("%Y%m%dT%H%M%S").to_string());
+    dtend.add(TzIDParam::new(datetime.time_zone().iana_name().expect("attempted to create ICS dtend with non-IANA timezone").to_owned()));
     dtend
 }
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &GlobalState, cal: &mut ICalendar<'_>, event: &event::Data<'_>, delay: bool) -> Result<(), Error> {
-    let now = Utc::now();
+    let now = Timestamp::now();
     for race in Race::for_event(transaction, &global.http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -2310,8 +2290,8 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, global: &G
                 } else {
                     summary_prefix
                 })));
-                cal_event.push(dtstart(start + if delay { race.stream_delay(event) } else { Duration::default() }));
-                cal_event.push(dtend(race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + race_event.estimated_duration()) + if delay { race.stream_delay(event) } else { Duration::default() }));
+                cal_event.push(dtstart((start + if delay { race.stream_delay(event) } else { Duration::default() }).to_zoned_datetime(TimeZone::UTC)));
+                cal_event.push(dtend((race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + race_event.estimated_duration()) + if delay { race.stream_delay(event) } else { Duration::default() }).to_zoned_datetime(TimeZone::UTC)));
                 let mut urls = Vec::default();
                 for (language, video_url) in &race.video_urls {
                     urls.push((Cow::Owned(format!("{language} restream")), video_url.clone()));
@@ -2780,7 +2760,7 @@ pub(crate) async fn race_table(
         false
     };
     let has_buttons = options.can_create || options.can_edit;
-    let now = Utc::now();
+    let now = Timestamp::now();
     Ok(html! {
         table {
             thead {
@@ -3821,7 +3801,7 @@ pub(crate) async fn auto_import_races(global: Arc<GlobalState>, shutdown: rocket
                         }
                     }
                 }
-                crate::flow::update_import_task_status(SubsystemStatusKind::NetworkError { retry_at: Utc::now() + wait_time });
+                crate::flow::update_import_task_status(SubsystemStatusKind::NetworkError { retry_at: Timestamp::now() + wait_time });
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
@@ -3869,7 +3849,7 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
         @if let Some(me) = &me {
             @if let Ok(cal_event) = race.into_async_part_for(&mut transaction, me).await? {
                 @if let Ok(team) = cal_event.active_entrants().filter_map(Entrant::team).exactly_one() {
-                    @if let Some(team_row) = sqlx::query!(r#"SELECT requested, submitted FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
+                    @if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested: jiff_sqlx::Timestamp", submitted AS "submitted: jiff_sqlx::Timestamp" FROM race_async_teams WHERE race = $1 AND team = $2"#, cal_event.race.id as _, team.id as _).fetch_optional(&mut *transaction).await? {
                         @if let RaceHandleMode::AsyncForm = cal_event.should_create_room(&mut transaction, &event).await? {
                             @if team_row.submitted.is_none() {
                                 @let extra = cal_event.race.seed.extra(global).await?;
@@ -4014,8 +3994,8 @@ async fn race_details_page(mut transaction: Transaction<'_, Postgres>, global: &
                         }
                     } else {
                         @if let Some(start) = cal_event.start() {
-                            @let available_at = start - TimeDelta::minutes(15);
-                            @if Utc::now() >= available_at {
+                            @let available_at = start - SignedDuration::from_mins(15);
+                            @if Timestamp::now() >= available_at {
                                 @let ctx = ctx.take_request_async();
                                 @let mut errors = ctx.errors().collect_vec();
                                 div(class = "info") {
@@ -4770,7 +4750,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, g
             }
             Source::Sheet { timestamp } => p {
                 : "Google Form submission timestamp: ";
-                : timestamp.format("%d/%m/%Y %H:%M:%S").to_string();
+                : timestamp.strftime("%d/%m/%Y %H:%M:%S").to_string();
                 : " (unknown time zone)";
             }
             Source::StartGG { event, set: startgg::ID(set) } => {
@@ -5088,7 +5068,7 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
             if let Some(row) = sqlx::query!(r#"SELECT
                 file_stem,
                 web_id,
-                web_gen_time,
+                web_gen_time AS "web_gen_time: jiff_sqlx::Timestamp",
                 hash1 AS "hash1: HashIcon",
                 hash2 AS "hash2: HashIcon",
                 hash3 AS "hash3: HashIcon",
@@ -5245,7 +5225,7 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
                 }
             }
             race.last_edited_by = Some(me.id);
-            race.last_edited_at = Some(Utc::now());
+            race.last_edited_at = Some(Timestamp::now());
             if race.series != Series::League || race.has_any_room() {
                 race.video_urls = value.video_urls.iter().filter(|(_, video_url)| !video_url.is_empty()).map(|(language, video_url)| (*language, Url::parse(video_url).expect("validated"))).collect();
                 race.restreamers = restreamers;
@@ -5257,7 +5237,7 @@ pub(crate) async fn edit_race_post(global: &GlobalState, me: User, uri: Origin<'
                 race.seed.password = Some(password);
             }
             if let (Some(id), Some(gen_time), Some(file_stem)) = (web_id, web_gen_time, file_stem) {
-                race.seed.files = Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) });
+                race.seed.files = Some(seed::Files::OotrWeb { id, gen_time: gen_time.into(), file_stem: Cow::Owned(file_stem) });
             }
             race.save(&mut transaction).await?;
             transaction.commit().await?;

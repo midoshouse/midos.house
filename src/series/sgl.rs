@@ -159,7 +159,7 @@ pub(crate) struct Restream {
     match2: Option<RestreamMatch>,
     channels: Vec<RestreamChannel>,
     timezone: String,
-    when_countdown: DateTime<Utc>,
+    when_countdown: Timestamp,
 }
 
 impl Restream {
@@ -189,7 +189,7 @@ impl Restream {
             if let Some(was_scheduled) = schedule_changed {
                 use crate::discord_bot::*;
 
-                if self.when_countdown - Utc::now() < TimeDelta::minutes(30) {
+                if self.when_countdown - Timestamp::now() < SignedDuration::from_mins(30) {
                     let (global, racetime_host) = {
                         let data = discord_ctx.data.read().await;
                         (
@@ -229,7 +229,7 @@ impl Restream {
                             let mut response_content = MessageBuilder::default();
                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                             response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                            response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push_timestamp_jiff(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
                             let msg = response_content
                                 .push(". The race room will be opened momentarily.")
                                 .build();
@@ -249,11 +249,11 @@ impl Restream {
                     cal_event.race.save(&mut transaction).await?;
                     let overlapping_maintenance_windows = match cal_event.should_create_room(&mut transaction, &event).await? {
                         RaceHandleMode::None | RaceHandleMode::Notify => Vec::default(),
-                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, self.when_countdown + cal_event.estimated_duration(), self.when_countdown - TimeDelta::minutes(30))
+                        RaceHandleMode::RaceTime => sqlx::query!(r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end_time: jiff_sqlx::Timestamp", kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2"#, (self.when_countdown + cal_event.estimated_duration()).to_sqlx() as _, (self.when_countdown - SignedDuration::from_mins(30)).to_sqlx() as _)
                             .fetch(&mut *transaction)
                             .map_ok(|row| (row.start..row.end_time, row.kind))
                             .try_collect().await?,
-                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start, end_time, kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, self.when_countdown + cal_event.estimated_duration(), self.when_countdown - TimeDelta::minutes(30))
+                        RaceHandleMode::AsyncForm => sqlx::query!(r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end_time: jiff_sqlx::Timestamp", kind AS "kind: MaintenanceKind" FROM maintenance_windows WHERE start < $1 AND end_time > $2 AND kind != 'racetime'"#, (self.when_countdown + cal_event.estimated_duration()).to_sqlx() as _, (self.when_countdown - SignedDuration::from_mins(30)).to_sqlx() as _)
                             .fetch(&mut *transaction)
                             .map_ok(|row| (row.start..row.end_time, row.kind))
                             .try_collect().await?,
@@ -267,14 +267,14 @@ impl Restream {
                         {
                             MessageBuilder::default()
                                 .push("Votre race a été planifiée pour le ")
-                                .push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime)
+                                .push_timestamp_jiff(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime)
                                 .push('.')
                                 .build()
                         } else {
                             let mut response_content = MessageBuilder::default();
                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                             response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                            response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push_timestamp_jiff(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
                             response_content.push('.');
                             for (window, kind) in overlapping_maintenance_windows {
                                 response_content.push_line("");
@@ -282,9 +282,9 @@ impl Restream {
                                 response_content.push(" this race may overlap with ");
                                 response_content.push(kind.to_string());
                                 response_content.push(" maintenance planned for ");
-                                response_content.push_timestamp(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                response_content.push_timestamp_jiff(window.start, serenity_utils::message::TimestampStyle::ShortDateTime);
                                 response_content.push(" until ");
-                                response_content.push_timestamp(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
+                                response_content.push_timestamp_jiff(window.end, serenity_utils::message::TimestampStyle::ShortDateTime);
                                 response_content.push('.');
                             }
                             response_content.build()
@@ -305,7 +305,7 @@ impl Restream {
                             msg.mention(&volunteer_role);
                             cal_event.format_discord(&mut transaction, Some(GuildId::new(1088872810719486143)), English, &mut msg).await?;
                             msg.push(" (scheduled for ");
-                            msg.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            msg.push_timestamp_jiff(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
                             msg.push(") has been confirmed for ");
                             msg.push(language.english_indefinite_article());
                             msg.push(' ');
@@ -335,15 +335,15 @@ impl Restream {
 type OnlineSchedule = Vec<Restream>;
 
 pub(crate) async fn online_schedule(http_client: &reqwest::Client, event_slug: &str) -> wheel::Result<OnlineSchedule> {
-    let now = Utc::now();
+    let now = Timestamp::now();
     lock!(cache = ONLINE_CACHE; {
         let (ref mut next_request, ref mut cache) = *cache;
         if *next_request <= Instant::now() {
             *cache = http_client.get("https://speedgaming.org/api/schedule")
                 .query(&[
                     ("event", event_slug),
-                    ("from", &now.to_rfc3339()), // no need to look for races created in the past minute since filters by start time with stream delay
-                    ("to", &(now + TimeDelta::days(365)).to_rfc3339()), // required because the default is some very short interval (less than 1 week)
+                    ("from", &now.to_string()), // no need to look for races created in the past minute since filters by start time with stream delay
+                    ("to", &(now + SignedDuration::from_hours(365 * 24)).to_string()), // required because the default is some very short interval (less than 1 week)
                 ])
                 .send().await?
                 .detailed_error_for_status().await?
@@ -358,8 +358,8 @@ pub(crate) async fn online_schedule(http_client: &reqwest::Client, event_slug: &
 pub(crate) struct InPersonMatch {
     pub(crate) id: i64,
     generated_seed: Option<GeneratedSeed>,
-    scheduled_at: DateTime<Utc>,
-    finished_at: Option<DateTime<Utc>>,
+    scheduled_at: Timestamp,
+    finished_at: Option<Timestamp>,
     pub(crate) players: Vec<InPersonPlayer>,
 }
 
@@ -426,16 +426,16 @@ impl InPersonMatch {
                     if let Some(thread) = cal_event.race.scheduling_thread {
                         let msg = if let French = event.language
                             && cal_event.race.game.is_none()
-                            && self.scheduled_at - Utc::now() >= TimeDelta::minutes(30)
+                            && self.scheduled_at - Timestamp::now() >= SignedDuration::from_mins(30)
                         {
                             MessageBuilder::default()
                                 .push("Votre race a été planifiée pour le ")
-                                .push_timestamp(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
+                                .push_timestamp_jiff(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime)
                                 .push('.')
                                 .build()
                         } else {
                             let mut response_content = MessageBuilder::default();
-                            if self.scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                            if self.scheduled_at - Timestamp::now() < SignedDuration::from_mins(30) {
                                 for entrant in cal_event.active_entrants() {
                                     response_content.mention_entrant_long(&mut transaction, thread.to_channel(discord_ctx).await?.guild().map(|channel| channel.guild_id), entrant).await?;
                                     response_content.push(' ');
@@ -443,9 +443,9 @@ impl InPersonMatch {
                             }
                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                             response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                            response_content.push_timestamp(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push_timestamp_jiff(self.scheduled_at, serenity_utils::message::TimestampStyle::LongDateTime);
                             response_content.push('.');
-                            if self.scheduled_at - Utc::now() < TimeDelta::minutes(30) {
+                            if self.scheduled_at - Timestamp::now() < SignedDuration::from_mins(30) {
                                 response_content.push(" Please get your equipment and report to the tournament room.");
                             }
                             response_content.build()

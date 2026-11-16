@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                file_stem,\n                web_id,\n                web_gen_time,\n                hash1 AS \"hash1: HashIcon\",\n                hash2 AS \"hash2: HashIcon\",\n                hash3 AS \"hash3: HashIcon\",\n                hash4 AS \"hash4: HashIcon\",\n                hash5 AS \"hash5: HashIcon\"\n            FROM rsl_seeds WHERE room = $1",
+  "query": "SELECT\n                file_stem,\n                web_id,\n                web_gen_time AS \"web_gen_time: jiff_sqlx::Timestamp\",\n                hash1 AS \"hash1: HashIcon\",\n                hash2 AS \"hash2: HashIcon\",\n                hash3 AS \"hash3: HashIcon\",\n                hash4 AS \"hash4: HashIcon\",\n                hash5 AS \"hash5: HashIcon\"\n            FROM rsl_seeds WHERE room = $1",
   "describe": {
     "columns": [
       {
@@ -27,7 +27,7 @@
       },
       {
         "ordinal": 2,
-        "name": "web_gen_time",
+        "name": "web_gen_time: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -308,5 +308,5 @@
       false
     ]
   },
-  "hash": "84dabf63fa5be91f16e311fba96a11ea4a3631558f82fc9987edde4e33b89791"
+  "hash": "1a233481a9c4bbb0768b402a2e7ffa7300477cef73e10507f229421cd84c4ca3"
 }

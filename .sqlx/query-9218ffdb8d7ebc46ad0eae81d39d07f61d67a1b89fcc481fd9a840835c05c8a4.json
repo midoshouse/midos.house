@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT start, end_time AS \"end\" FROM maintenance_windows WHERE kind = 'midos_house' AND start <= NOW() + INTERVAL '168:00:00' AND end_time > NOW() ORDER BY start LIMIT 1",
+  "query": "SELECT start AS \"start: jiff_sqlx::Timestamp\", end_time AS \"end: jiff_sqlx::Timestamp\" FROM maintenance_windows WHERE kind = 'midos_house' AND start <= NOW() + INTERVAL '168:00:00' AND end_time > NOW() ORDER BY start LIMIT 1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "start",
+        "name": "start: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -16,7 +16,7 @@
       },
       {
         "ordinal": 1,
-        "name": "end",
+        "name": "end: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "67b69a4c3a00ae243c9085a17291b9da92525ca5350a29bd839971b200c29c41"
+  "hash": "9218ffdb8d7ebc46ad0eae81d39d07f61d67a1b89fcc481fd9a840835c05c8a4"
 }

@@ -52,7 +52,7 @@ pub(crate) struct SotdResponse {
 pub(crate) struct SotdEntry {
     pub(crate) preset_key: String,
     pub(crate) preset_display_name: String,
-    pub(crate) scheduled_spoiler_unlock_at_utc: DateTime<Utc>,
+    pub(crate) scheduled_spoiler_unlock_at_utc: Timestamp,
     pub(crate) seed: SotdEntrySeed,
 }
 

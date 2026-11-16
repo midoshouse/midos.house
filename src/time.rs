@@ -3,36 +3,6 @@ use {
     crate::prelude::*,
 };
 
-const NANOS_PER_SEC: u32 = 1_000_000_000;
-
-pub(crate) trait TimeDeltaExt: Sized {
-    fn as_secs_f64(&self) -> f64;
-    fn from_secs_f64(secs: f64) -> Self;
-    fn abs_diff(self, other: Self) -> Self;
-
-    fn div_duration_f64(self, rhs: Self) -> f64 {
-        self.as_secs_f64() / rhs.as_secs_f64()
-    }
-
-    fn mul_f64(self, rhs: f64) -> Self {
-        Self::from_secs_f64(rhs * self.as_secs_f64())
-    }
-}
-
-impl TimeDeltaExt for TimeDelta {
-    fn as_secs_f64(&self) -> f64 {
-        (self.num_seconds() as f64) + (self.subsec_nanos() as f64) / (NANOS_PER_SEC as f64)
-    }
-
-    fn from_secs_f64(secs: f64) -> Self {
-        Self::seconds(secs.trunc() as i64) + Self::nanoseconds((secs.fract() * (NANOS_PER_SEC as f64)) as i64)
-    }
-
-    fn abs_diff(self, other: Self) -> Self {
-        (self - other).abs()
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PgIntervalDecodeError {
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
@@ -157,23 +127,24 @@ pub(crate) struct DateTimeFormat {
     pub(crate) running_text: bool,
 }
 
-pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTimeFormat) -> RawHtml<String> {
-    let utc = datetime.to_utc();
-    let paris = datetime.with_timezone(&Europe::Paris);
-    let new_york = datetime.with_timezone(&America::New_York);
-    let paris_same_date = paris.date_naive() == utc.date_naive();
-    let new_york_same_date = new_york.date_naive() == utc.date_naive();
-    let paris = paris.format(if paris_same_date { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
-    let new_york = new_york.format(match (new_york_same_date, new_york.minute() == 0) {
-        (false, false) => "%A %-I:%M %p %Z",
-        (false, true) => "%A %-I%p %Z",
+pub(crate) fn format_datetime(datetime: impl Into<Timestamp>, format: DateTimeFormat) -> RawHtml<String> {
+    let datetime = datetime.into();
+    let utc = datetime.to_zoned_datetime(TimeZone::UTC);
+    let paris = datetime.in_tz("Europe/Paris").unwrap();
+    let new_york = datetime.in_tz("America/New_York").unwrap();
+    let paris_same_date = paris.date() == utc.date();
+    let new_york_same_date = new_york.date() == utc.date();
+    let paris = paris.strftime(if paris_same_date { "%H:%M %Z" } else { "%a %H:%M %Z" }).to_string();
+    let new_york = new_york.strftime(match (new_york_same_date, new_york.minute() == 0) {
+        (false, false) => "%a %-I:%M %p %Z",
+        (false, true) => "%a %-I%p %Z",
         (true, false) => "%-I:%M %p %Z",
         (true, true) => "%-I%p %Z",
     }).to_string();
     html! {
-        //TODO once https://github.com/WentTheFox/SledgeHammerTime is out of beta and https://github.com/WentTheFox/SledgeHammerTime/issues/2 is fixed, format as a link, e.g. https://hammertime.cyou/?t=1723402800.000
-        span(class = "datetime", data_timestamp = datetime.timestamp_millis(), data_long = format.long.to_string()) {
-            : utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
+        //TODO format as a link, e.g. https://hammertime.cyou/?t=1723402800.000
+        span(class = "datetime", data_timestamp = datetime.as_millisecond(), data_long = format.long.to_string()) {
+            : utc.strftime("%A, %B %-d, %Y, %H:%M UTC").to_string();
             @if format.running_text {
                 : " (";
             } else {
@@ -201,24 +172,27 @@ pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTi
     }
 }
 
-pub(crate) fn format_date_range<Z: TimeZone>(start: DateTime<Z>, end: DateTime<Z>) -> RawHtml<String>
-where Z::Offset: fmt::Display {
+pub(crate) fn format_date_range(start: impl Into<Timestamp>, end: impl Into<Timestamp>) -> RawHtml<String> {
+    let start = start.into();
+    let end = end.into();
     html! {
-        span(class = "daterange", data_start = start.timestamp_millis(), data_end = end.timestamp_millis()) {
+        span(class = "daterange", data_start = start.as_millisecond(), data_end = end.as_millisecond()) {
+            @let start = start.to_zoned_datetime(TimeZone::UTC);
+            @let end = end.to_zoned_datetime(TimeZone::UTC);
             @if start.year() != end.year() {
-                : start.format("%B %-d, %Y").to_string();
+                : start.strftime("%B %-d, %Y").to_string();
                 : "–";
-                : end.format("%B %-d, %Y").to_string();
+                : end.strftime("%B %-d, %Y").to_string();
             } else if start.month() != end.month() {
-                : start.format("%B %-d").to_string();
+                : start.strftime("%B %-d").to_string();
                 : "–";
-                : end.format("%B %-d, %Y").to_string();
+                : end.strftime("%B %-d, %Y").to_string();
             } else if start.day() != end.day() {
-                : start.format("%B %-d").to_string();
+                : start.strftime("%B %-d").to_string();
                 : "–";
-                : end.format("%-d, %Y").to_string();
+                : end.strftime("%-d, %Y").to_string();
             } else {
-                : start.format("%B %-d, %Y").to_string();
+                : start.strftime("%B %-d, %Y").to_string();
             }
         }
     }

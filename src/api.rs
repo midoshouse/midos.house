@@ -185,11 +185,17 @@ impl<'a, T: crate::id::Table> TryFrom<&'a GqlId> for Id<T> {
     }
 }
 
-struct UtcTimestamp(DateTime<Utc>);
+struct UtcTimestamp(Timestamp);
 
-impl<Z: TimeZone> From<DateTime<Z>> for UtcTimestamp {
-    fn from(value: DateTime<Z>) -> Self {
-        Self(value.to_utc())
+impl From<Timestamp> for UtcTimestamp {
+    fn from(value: Timestamp) -> Self {
+        Self(value)
+    }
+}
+
+impl From<jiff_sqlx::Timestamp> for UtcTimestamp {
+    fn from(value: jiff_sqlx::Timestamp) -> Self {
+        Self(value.into())
     }
 }
 
@@ -198,19 +204,19 @@ impl<Z: TimeZone> From<DateTime<Z>> for UtcTimestamp {
 impl ScalarType for UtcTimestamp {
     fn parse(value: Value) -> InputValueResult<Self> {
         if let Value::String(s) = value {
-            Ok(Self(DateTime::parse_from_rfc3339(&s).map_err(InputValueError::custom)?.to_utc()))
+            Ok(Self(s.parse().map_err(InputValueError::custom)?))
         } else {
             Err(InputValueError::expected_type(value))
         }
     }
 
     fn to_value(&self) -> Value {
-        Value::String(self.0.to_rfc3339_opts(SecondsFormat::AutoSi, true))
+        Value::String(self.0.to_string())
     }
 
     fn is_valid(value: &Value) -> bool {
         if let Value::String(s) = value {
-            DateTime::parse_from_rfc3339(s).is_ok()
+            s.parse::<Timestamp>().is_ok()
         } else {
             false
         }
@@ -268,7 +274,7 @@ pub(crate) struct Mutation;
                 extensions: None,
             })?.user;
             race.last_edited_by = Some(me.id);
-            race.last_edited_at = Some(Utc::now());
+            race.last_edited_at = Some(Timestamp::now());
             race.save(&mut *db).await?;
             Ok(Race(race))
         })
@@ -287,7 +293,7 @@ pub(crate) struct Mutation;
                 extensions: None,
             })?.user;
             race.last_edited_by = Some(me.id);
-            race.last_edited_at = Some(Utc::now());
+            race.last_edited_at = Some(Timestamp::now());
             race.save(&mut *db).await?;
             Ok(Race(race))
         })
@@ -339,7 +345,7 @@ struct Race(cal::Race);
     /// The time the scheduling of this race was last changed. Null if this race's schedule has not been touched or if the event does not use Mido's House to schedule races.
     /// This info was not tracked before 2024-01-04 so this is also null for races whose schedule was last changed before then.
     async fn schedule_updated_at(&self, ctx: &Context<'_>) -> sqlx::Result<Option<UtcTimestamp>> {
-        Ok(db!(db = ctx; sqlx::query_scalar!("SELECT schedule_updated_at FROM races WHERE id = $1", self.0.id as _).fetch_one(&mut **db).await?).map(UtcTimestamp::from))
+        Ok(db!(db = ctx; sqlx::query_scalar!(r#"SELECT schedule_updated_at AS "schedule_updated_at: jiff_sqlx::Timestamp" FROM races WHERE id = $1"#, self.0.id as _).fetch_one(&mut **db).await?).map(UtcTimestamp::from))
     }
 
     /// The race room URL. Null if no room has been opened yet or if this race is asynced.

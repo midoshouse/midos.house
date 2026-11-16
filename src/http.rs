@@ -167,7 +167,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, global: &Gl
     } else {
         Vec::default()
     };
-    let maintenance_notice = sqlx::query_as!(Range::<DateTime<Utc>>, r#"SELECT start, end_time AS "end" FROM maintenance_windows WHERE kind = 'midos_house' AND start <= NOW() + INTERVAL '168:00:00' AND end_time > NOW() ORDER BY start LIMIT 1"#)
+    let maintenance_notice = sqlx::query_as!(Range::<Timestamp>, r#"SELECT start AS "start: jiff_sqlx::Timestamp", end_time AS "end: jiff_sqlx::Timestamp" FROM maintenance_windows WHERE kind = 'midos_house' AND start <= NOW() + INTERVAL '168:00:00' AND end_time > NOW() ORDER BY start LIMIT 1"#)
         .fetch_optional(&mut *transaction).await?
         .map(|window| html! {
             p(class = "warning") {
@@ -443,7 +443,7 @@ async fn archive(global: &GlobalState, me: Option<User>, uri: Origin<'_>, sort: 
         } else {
             @let past_events = match sort {
                 ArchiveSortKey::EndTime => Either::Left(
-                    past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").year())
+                    past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").to_zoned_datetime(TimeZone::UTC).year()) //TODO recategorize in JS based on browser timezone
                         .into_iter()
                         .sorted_unstable_by_key(|(year, _)| Reverse(*year))
                         .map(|(year, events)| (Cow::Owned(year.to_string()), events))
